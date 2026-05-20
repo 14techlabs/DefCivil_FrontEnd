@@ -1,0 +1,376 @@
+<!DOCTYPE html>
+
+<html lang="pt-br"><head>
+<meta charset="utf-8"/>
+<meta content="width=device-width, initial-scale=1.0" name="viewport"/>
+<title>Zonas - Vila Esperança - Setor B | GARDIAN SENTINEL</title>
+<script src="https://cdn.tailwindcss.com?plugins=forms,container-queries"></script>
+<link href="https://fonts.googleapis.com/css2?family=Public+Sans:wght@400;700;900&amp;family=Inter:wght@400;500;600;700&amp;family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap" rel="stylesheet"/>
+<script id="tailwind-config">
+        tailwind.config = {
+            darkMode: "class",
+            theme: {
+                extend: {
+                    "colors": {
+                        "on-surface-variant": "#45474d",
+                        "inverse-on-surface": "#eff1f3",
+                        "secondary": "#006a60",
+                        "on-background": "#191c1e",
+                        "surface-container-low": "#f2f4f6",
+                        "on-secondary-container": "#007166",
+                        "secondary-fixed-dim": "#6fd8c8",
+                        "outline": "#75777d",
+                        "tertiary-fixed": "#ffdad8",
+                        "primary-fixed": "#d7e2ff",
+                        "on-primary-fixed": "#101b30",
+                        "surface-tint": "#545e76",
+                        "inverse-primary": "#bbc6e2",
+                        "surface-dim": "#d8dadc",
+                        "on-primary-fixed-variant": "#3c475d",
+                        "error-container": "#ffdad6",
+                        "tertiary-container": "#55000c",
+                        "surface": "#f8f9fb",
+                        "on-secondary": "#ffffff",
+                        "surface-container-highest": "#e0e3e5",
+                        "on-error": "#ffffff",
+                        "on-secondary-fixed-variant": "#005048",
+                        "on-secondary-fixed": "#00201c",
+                        "surface-container-high": "#e6e8ea",
+                        "primary-container": "#1b263b",
+                        "on-surface": "#191c1e",
+                        "on-tertiary-container": "#fe4b55",
+                        "background": "#f8f9fb",
+                        "on-tertiary-fixed": "#410007",
+                        "error": "#ba1a1a",
+                        "tertiary-fixed-dim": "#ffb3b1",
+                        "surface-container-lowest": "#ffffff",
+                        "primary": "#051125",
+                        "on-tertiary": "#ffffff",
+                        "inverse-surface": "#2d3133",
+                        "on-error-container": "#93000a",
+                        "primary-fixed-dim": "#bbc6e2",
+                        "on-primary-container": "#828da7",
+                        "tertiary": "#2e0004",
+                        "secondary-container": "#8cf5e4",
+                        "surface-container": "#eceef0",
+                        "secondary-fixed": "#8cf5e4",
+                        "outline-variant": "#c5c6cd",
+                        "on-primary": "#ffffff",
+                        "surface-bright": "#f8f9fb",
+                        "on-tertiary-fixed-variant": "#92001c",
+                        "surface-variant": "#e0e3e5"
+                    },
+                    "borderRadius": {
+                        "DEFAULT": "0.125rem",
+                        "lg": "0.25rem",
+                        "xl": "0.5rem",
+                        "full": "0.75rem"
+                    },
+                    "fontFamily": {
+                        "headline": ["Public Sans"],
+                        "body": ["Inter"],
+                        "label": ["Inter"]
+                    }
+                },
+            },
+        }
+    </script>
+<style>
+        .material-symbols-outlined {
+            font-variation-settings: 'FILL' 0, 'wght' 400, 'GRAD' 0, 'opsz' 24;
+        }
+        body { font-family: 'Inter', sans-serif; }
+        .font-headline { font-family: 'Public Sans', sans-serif; }
+    </style>
+</head>
+<body class="bg-surface text-on-surface">
+<!-- SideNavBar (Standardized from COMPONENTS_26) -->
+<aside class="hidden lg:flex flex-col h-screen w-72 fixed left-0 top-0 z-50 bg-slate-100 dark:bg-slate-950 p-4 gap-2 shadow-xl shadow-blue-900/5 font-['Inter'] text-sm font-medium tracking-wide">
+<div class="px-4 mb-8">
+<h1 class="font-['Public_Sans'] font-black uppercase tracking-tighter text-blue-950 dark:text-white text-xl">Gardian Sentinel</h1>
+<p class="text-[10px] font-bold tracking-[0.2em] text-slate-500 uppercase">Civil Defense</p>
+</div>
+<nav class="flex-1 flex flex-col gap-2">
+<a class="flex items-center gap-3 px-4 py-3 text-slate-600 dark:text-slate-400 hover:bg-slate-200/50 dark:hover:bg-slate-800/30 rounded-lg hover:translate-x-1 transition-transform duration-200" href="#">
+<span class="material-symbols-outlined">dashboard</span>
+            Strategic Overview
+        </a>
+<a class="flex items-center gap-3 px-4 py-3 text-slate-600 dark:text-slate-400 hover:bg-slate-200/50 dark:hover:bg-slate-800/30 rounded-lg hover:translate-x-1 transition-transform duration-200" href="#">
+<span class="material-symbols-outlined">terrain</span>
+            Geological Risk
+        </a>
+<a class="flex items-center gap-3 px-4 py-3 text-slate-600 dark:text-slate-400 hover:bg-slate-200/50 dark:hover:bg-slate-800/30 rounded-lg hover:translate-x-1 transition-transform duration-200" href="#">
+<span class="material-symbols-outlined">map</span>
+            Vulnerability Maps
+        </a>
+<a class="flex items-center gap-3 px-4 py-3 text-slate-600 dark:text-slate-400 hover:bg-slate-200/50 dark:hover:bg-slate-800/30 rounded-lg hover:translate-x-1 transition-transform duration-200" href="#">
+<span class="material-symbols-outlined">thermostat</span>
+            Telemetry
+        </a>
+<a class="flex items-center gap-3 px-4 py-3 text-slate-600 dark:text-slate-400 hover:bg-slate-200/50 dark:hover:bg-slate-800/30 rounded-lg hover:translate-x-1 transition-transform duration-200" href="#">
+<span class="material-symbols-outlined">assignment</span>
+            Protocol Logs
+        </a>
+<a class="flex items-center gap-3 px-4 py-3 bg-white dark:bg-slate-800 text-blue-900 dark:text-blue-300 shadow-sm rounded-lg hover:translate-x-1 transition-transform duration-200" href="#">
+<span class="material-symbols-outlined" style="font-variation-settings: 'FILL' 1;">lan</span>
+            Zones
+        </a>
+</nav>
+<div class="px-2 mb-4">
+<button class="w-full py-3 bg-error text-white text-xs font-black uppercase tracking-widest rounded-lg shadow-lg shadow-error/20 active:scale-95 transition-all duration-150">
+            Emitir Alerta Crítico
+        </button>
+</div>
+<div class="mt-auto border-t border-slate-200 pt-4 flex flex-col gap-1">
+<a class="flex items-center gap-3 px-4 py-2 text-slate-600 dark:text-slate-400 hover:bg-slate-200/50 rounded-lg text-xs" href="#">
+<span class="material-symbols-outlined text-sm">settings</span>
+            Settings
+        </a>
+<a class="flex items-center gap-3 px-4 py-2 text-slate-600 dark:text-slate-400 hover:bg-slate-200/50 rounded-lg text-xs" href="#">
+<span class="material-symbols-outlined text-sm">help</span>
+            Support
+        </a>
+<div class="mt-4 p-3 rounded-xl bg-slate-200/50 flex items-center gap-3">
+<div class="w-8 h-8 rounded bg-primary-container flex items-center justify-center">
+<span class="material-symbols-outlined text-white text-sm">person</span>
+</div>
+<div class="overflow-hidden">
+<p class="text-xs font-bold truncate">Operador Delta</p>
+<p class="text-[10px] text-on-surface-variant opacity-70 uppercase font-bold">Sessão: 04:22</p>
+</div>
+</div>
+</div>
+</aside>
+<!-- TopNavBar (Standardized from COMPONENTS_26) -->
+<header class="flex justify-between items-center w-full px-6 h-16 sticky top-0 z-40 bg-slate-50 dark:bg-slate-900 lg:pl-[312px] transition-all duration-200 ease-in-out font-['Public_Sans'] tracking-tight">
+<div class="flex items-center gap-8">
+<span class="lg:hidden font-black tracking-tighter text-slate-900 dark:text-white text-xl">GARDIAN</span>
+<nav class="hidden md:flex items-center gap-6">
+<a class="text-slate-500 dark:text-slate-400 hover:text-slate-800 dark:hover:text-slate-200 transition-colors text-xs font-bold uppercase tracking-widest" href="#">Dashboard</a>
+<a class="text-slate-500 dark:text-slate-400 hover:text-slate-800 dark:hover:text-slate-200 transition-colors text-xs font-bold uppercase tracking-widest" href="#">Geologia</a>
+<a class="text-blue-900 dark:text-blue-400 font-bold border-b-2 border-blue-900 dark:border-blue-400 pb-1 text-xs font-bold uppercase tracking-widest" href="#">Mapas</a>
+</nav>
+</div>
+<div class="flex items-center gap-4">
+<div class="flex items-center gap-1.5 px-3 py-1 bg-secondary/10 rounded-full">
+<span class="w-1.5 h-1.5 rounded-full bg-secondary animate-pulse"></span>
+<span class="text-[9px] font-black text-secondary uppercase tracking-widest">Online</span>
+</div>
+<button class="p-2 text-slate-500 dark:text-slate-400 hover:bg-slate-200/50 dark:hover:bg-slate-800/50 rounded-md transition-all">
+<span class="material-symbols-outlined">notifications</span>
+</button>
+<button class="p-2 text-slate-500 dark:text-slate-400 hover:bg-slate-200/50 dark:hover:bg-slate-800/50 rounded-md transition-all">
+<span class="material-symbols-outlined">settings</span>
+</button>
+<div class="h-8 w-8 rounded bg-primary flex items-center justify-center text-white text-xs font-bold ring-2 ring-slate-200/50">JD</div>
+</div>
+</header>
+<!-- Main Content -->
+<main class="lg:ml-72 min-h-screen">
+<div class="max-w-[1400px] mx-auto p-6 md:p-10">
+<!-- Header Section -->
+<header class="mb-12 flex flex-col lg:flex-row lg:items-end justify-between gap-6">
+<div>
+<div class="flex items-center gap-2 mb-3">
+<span class="text-[10px] font-mono tracking-[0.2em] text-secondary uppercase font-black">Geo-Data Protocol / v2.4</span>
+<span class="w-1 h-1 rounded-full bg-outline-variant"></span>
+<span class="text-[10px] font-mono tracking-[0.2em] text-slate-500 uppercase font-black">ID: VP-B-042</span>
+</div>
+<h2 class="text-4xl md:text-5xl font-headline font-black text-primary tracking-tighter">Vila Esperança - Setor B</h2>
+</div>
+<div class="flex gap-3">
+<button class="px-5 py-2.5 bg-surface-container-high text-on-surface rounded-lg text-xs font-black uppercase tracking-widest flex items-center gap-2 hover:bg-surface-container-highest transition-all border border-slate-200">
+<span class="material-symbols-outlined text-sm">add_box</span>
+                    Inserir Tratamento
+                </button>
+<button class="px-5 py-2.5 bg-primary text-white rounded-lg text-xs font-black uppercase tracking-widest flex items-center gap-2 shadow-xl shadow-primary/10 hover:scale-[1.02] transition-all">
+<span class="material-symbols-outlined text-sm">report</span>
+                    Registrar Novo Evento
+                </button>
+</div>
+</header>
+<!-- Bento Grid Layout -->
+<div class="grid grid-cols-1 md:grid-cols-12 gap-8">
+<!-- Map Snippet -->
+<section class="md:col-span-8 lg:col-span-7 bg-white rounded-2xl overflow-hidden relative min-h-[500px] shadow-sm ring-1 ring-slate-200">
+<div class="absolute top-6 left-6 z-10 flex flex-col gap-3">
+<div class="bg-primary px-3 py-1 rounded-full text-[9px] font-black text-white uppercase tracking-widest shadow-lg">Telemetria em Tempo Real</div>
+<div class="bg-white/90 backdrop-blur-md border border-slate-200 p-3 rounded-xl shadow-xl">
+<p class="text-[9px] font-black text-slate-400 uppercase tracking-tighter mb-1">Coordenadas Atuais</p>
+<p class="text-xs font-mono font-bold text-primary">23.5505° S, 46.6333° W</p>
+</div>
+</div>
+<img class="w-full h-full object-cover grayscale-[0.1]" data-alt="High-resolution topographic satellite map showing geological risk zones with highlighted red and orange polygons over a residential hillside area" src="https://lh3.googleusercontent.com/aida-public/AB6AXuDfFxn6OwE0N6csPnTdlsh-YEn-O3GEwlZK1jxeenYNkJeVzy0t9sUyrzLxxAGFR1qRt3-pGntJNLziCYQVDoiHBuF7rkM4Sv9-BSX1XLaf1mzMVIQ-gm19riDO_7ae_KgD25gMD91dhal8IobNdjv0OedmKAEsLNYtKy_jntv-3Xk-FPqw9pjYNdRi5XlrEm8hKk0GgFwprljEqOvAlKXlKcTG5UeY_14LtdrUzpxm97SyQNn5nZlcjz5XgCEkW8MkPVxItZzxSf8"/>
+<div class="absolute inset-0 bg-gradient-to-t from-primary/5 to-transparent pointer-events-none"></div>
+</section>
+<!-- Geological Indices -->
+<section class="md:col-span-4 lg:col-span-5 flex flex-col gap-8">
+<div class="bg-white p-8 rounded-2xl ring-1 ring-slate-200 shadow-sm flex flex-col justify-between group hover:ring-error transition-all duration-300">
+<div>
+<div class="flex items-center justify-between mb-8">
+<h3 class="text-[10px] font-black uppercase tracking-[0.2em] text-slate-400">Saturação do Solo</h3>
+<span class="material-symbols-outlined text-error">water_drop</span>
+</div>
+<div class="flex items-baseline gap-3 mb-4">
+<span class="text-7xl font-headline font-black text-primary tracking-tighter">82%</span>
+<span class="text-error font-bold flex items-center text-sm bg-error-container px-2 py-0.5 rounded">
+<span class="material-symbols-outlined text-sm">trending_up</span> +4%
+                            </span>
+</div>
+<div class="w-full bg-surface-container-high h-1.5 rounded-full overflow-hidden">
+<div class="bg-error h-full rounded-full" style="width: 82%"></div>
+</div>
+</div>
+<p class="text-xs text-on-surface-variant mt-6 leading-relaxed font-medium">
+                        Nível de alerta crítico. A saturação atual excede o limite de segurança geomecânica para o tipo de solo predominante (Argissolo).
+                    </p>
+</div>
+<div class="bg-white p-8 rounded-2xl ring-1 ring-slate-200 shadow-sm flex flex-col justify-between group hover:ring-secondary transition-all duration-300">
+<div>
+<div class="flex items-center justify-between mb-8">
+<h3 class="text-[10px] font-black uppercase tracking-[0.2em] text-slate-400">Inclinação do Talude</h3>
+<span class="material-symbols-outlined text-secondary">architecture</span>
+</div>
+<div class="flex items-baseline gap-3 mb-4">
+<span class="text-7xl font-headline font-black text-primary tracking-tighter">34°</span>
+<span class="text-secondary font-bold text-[10px] uppercase tracking-widest bg-secondary-container/30 px-2 py-1 rounded">Estável</span>
+</div>
+<div class="w-full bg-surface-container-high h-1.5 rounded-full overflow-hidden">
+<div class="bg-secondary h-full rounded-full" style="width: 65%"></div>
+</div>
+</div>
+<p class="text-xs text-on-surface-variant mt-6 leading-relaxed font-medium">
+                        Ângulo de repouso mantido. Monitoramento de fissuras superficiais ativo via sensores de fibra ótica de alta precisão.
+                    </p>
+</div>
+</section>
+<!-- Active Occurrences -->
+<section class="md:col-span-5 lg:col-span-4 bg-white p-8 rounded-2xl ring-1 ring-slate-200 shadow-sm">
+<div class="flex items-center justify-between mb-8">
+<h3 class="font-headline font-black text-xl tracking-tight text-primary">Ocorrências Ativas</h3>
+<span class="bg-error text-white px-2 py-0.5 rounded text-[10px] font-black uppercase tracking-widest">03 CRÍTICAS</span>
+</div>
+<div class="space-y-4">
+<div class="bg-surface-container-lowest p-5 rounded-xl border border-slate-100 border-l-4 border-error shadow-sm hover:shadow-md transition-all cursor-pointer">
+<p class="text-[9px] font-black text-error uppercase tracking-widest mb-1">Ruptura de Talude</p>
+<h4 class="font-bold text-sm text-primary mb-3">Movimentação em Rua das Tulipas</h4>
+<div class="flex items-center gap-4">
+<span class="text-[10px] font-bold text-slate-400 flex items-center gap-1.5">
+<span class="material-symbols-outlined text-sm">schedule</span> 14:20
+                            </span>
+<span class="text-[10px] font-bold text-slate-400 flex items-center gap-1.5">
+<span class="material-symbols-outlined text-sm">group</span> Equipe Alpha
+                            </span>
+</div>
+</div>
+<div class="bg-surface-container-lowest p-5 rounded-xl border border-slate-100 border-l-4 border-secondary shadow-sm hover:shadow-md transition-all cursor-pointer">
+<p class="text-[9px] font-black text-secondary uppercase tracking-widest mb-1">Inspeção Preventiva</p>
+<h4 class="font-bold text-sm text-primary mb-3">Vistoria em Muro de Arrimo</h4>
+<div class="flex items-center gap-4">
+<span class="text-[10px] font-bold text-slate-400 flex items-center gap-1.5">
+<span class="material-symbols-outlined text-sm">schedule</span> 09:15
+                            </span>
+<span class="text-[10px] font-bold text-slate-400 flex items-center gap-1.5">
+<span class="material-symbols-outlined text-sm">engineering</span> Eng. Santos
+                            </span>
+</div>
+</div>
+<div class="bg-surface-container-lowest p-5 rounded-xl border border-slate-100 border-l-4 border-orange-400 shadow-sm hover:shadow-md transition-all cursor-pointer">
+<p class="text-[9px] font-black text-orange-600 uppercase tracking-widest mb-1">Infiltração Grave</p>
+<h4 class="font-bold text-sm text-primary mb-3">Rompimento de Duto Pluvial</h4>
+<div class="flex items-center gap-4">
+<span class="text-[10px] font-bold text-slate-400 flex items-center gap-1.5">
+<span class="material-symbols-outlined text-sm">schedule</span> Ontem
+                            </span>
+<span class="text-[10px] font-bold text-slate-400 flex items-center gap-1.5">
+<span class="material-symbols-outlined text-sm">group</span> Equipe Beta
+                            </span>
+</div>
+</div>
+</div>
+<button class="w-full mt-8 py-3 bg-surface-container-high text-primary font-black text-[10px] uppercase tracking-[0.2em] hover:bg-primary hover:text-white transition-all rounded-lg border border-slate-200">Ver Todas as Ocorrências</button>
+</section>
+<!-- Mitigation History Timeline -->
+<section class="md:col-span-7 lg:col-span-8 bg-white p-10 rounded-2xl ring-1 ring-slate-200 shadow-sm relative overflow-hidden">
+<div class="absolute top-0 right-0 w-80 h-80 bg-slate-50 rounded-full blur-3xl -translate-y-1/2 translate-x-1/2 opacity-50"></div>
+<h3 class="font-headline font-black text-xl tracking-tight text-primary mb-10">Histórico de Eventos &amp; Mitigação</h3>
+<div class="relative">
+<div class="absolute left-[7px] top-2 bottom-2 w-[1px] bg-slate-200"></div>
+<div class="space-y-10 relative">
+<div class="flex gap-6 pl-8 relative group">
+<div class="absolute left-0 top-1.5 w-[15px] h-[15px] bg-primary rounded-full border-[3px] border-white ring-1 ring-primary shadow-sm"></div>
+<div class="flex-1">
+<div class="flex items-center justify-between mb-2">
+<h5 class="font-bold text-primary text-base">Instalação de Tela de Alta Resistência</h5>
+<span class="text-[10px] font-bold text-slate-400 font-mono tracking-wider">12 OUT 2023</span>
+</div>
+<p class="text-sm text-on-surface-variant leading-relaxed mb-4">Mitigação estrutural finalizada no talude Norte. Redução comprovada de 45% no risco de queda de detritos.</p>
+<div class="flex gap-3">
+<span class="text-[9px] bg-secondary/10 text-secondary px-2.5 py-1 rounded font-black uppercase tracking-widest">Mitigação Concluída</span>
+<span class="text-[9px] bg-slate-100 text-slate-500 px-2.5 py-1 rounded font-black uppercase tracking-widest border border-slate-200">Investimento: R$ 45k</span>
+</div>
+</div>
+</div>
+<div class="flex gap-6 pl-8 relative group">
+<div class="absolute left-0 top-1.5 w-[15px] h-[15px] bg-secondary rounded-full border-[3px] border-white ring-1 ring-secondary shadow-sm"></div>
+<div class="flex-1">
+<div class="flex items-center justify-between mb-2">
+<h5 class="font-bold text-primary text-base">Simulado de Evacuação Comunitária</h5>
+<span class="text-[10px] font-bold text-slate-400 font-mono tracking-wider">28 SET 2023</span>
+</div>
+<p class="text-sm text-on-surface-variant leading-relaxed">Participação de 85% dos residentes cadastrados. Tempo de resposta médio: 4m 12s para os pontos de encontro designados.</p>
+</div>
+</div>
+<div class="flex gap-6 pl-8 relative group">
+<div class="absolute left-0 top-1.5 w-[15px] h-[15px] bg-slate-300 rounded-full border-[3px] border-white ring-1 ring-slate-300 shadow-sm"></div>
+<div class="flex-1">
+<div class="flex items-center justify-between mb-2">
+<h5 class="font-bold text-primary text-base">Atualização de Mapeamento RTK</h5>
+<span class="text-[10px] font-bold text-slate-400 font-mono tracking-wider">15 SET 2023</span>
+</div>
+<p class="text-sm text-on-surface-variant leading-relaxed">Levantamento aéreo via drone para identificação de deformações superficiais imperceptíveis a olho nu.</p>
+</div>
+</div>
+</div>
+</div>
+</section>
+<!-- IoT Telemetry Stats Footer -->
+<section class="md:col-span-12 bg-white ring-1 ring-slate-200 p-8 rounded-2xl flex flex-col md:flex-row items-center justify-between gap-8 overflow-hidden relative shadow-sm">
+<div class="relative z-10">
+<div class="flex items-center gap-2 mb-3">
+<span class="w-2 h-2 rounded-full bg-secondary animate-pulse"></span>
+<p class="text-[9px] font-black tracking-[0.3em] uppercase text-slate-400">Status do Sensor IoT #VP-B-042</p>
+</div>
+<h4 class="text-2xl font-headline font-black text-primary mb-1">Rede LoRaWAN Operacional</h4>
+<p class="text-xs font-medium text-on-surface-variant">Último pacote de dados recebido há 42 segundos • Criptografia AES-256</p>
+</div>
+<div class="relative z-10 flex gap-12 lg:gap-16">
+<div class="text-center">
+<p class="text-[9px] font-black uppercase text-slate-400 tracking-widest mb-1">Latência</p>
+<p class="text-2xl font-headline font-black text-secondary">12ms</p>
+</div>
+<div class="text-center">
+<p class="text-[9px] font-black uppercase text-slate-400 tracking-widest mb-1">Bateria</p>
+<p class="text-2xl font-headline font-black text-secondary">94%</p>
+</div>
+<div class="text-center">
+<p class="text-[9px] font-black uppercase text-slate-400 tracking-widest mb-1">Sinal</p>
+<p class="text-2xl font-headline font-black text-secondary">-82dBm</p>
+</div>
+</div>
+</section>
+</div>
+<footer class="mt-16 pt-8 border-t border-slate-200 flex flex-col md:flex-row justify-between items-center gap-4 text-[10px] font-mono text-slate-400 uppercase tracking-tight">
+<div>Sentinel Protocol Core v.2.0.4 - Civil Defense Division</div>
+<div class="flex gap-6">
+<span>COORD: -23.5505 / -46.6333</span>
+<span>SECURE ENCRYPTED TERMINAL</span>
+</div>
+</footer>
+</div>
+</main>
+<!-- Contextual FAB -->
+<button class="md:hidden fixed bottom-8 right-8 w-14 h-14 bg-primary text-white rounded-full shadow-2xl flex items-center justify-center z-50 hover:scale-110 active:scale-95 transition-all">
+<span class="material-symbols-outlined text-2xl" style="font-variation-settings: 'FILL' 1;">add</span>
+</button>
+</body></html>
