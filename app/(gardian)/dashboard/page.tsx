@@ -34,7 +34,6 @@ export default function DashboardPage() {
       {/* Header */}
       <header>
         <div className="flex items-center gap-2 mb-3">
-          <MetaTag className="text-secondary">SENTINEL PROTOCOL · v2.4</MetaTag>
           <span className="w-1 h-1 rounded-full bg-outline-variant" />
           <MetaTag>Painel Geral · Porto Seguro - Bahia</MetaTag>
           <span className="w-1 h-1 rounded-full bg-outline-variant" />
@@ -49,7 +48,6 @@ export default function DashboardPage() {
             <p className="text-sm text-on-surface-variant mt-2 max-w-xl">Visão consolidada da operação · Última varredura há 2 minutos · 892 sensores transmitindo</p>
           </div>
           <div className="flex gap-3">
-            <Btn variant="secondary" icon="download">Exportar Briefing</Btn>
             <Btn variant="primary" icon="play_circle" onClick={() => go("monitoring")}>Modo Comando</Btn>
           </div>
         </div>
@@ -152,30 +150,36 @@ export default function DashboardPage() {
       </div>
 
       {/* Map + Impact signals */}
-      <div className="grid grid-cols-12 gap-5">
-        <div className="col-span-12 lg:col-span-8">
-          <div className="card-tonal p-2 shadow-ambient-sm">
-            <MapPlaceholder variant="topo" height={420} alertMode={alertMode} />
+      <div className="grid grid-cols-12 gap-5 items-stretch">
+        <div className="col-span-12 lg:col-span-8 min-h-0">
+          <div className="card-tonal p-2 shadow-ambient-sm h-full">
+            <MapPlaceholder variant="topo" height={420} alertMode={false} />
           </div>
         </div>
-        <div className="col-span-12 lg:col-span-4 card-tonal p-7 shadow-ambient-sm">
-          <SectionHeader overline="EM CAMPO" title="Sinalizadores de Impacto" />
-          <div className="space-y-3">
+        <div className="col-span-12 lg:col-span-4 card-tonal p-7 shadow-ambient-sm flex flex-col min-h-0 h-full lg:max-h-[436px]">
+          <SectionHeader
+            overline="EM CAMPO"
+            title="Sinalizadores de Impacto"
+            className="shrink-0 !mb-4"
+          />
+          <div className="flex-1 min-h-0 overflow-y-auto overscroll-contain space-y-3 pr-1">
             {[
-              { icon: "warning", iconColor: "text-orange-600", iconBg: "bg-warning-container", label: "BLOQUEIO DE VIAS", sub: "R. Coronel Veiga · Interrompido", status: "ATIVA", statusTone: "error" },
-              { icon: "check_circle", iconColor: "text-secondary", iconBg: "bg-secondary/10", label: "SINAL DE TELEFONIA", sub: "Estável em todas as torres", status: "100%", statusTone: "secondary" },
-              { icon: "water", iconColor: "text-blue-600", iconBg: "bg-blue-50", label: "VOLUME DE RIO", sub: "Córrego Quitandinha · 2.4m", status: "+18%", statusTone: "warning" },
-              { icon: "bolt", iconColor: "text-secondary", iconBg: "bg-secondary/10", label: "REDE ELÉTRICA", sub: "Estável · 0 quedas reportadas", status: "OK", statusTone: "secondary" },
+              { icon: "warning", iconColor: "text-orange-700", iconBg: "bg-orange-100", label: "BLOQUEIO DE VIAS", sub: "Percentual estimado de vias afetadas no município", status: "40%", statusTone: "warning" },
+              { icon: "cell_tower", iconColor: "text-violet-700", iconBg: "bg-violet-100", label: "SINAL DE TELEFONIA", sub: "Tempo agressivo · qualidade de cobertura irregular", status: "MÉDIO", statusTone: "warning" },
+              { icon: "waves", iconColor: "text-cyan-700", iconBg: "bg-cyan-100", label: "VOLUME DO MAR", sub: "Maré e ressaca acima do patamar habitual", status: "ALTO", statusTone: "error" },
+              { icon: "flight", iconColor: "text-indigo-700", iconBg: "bg-indigo-100", label: "AEROPORTO", sub: "Operações com restrições por condição meteorológica", status: "ATENÇÃO", statusTone: "warning" },
+              { icon: "thunderstorm", iconColor: "text-amber-700", iconBg: "bg-amber-100", label: "SITUAÇÃO DO CLIMA", sub: "Chuva intensa, vento e visibilidade reduzida", status: "ADVERSO", statusTone: "warning" },
+              { icon: "bolt", iconColor: "text-rose-700", iconBg: "bg-rose-100", label: "REDE ELÉTRICA", sub: "Tempo agressivo · qualidade de cobertura irregular", status: "MÉDIO", statusTone: "warning" },
             ].map((s, i) => (
               <div key={i} className="flex items-center gap-3 p-3 rounded-lg bg-surface-container-low hover:bg-surface-container transition-all">
-                <div className={`w-9 h-9 rounded-md flex items-center justify-center ${s.iconBg}`}>
+                <div className={`w-9 h-9 rounded-md flex items-center justify-center shrink-0 ${s.iconBg}`}>
                   <Icon name={s.icon} filled className={`text-[18px] ${s.iconColor}`} />
                 </div>
                 <div className="flex-1 min-w-0">
                   <p className="text-[10px] font-black uppercase tracking-mono-tight text-primary">{s.label}</p>
-                  <p className="text-[11px] text-on-surface-variant truncate">{s.sub}</p>
+                  <p className="text-[11px] text-on-surface-variant line-clamp-2">{s.sub}</p>
                 </div>
-                <Chip tone={s.statusTone as ChipTone}>{s.status}</Chip>
+                <Chip tone={s.statusTone as ChipTone} className="shrink-0">{s.status}</Chip>
               </div>
             ))}
           </div>
@@ -183,7 +187,7 @@ export default function DashboardPage() {
       </div>
 
       {/* Footer rail */}
-      <div className="card-tonal p-7 shadow-ambient-sm flex items-center justify-between gap-8 flex-wrap">
+      {/* <div className="card-tonal p-7 shadow-ambient-sm flex items-center justify-between gap-8 flex-wrap">
         <div>
           <div className="flex items-center gap-2 mb-2">
             <span className="w-2 h-2 rounded-full bg-secondary animate-live-dot" />
@@ -205,7 +209,7 @@ export default function DashboardPage() {
             </div>
           ))}
         </div>
-      </div>
+      </div> */}
     </div>
   );
 }

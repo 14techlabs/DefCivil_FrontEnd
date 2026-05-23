@@ -61,7 +61,7 @@ export function Sidebar({
       </nav>
 
       <div className="px-4 mt-2 mb-2">
-        <button
+        {/* <button
           type="button"
           onClick={emitCriticalAlert}
           className={`w-full py-3 rounded-lg text-[11px] font-black uppercase tracking-mono-tight text-white transition-all ${
@@ -71,7 +71,7 @@ export function Sidebar({
           }`}
         >
           Emitir Alerta Crítico
-        </button>
+        </button> */}
       </div>
 
       <div className="px-4 mt-auto">

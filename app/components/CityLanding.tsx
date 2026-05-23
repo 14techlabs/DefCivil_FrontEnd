@@ -5,6 +5,121 @@ import { useState } from "react";
 import { Btn, Chip, Icon, MetaTag, SectionHeader } from "@/app/components/Primitives";
 import { GARDIAN_DATA } from "@/app/data/gardian";
 
+type CityId = "porto-seguro" | "jequie" | "eunapolis" | "itagimirim";
+
+type CityConfig = {
+  id: CityId;
+  label: string;
+  prefeitura: string;
+  region: string;
+  tagline: string;
+  heroDescription: string;
+  coords: string;
+  lat: number;
+  lon: number;
+  mapBbox: string;
+  altitude: string;
+  population: string;
+  aboutText: string;
+  mapDescription: string;
+  email: string;
+};
+
+const CITIES: CityConfig[] = [
+  {
+    id: "porto-seguro",
+    label: "Porto Seguro",
+    prefeitura: "Prefeitura de Porto Seguro",
+    region: "Costa do Descobrimento · Bahia",
+    tagline: "BERÇO DO BRASIL · EXTREMO SUL DA BAHIA",
+    heroDescription:
+      "Conhecida por suas praias, clima tropical e relevo costeiro com áreas de encosta, Porto Seguro conta com monitoramento integrado da Defesa Civil para proteger moradores em bairros litorâneos, vales e áreas urbanas.",
+    coords: "16°27′S · 39°04′W",
+    lat: -16.4497,
+    lon: -39.0647,
+    mapBbox: "-39.128%2C-16.512%2C-39.001%2C-16.388",
+    altitude: "36",
+    population: "305",
+    aboutText:
+      "A Defesa Civil de Porto Seguro atua em regime de plantão contínuo para prevenir e responder a desastres naturais — especialmente deslizamentos, alagamentos e erosão costeira, frequentes no período chuvoso.",
+    mapDescription:
+      "Monitoramento concentrado no município de Porto Seguro-BA, com ênfase em distritos litorâneos, áreas de encosta e trechos com córregos e nascentes.",
+    email: "defesacivil@portoseguro.ba.gov.br",
+  },
+  {
+    id: "jequie",
+    label: "Jequié",
+    prefeitura: "Prefeitura de Jequié",
+    region: "Médio Rio de Contas · Bahia",
+    tagline: "PRINCESA DO SUL · INTERIOR BAIANO",
+    heroDescription:
+      "No coração do sudoeste baiano, Jequié enfrenta períodos de chuva intensa e risco em encostas urbanas. O GARDIAN apoia a Defesa Civil no acompanhamento de áreas sensíveis e na resposta a ocorrências.",
+    coords: "13°51′S · 40°05′W",
+    lat: -13.8578,
+    lon: -40.0839,
+    mapBbox: "-40.15%2C-13.92%2C-40.02%2C-13.79",
+    altitude: "223",
+    population: "156",
+    aboutText:
+      "A Defesa Civil de Jequié trabalha na prevenção de deslizamentos, alagamentos e eventos associados ao regime pluviométrico da região, com foco em bairros em encosta e áreas de expansão urbana.",
+    mapDescription:
+      "Cobertura no município de Jequié-BA, com atenção a encostas, córregos urbanos e pontos de acúmulo hídrico em períodos chuvosos.",
+    email: "defesacivil@jequie.ba.gov.br",
+  },
+  {
+    id: "eunapolis",
+    label: "Eunápolis",
+    prefeitura: "Prefeitura de Eunápolis",
+    region: "Extremo Sul · Bahia",
+    tagline: "PORTA DE ENTRADA DO SUL · LITORAL",
+    heroDescription:
+      "Eunápolis combina área urbana densa e trechos com influência costeira. O monitoramento integrado auxilia a Defesa Civil a antecipar riscos de alagamento e movimentos de massa em encostas.",
+    coords: "16°22′S · 39°35′W",
+    lat: -16.3775,
+    lon: -39.5822,
+    mapBbox: "-39.65%2C-16.44%2C-39.51%2C-16.31",
+    altitude: "16",
+    population: "118",
+    aboutText:
+      "A Defesa Civil de Eunápolis atua na proteção da população frente a chuvas intensas, alagamentos e instabilidades em taludes, articulando dados de sensores, previsão meteorológica e relatos do cidadão.",
+    mapDescription:
+      "Atuação em Eunápolis-BA, com monitoramento de áreas urbanas sujeitas a alagamento e trechos com ocupação em encosta.",
+    email: "defesacivil@eunapolis.ba.gov.br",
+  },
+  {
+    id: "itagimirim",
+    label: "Itagimirim",
+    prefeitura: "Prefeitura de Itagimirim",
+    region: "Extremo Sul · Bahia",
+    tagline: "INTERIOR DO EXTREMO SUL · BA",
+    heroDescription:
+      "Em Itagimirim, a Defesa Civil utiliza o GARDIAN para acompanhar condições climáticas, áreas de risco e ocorrências, fortalecendo a resposta rápida em comunidades rurais e no perímetro urbano.",
+    coords: "16°05′S · 39°41′W",
+    lat: -16.0903,
+    lon: -39.6817,
+    mapBbox: "-39.75%2C-16.15%2C-39.61%2C-16.03",
+    altitude: "156",
+    population: "11",
+    aboutText:
+      "A Defesa Civil de Itagimirim prioriza a prevenção de desastres relacionados a chuvas, enxurradas e instabilidade de encostas, com apoio de dados integrados para decisão em campo.",
+    mapDescription:
+      "Monitoramento no município de Itagimirim-BA, incluindo zona urbana e comunidades com histórico de vulnerabilidade hidrológica.",
+    email: "defesacivil@itagimirim.ba.gov.br",
+  },
+];
+
+const SYSTEM_DESCRIPTION = {
+  title: "O que é o GARDIAN",
+  lead: "Plataforma integrada de monitoramento e gestão da Defesa Civil.",
+  body: "O GARDIAN reúne em um único ambiente previsão do tempo, telemetria, mapeamento de áreas de risco, registro de ocorrências e indicadores climáticos. Equipes técnicas e gestores utilizam esses dados para antecipar eventos, orientar a população e coordenar ações de prevenção e resposta a desastres naturais.",
+  highlights: [
+    { icon: "cloud", label: "Clima e alertas", desc: "Previsão e dados meteorológicos em tempo quase real" },
+    { icon: "hub", label: "Áreas de risco", desc: "Zonas mapeadas com níveis de vulnerabilidade" },
+    { icon: "sensors", label: "Sensores IoT", desc: "Chuva, umidade e indicadores de campo" },
+    { icon: "emergency", label: "Ocorrências", desc: "Triagem, despacho e acompanhamento operacional" },
+  ],
+} as const;
+
 const QUICK_LINKS = [
   {
     href: "/weather",
@@ -29,12 +144,14 @@ const QUICK_LINKS = [
   },
 ] as const;
 
-const CITY_STATS = [
-  { label: "Altitude média", value: "36", unit: "m", icon: "landscape" },
-  { label: "População estimada", value: "305", unit: "mil", icon: "groups" },
-  { label: "Zonas monitoradas", value: String(GARDIAN_DATA.KPIS.zonasTotal), unit: "", icon: "hub" },
-  { label: "Sensores IoT ativos", value: String(GARDIAN_DATA.KPIS.sensoresAtivos), unit: "", icon: "sensors" },
-] as const;
+function cityStats(city: CityConfig) {
+  return [
+    { label: "Altitude média", value: city.altitude, unit: "m", icon: "landscape" as const },
+    { label: "População estimada", value: city.population, unit: "mil", icon: "groups" as const },
+    { label: "Zonas monitoradas", value: String(GARDIAN_DATA.KPIS.zonasTotal), unit: "", icon: "hub" as const },
+    { label: "Sensores IoT ativos", value: String(GARDIAN_DATA.KPIS.sensoresAtivos), unit: "", icon: "sensors" as const },
+  ];
+}
 
 const NEWS = [
   {
@@ -56,7 +173,7 @@ const NEWS = [
 
 const SERVICES = [
   { href: "/dashboard", icon: "dashboard", label: "Painel Geral", desc: "Visão consolidada da operação" },
-  { href: "/monitoring", icon: "stat_2", label: "Monitoramento", desc: "Telemetria ao vivo" },
+  { href: "/monitoring", icon: "stat_2", label: "Monitoramento", desc: "Telemetria" },
   { href: "/occurrences", icon: "emergency", label: "Ocorrências", desc: "Triagem e despacho" },
   { href: "/zones", icon: "map", label: "Zonas", desc: "Mapeamento territorial" },
 ] as const;
@@ -91,10 +208,11 @@ const PREVENTION = [
   },
 ] as const;
 
-const FAQ = [
+function cityFaq(cityName: string) {
+  return [
   {
     q: "O que é o GARDIAN?",
-    a: "O GARDIAN é o sistema integrado de monitoramento e comando da Defesa Civil de Porto Seguro. Reúne dados meteorológicos, sensores IoT, ocorrências e indicadores de risco geológico em um único painel operacional.",
+    a: `O GARDIAN é o sistema integrado de monitoramento e comando da Defesa Civil de ${cityName}. Reúne dados meteorológicos, sensores IoT, ocorrências e indicadores de risco geológico em um único painel operacional.`,
   },
   {
     q: "Quais áreas são mais vulneráveis?",
@@ -108,7 +226,8 @@ const FAQ = [
     q: "Posso reportar uma ocorrência?",
     a: "Sim. Moradores podem acionar a central 199 ou registrar relatos que são triados no sistema junto com dados de sensores e parceiros institucionais.",
   },
-] as const;
+  ] as const;
+}
 
 const HEADER_SCROLL_OFFSET = 80;
 
@@ -167,15 +286,41 @@ function FaqItem({ q, a }: { q: string; a: string }) {
 }
 
 export function CityLanding() {
+  const [cityId, setCityId] = useState<CityId>("porto-seguro");
+  const city = CITIES.find((c) => c.id === cityId) ?? CITIES[0];
+  const stats = cityStats(city);
+  const faq = cityFaq(city.label);
   const W = GARDIAN_DATA.WEATHER;
+  const mapEmbedSrc = `https://www.openstreetmap.org/export/embed.html?bbox=${city.mapBbox}&layer=mapnik&marker=${city.lat}%2C${city.lon}`;
+  const mapExternalHref = `https://www.openstreetmap.org/?mlat=${city.lat}&mlon=${city.lon}#map=13/${city.lat}/${city.lon}`;
 
   return (
     <div className="min-h-screen bg-surface">
       {/* Barra institucional */}
       <div className="bg-primary text-white/80 text-[10px] font-mono uppercase tracking-mono font-bold py-2 px-6">
         <div className="max-w-[1200px] mx-auto flex items-center justify-between gap-4 flex-wrap">
-          <span>Prefeitura de Porto Seguro · Defesa Civil</span>
-          <span>Costa do Descobrimento · Bahia</span>
+          <span>{city.prefeitura} · Defesa Civil</span>
+          <div className="flex items-center gap-3 flex-wrap justify-end">
+            <label htmlFor="city-select" className="sr-only">
+              Município do sistema
+            </label>
+            <div className="flex items-center gap-2">
+              <Icon name="location_city" className="text-[14px] text-white/60" />
+              <select
+                id="city-select"
+                value={cityId}
+                onChange={(e) => setCityId(e.target.value as CityId)}
+                className="bg-white/10 text-white border border-white/20 rounded-md px-2.5 py-1 text-[10px] font-bold uppercase tracking-mono-tight cursor-pointer hover:bg-white/15 focus:outline-none focus:ring-2 focus:ring-secondary/80 min-w-[140px]"
+              >
+                {CITIES.map((c) => (
+                  <option key={c.id} value={c.id} className="text-primary bg-white normal-case">
+                    {c.label}
+                  </option>
+                ))}
+              </select>
+            </div>
+            <span className="hidden sm:inline text-white/50">{city.region}</span>
+          </div>
         </div>
       </div>
 
@@ -183,23 +328,20 @@ export function CityLanding() {
       <header className="bg-white border-b border-outline-variant/30 sticky top-0 z-40">
         <div className="max-w-[1200px] mx-auto px-6 py-4 flex items-center justify-between gap-6 flex-wrap">
           <Link href="/" className="flex items-center gap-3">
-            <div className="w-24 pb-4 h-20 rounded-lg overflow-hidden flex items-center justify-center shrink-0">
-              <img
-                src="/logo_portoseguro.png"
-                alt="Prefeitura de Porto Seguro"
-                className="w-full h-full object-contain"
-              />
+            <div className="w-10 h-10 rounded-lg bg-primary flex items-center justify-center shrink-0">
+              <Icon name="shield" filled className="text-white text-[22px]" />
             </div>
             <div>
               <p className="font-headline font-black text-xl text-primary tracking-tight leading-none">
                 GARDIAN
               </p>
               <p className="text-[10px] font-bold tracking-mono text-slate-500 uppercase">
-                Defesa Civil · Porto Seguro
+                Defesa Civil · {city.label}
               </p>
             </div>
           </Link>
           <nav className="hidden md:flex items-center gap-6 text-[11px] font-bold uppercase tracking-mono-tight text-on-surface-variant">
+            <SectionNavLink href="#sistema">O Sistema</SectionNavLink>
             <SectionNavLink href="#sobre">Sobre</SectionNavLink>
             <SectionNavLink href="#noticias">Informativos</SectionNavLink>
             <SectionNavLink href="#servicos">Serviços</SectionNavLink>
@@ -224,15 +366,13 @@ export function CityLanding() {
               <div className="relative z-10">
                 <Chip tone="secondary" className="!bg-secondary/20 !text-secondary-container mb-4">
                   <span className="w-1.5 h-1.5 rounded-full bg-secondary-container animate-live-dot inline-block mr-1.5" />
-                  BERÇO DO BRASIL · EXTREMO SUL DA BAHIA
+                  {city.tagline}
                 </Chip>
                 <h1 className="font-headline font-black text-4xl lg:text-6xl tracking-tighter leading-[1.05] mb-4">
-                  Porto Seguro
+                  {city.label}
                 </h1>
                 <p className="text-white/75 text-sm lg:text-base max-w-xl leading-relaxed mb-6">
-                  Conhecida por suas praias, clima tropical e relevo costeiro com áreas de encosta,
-                  Porto Seguro conta com monitoramento integrado da Defesa Civil para proteger
-                  moradores em bairros litorâneos, vales e áreas urbanas.
+                  {city.heroDescription}
                 </p>
                 <div className="flex flex-wrap gap-3">
                   <Link href="/login">
@@ -241,11 +381,11 @@ export function CityLanding() {
                     </Btn>
                   </Link>
                   <a
-                    href="#sobre"
+                    href="#sistema"
                     onClick={(e) => {
                       e.preventDefault();
-                      scrollToSection("sobre");
-                      window.history.replaceState(null, "", "#sobre");
+                      scrollToSection("sistema");
+                      window.history.replaceState(null, "", "#sistema");
                     }}
                   >
                     <Btn variant="ghostDark" icon="info">
@@ -255,7 +395,7 @@ export function CityLanding() {
                 </div>
                 <div className="flex flex-wrap gap-6 mt-8 text-[10px] font-mono uppercase tracking-mono font-bold text-white/50">
                   <span>
-                    COORD: <strong className="text-white/90">16°27′S · 39°04′W</strong>
+                    COORD: <strong className="text-white/90">{city.coords}</strong>
                   </span>
                   <span>
                     CLIMA ATUAL: <strong className="text-secondary-container">{W.condition}</strong>
@@ -301,6 +441,49 @@ export function CityLanding() {
         </div>
       </section>
 
+      {/* Descrição do sistema */}
+      <section id="sistema" className="py-12 px-6 scroll-mt-24">
+        <div className="max-w-[1200px] mx-auto">
+          <div className="card-tonal shadow-ambient p-8 lg:p-10 border-l-4 border-secondary">
+            <div className="grid grid-cols-1 lg:grid-cols-12 gap-8 items-start">
+              <div className="lg:col-span-5">
+                <MetaTag className="text-secondary block mb-2">PLATAFORMA GARDIAN</MetaTag>
+                <h2 className="font-headline font-black text-2xl lg:text-3xl text-primary tracking-tighter mb-3">
+                  {SYSTEM_DESCRIPTION.title}
+                </h2>
+                <p className="text-sm font-bold text-secondary mb-4">{SYSTEM_DESCRIPTION.lead}</p>
+                <p className="text-[14px] text-on-surface-variant leading-relaxed">
+                  {SYSTEM_DESCRIPTION.body}
+                </p>
+                <p className="text-[12px] text-on-surface-variant/80 mt-4 leading-relaxed">
+                  Instância ativa: <strong className="text-primary">{city.prefeitura}</strong> — os
+                  dados exibidos referem-se à operação da Defesa Civil em{" "}
+                  <strong className="text-primary">{city.label}</strong>.
+                </p>
+              </div>
+              <div className="lg:col-span-7 grid grid-cols-1 sm:grid-cols-2 gap-4">
+                {SYSTEM_DESCRIPTION.highlights.map((item) => (
+                  <div
+                    key={item.label}
+                    className="card-recessed p-5 flex items-start gap-3"
+                  >
+                    <div className="w-10 h-10 rounded-lg bg-secondary/10 flex items-center justify-center shrink-0">
+                      <Icon name={item.icon} filled className="text-secondary text-[20px]" />
+                    </div>
+                    <div>
+                      <p className="font-bold text-sm text-primary">{item.label}</p>
+                      <p className="text-[12px] text-on-surface-variant mt-1 leading-snug">
+                        {item.desc}
+                      </p>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
+          </div>
+        </div>
+      </section>
+
       {/* Atalhos rápidos — inspirado em linhas-de-acao */}
       <section className="py-10 px-6 bg-surface-container-low">
         <div className="max-w-[1200px] mx-auto">
@@ -330,7 +513,9 @@ export function CityLanding() {
       <section id="sobre" className="py-14 px-6 scroll-mt-24">
         <div className="max-w-[1200px] mx-auto">
           <div className="text-center mb-10">
-            <MetaTag className="text-secondary block mb-2">DEFESA CIVIL DE PORTO SEGURO</MetaTag>
+            <MetaTag className="text-secondary block mb-2">
+              DEFESA CIVIL DE {city.label.toUpperCase()}
+            </MetaTag>
             <h2 className="font-headline font-black text-3xl lg:text-4xl text-primary tracking-tighter uppercase">
               Sobre a Cidade e o Monitoramento
             </h2>
@@ -338,9 +523,7 @@ export function CityLanding() {
           </div>
           <div className="max-w-3xl mx-auto text-center">
             <p className="text-[15px] text-on-surface-variant leading-relaxed">
-              A Defesa Civil de Porto Seguro atua em regime de plantão contínuo para prevenir e
-              responder a desastres naturais — especialmente deslizamentos, alagamentos e
-              erosão costeira, frequentes no período chuvoso. O{" "}
+              {city.aboutText} O{" "}
               <strong className="text-primary">GARDIAN</strong> integra sensores IoT, modelos
               climáticos (CPTEC, GOES-16), indicadores AdaptaBrasil e relatos da população em uma
               plataforma de comando para equipes técnicas e gestores.
@@ -348,7 +531,7 @@ export function CityLanding() {
           </div>
 
           <div className="grid grid-cols-2 lg:grid-cols-4 gap-5 mt-12">
-            {CITY_STATS.map((s) => (
+            {stats.map((s) => (
               <div
                 key={s.label}
                 className="card-tonal p-6 shadow-ambient-sm text-center"
@@ -462,15 +645,12 @@ export function CityLanding() {
           <h2 className="font-headline font-black text-3xl tracking-tighter mb-4">
             Nossa Região de Atuação
           </h2>
-          <p className="text-white/70 text-sm max-w-lg mx-auto mb-8">
-            Monitoramento concentrado no município de Porto Seguro-BA, com ênfase em distritos
-            litorâneos, áreas de encosta e trechos com córregos e nascentes.
-          </p>
+          <p className="text-white/70 text-sm max-w-lg mx-auto mb-8">{city.mapDescription}</p>
           <div className="rounded-xl overflow-hidden shadow-ambient bg-white text-left">
             <iframe
-              title="Mapa de Porto Seguro, Bahia"
+              title={`Mapa de ${city.label}, Bahia`}
               className="w-full h-64 lg:h-[420px] border-0 block"
-              src="https://www.openstreetmap.org/export/embed.html?bbox=-39.128%2C-16.512%2C-39.001%2C-16.388&layer=mapnik&marker=-16.4497%2C-39.0647"
+              src={mapEmbedSrc}
               loading="lazy"
               referrerPolicy="no-referrer-when-downgrade"
               allowFullScreen
@@ -482,15 +662,15 @@ export function CityLanding() {
                 </div>
                 <div>
                   <p className="font-headline font-black text-primary text-sm tracking-tight">
-                    Porto Seguro, BA
+                    {city.label}, BA
                   </p>
                   <p className="text-[11px] font-mono font-bold text-on-surface-variant">
-                    16.4497° S · 39.0647° W
+                    {Math.abs(city.lat).toFixed(4)}° S · {Math.abs(city.lon).toFixed(4)}° W
                   </p>
                 </div>
               </div>
               <a
-                href="https://www.openstreetmap.org/?mlat=-16.4497&mlon=-39.0647#map=13/-16.4497/-39.0647"
+                href={mapExternalHref}
                 target="_blank"
                 rel="noopener noreferrer"
                 className="inline-flex items-center gap-1.5 text-[11px] font-bold uppercase tracking-mono-tight text-secondary hover:text-primary transition-colors"
@@ -508,7 +688,7 @@ export function CityLanding() {
         <div className="max-w-[800px] mx-auto">
           <SectionHeader overline="DÚVIDAS FREQUENTES" title="Perguntas e Respostas" />
           <div className="space-y-3">
-            {FAQ.map((item) => (
+            {faq.map((item) => (
               <FaqItem key={item.q} q={item.q} a={item.a} />
             ))}
           </div>
@@ -521,7 +701,7 @@ export function CityLanding() {
           <div>
             <p className="font-headline font-black text-xl text-white mb-2">GARDIAN</p>
             <p className="text-[12px] leading-relaxed">
-              Sistema Integrado de Defesa Civil · Porto Seguro-BA
+              Sistema Integrado de Defesa Civil · {city.label}-BA
             </p>
           </div>
           <div>
@@ -532,7 +712,7 @@ export function CityLanding() {
               <Icon name="call" className="text-[18px]" /> 199 — Defesa Civil
             </p>
             <p className="text-sm text-white/90 flex items-center gap-2">
-              <Icon name="mail" className="text-[18px]" /> defesacivil@portoseguro.ba.gov.br
+              <Icon name="mail" className="text-[18px]" /> {city.email}
             </p>
           </div>
           <div className="md:text-right">
@@ -541,9 +721,7 @@ export function CityLanding() {
                 Centro de Comando
               </Btn>
             </Link>
-            <p className="text-[10px] font-mono mt-4 text-white/40">
-              SENTINEL PROTOCOL · 14 TECH
-            </p>
+            
           </div>
         </div>
       </footer>

@@ -1,14 +1,123 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { MapPlaceholder } from "@/app/components/MapPlaceholder";
+import { MapPlaceholder, ZoneFeedMap } from "@/app/components/MapPlaceholder";
 import { Chip, Icon, KPI, MetaTag, SectionHeader, StatusDot } from "@/app/components/Primitives";
 import { useGardian } from "@/app/components/GardianContext";
 import { GARDIAN_DATA } from "@/app/data/gardian";
+import { useAppNavigation } from "@/app/lib/useAppNavigation";
+
+type Zone = (typeof GARDIAN_DATA.ZONES)[number];
+
+function zoneDangerPct(zone: Zone) {
+  return 100 - zone.stability;
+}
+
+function zoneEventRisks(zone: Zone): string[] {
+  if (zone.status === "critico") {
+    const risks = ["Deslizamento", "Alagamento"];
+    if (zone.primarySensor.label.toLowerCase().includes("solo")) {
+      risks.push("Saturação de solo");
+    } else if (zone.primarySensor.label.toLowerCase().includes("hidr")) {
+      risks.push("Transbordo");
+    }
+    return risks;
+  }
+  if (zone.status === "atencao") {
+    return ["Alagamento", "Enxurrada", "Erosão leve"];
+  }
+  return ["Monitoramento padrão"];
+}
+
+function zoneDangerText(zone: Zone) {
+  if (zone.status === "critico") return "text-error";
+  if (zone.status === "atencao") return "text-orange-500";
+  return "text-secondary";
+}
+
+function ZoneCameraFeed({ zone, alertMode }: { zone: Zone; alertMode: boolean }) {
+  const { openZone } = useAppNavigation();
+  const danger = zoneDangerPct(zone);
+  const risks = zoneEventRisks(zone);
+  const dangerText = zoneDangerText(zone);
+  const shortName = zone.name.split(" - ").pop() ?? zone.name;
+  const mapStatus = zone.status as "critico" | "atencao" | "estavel";
+
+  return (
+    <button
+      type="button"
+      onClick={() => openZone(zone.id)}
+      className="group text-left rounded-xl overflow-hidden border border-outline-variant/30 bg-[#0a1628] hover:border-secondary/50 transition-all focus:outline-none focus:ring-2 focus:ring-secondary"
+    >
+      <div className="relative aspect-[4/3] overflow-hidden bg-[#0a1628]">
+        <ZoneFeedMap zoneId={zone.id} status={mapStatus} />
+        {alertMode && zone.status === "critico" && (
+          <div className="absolute inset-0 bg-error/10 animate-pulse pointer-events-none z-[1]" />
+        )}
+
+        <div className="absolute top-0 left-0 right-0 z-10 flex items-center justify-between px-3 py-2 bg-gradient-to-b from-black/75 to-transparent pointer-events-none">
+          <span className="flex items-center gap-1.5 text-[9px] font-mono font-bold uppercase text-white/90">
+            <span className="w-1.5 h-1.5 rounded-full bg-error animate-live-dot" />
+            LIVE
+          </span>
+          <span className="text-[9px] font-mono text-white/50">CAM · {zone.id}</span>
+        </div>
+
+        <div className="absolute top-10 left-3 z-10 pointer-events-none">
+          <span className="px-2 py-0.5 rounded text-[8px] font-black uppercase tracking-mono-tight bg-black/60 text-white/80 border border-white/15">
+            Limite municipal
+          </span>
+        </div>
+
+        <div className="absolute bottom-12 right-3 z-10 text-right pointer-events-none">
+          <p className="text-[8px] font-mono uppercase text-white/50 tracking-mono">Perigo</p>
+          <p className={`font-headline font-black text-2xl leading-none drop-shadow-md ${dangerText}`}>
+            {danger}%
+          </p>
+        </div>
+
+        {/* Faixa inferior */}
+        <div className="absolute bottom-0 left-0 right-0 z-10 px-3 py-2.5 bg-gradient-to-t from-black/85 to-transparent">
+          <p className="text-[11px] font-bold text-white truncate">{shortName}</p>
+          <p className="text-[9px] text-white/50 font-mono truncate">{zone.district}</p>
+        </div>
+
+        {/* Scanlines */}
+        <div
+          className="absolute inset-0 pointer-events-none opacity-[0.04]"
+          style={{
+            backgroundImage:
+              "repeating-linear-gradient(0deg, transparent, transparent 2px, rgba(255,255,255,0.5) 2px, rgba(255,255,255,0.5) 3px)",
+          }}
+        />
+      </div>
+
+      <div className="px-3 py-3 bg-surface-container-low border-t border-outline-variant/20 space-y-2">
+        <div className="flex items-center justify-between gap-2">
+          <Chip tone={zone.status === "critico" ? "error" : zone.status === "atencao" ? "warning" : "secondary"}>
+            {zone.statusLabel}
+          </Chip>
+          <span className="text-[10px] font-mono text-on-surface-variant">{zone.occurrences} ocorr.</span>
+        </div>
+        <div className="flex flex-wrap gap-1.5">
+          {risks.map((risk) => (
+            <span
+              key={risk}
+              className="text-[9px] font-bold uppercase tracking-mono-tight px-2 py-0.5 rounded bg-surface-container text-on-surface-variant"
+            >
+              {risk}
+            </span>
+          ))}
+        </div>
+      </div>
+    </button>
+  );
+}
 
 export default function MonitoringPage() {
   const { alertMode } = useGardian();
-  const SENSORS = GARDIAN_DATA.SENSORS_LIVE;
+  const { KPIS, SENSORS_LIVE: SENSORS, WEATHER, ZONES } = GARDIAN_DATA;
+  const INDICATOR_COUNT = 18;
   const [tick, setTick] = useState(0);
   useEffect(() => {
     const i = setInterval(() => setTick((t) => t + 1), 2000);
@@ -19,7 +128,6 @@ export default function MonitoringPage() {
     <div className="p-8 space-y-8 max-w-[1600px] mx-auto">
       <header>
         <div className="flex items-center gap-2 mb-3">
-          <MetaTag className="text-secondary">TELEMETRIA AO VIVO · LORAWAN</MetaTag>
           <span className="w-1 h-1 rounded-full bg-outline-variant" />
           <span className="flex items-center gap-1.5"><StatusDot tone="secondary" /><MetaTag className="text-secondary">STREAMING · {tick}</MetaTag></span>
         </div>
@@ -27,10 +135,35 @@ export default function MonitoringPage() {
       </header>
 
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-5">
-        <KPI label="Sensores Online" value="892" tone="secondary" icon="sensors" sub="0 falhas detectadas" />
-        <KPI label="Pacotes /min" value="12.4k" tone="primary" icon="cell_tower" sub="Latência méd. 12ms" />
-        <KPI label="Sensores Críticos" value="04" tone="error" icon="warning" sub="Acima do threshold" />
-        <KPI label="Cobertura" value="99.8%" tone="secondary" icon="public" sub="42 zonas mapeadas" />
+        <KPI
+          label="Número de Indicadores"
+          value={INDICATOR_COUNT}
+          tone="secondary"
+          icon="analytics"
+          sub="Clima, território, meio ambiente e ocorrências"
+        />
+        <KPI
+          label="Ocorrências Ativas"
+          value={String(KPIS.ocorrenciasAtivas).padStart(2, "0")}
+          tone="error"
+          icon="emergency"
+          sub="Em triagem, despacho ou acompanhamento"
+        />
+        <KPI
+          label="Zonas em Alerta"
+          value={String(KPIS.emAlerta).padStart(2, "0")}
+          tone="warning"
+          icon="terrain"
+          sub={`Risco elevado · ${KPIS.zonasTotal} zonas no município`}
+        />
+        <KPI
+          label="Alerta Climático"
+          value={WEATHER.precipitation}
+          unit="%"
+          tone="warning"
+          icon="thunderstorm"
+          sub={`${WEATHER.condition} · ${WEATHER.rainfall_3h}mm nas últimas 3h`}
+        />
       </div>
 
       <div className="grid grid-cols-12 gap-5">
@@ -39,7 +172,7 @@ export default function MonitoringPage() {
         </div>
 
         <div className="col-span-12 lg:col-span-5 card-tonal p-7 shadow-ambient-sm">
-          <SectionHeader overline="STREAM AO VIVO" title="Sensores em Campo" action={
+          <SectionHeader overline="STREAM AO VIVO" title="Indicadores [dados de ia]" action={
             <Chip tone="secondary" icon="sync"><span className="animate-live-dot inline-block w-1.5 h-1.5 rounded-full bg-secondary mr-1" /> ATIVO</Chip>
           } />
           <div className="space-y-2 max-h-[420px] overflow-y-auto pr-2">
@@ -67,6 +200,19 @@ export default function MonitoringPage() {
           </div>
         </div>
       </div>
+
+      <section className="space-y-5">
+        <SectionHeader
+          overline="VIGILÂNCIA TERRITORIAL"
+          title="Mapas por Zona"
+          
+        />
+        <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 gap-5">
+          {ZONES.map((zone) => (
+            <ZoneCameraFeed key={zone.id} zone={zone} alertMode={alertMode} />
+          ))}
+        </div>
+      </section>
     </div>
   );
 }

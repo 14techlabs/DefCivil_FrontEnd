@@ -105,9 +105,7 @@ function LoginForm() {
             </Btn>
           </form>
 
-          <p className="text-center text-[10px] font-mono uppercase tracking-mono font-bold text-slate-400 mt-6">
-            SENTINEL PROTOCOL · 14 TECH
-          </p>
+        
         </div>
       </div>
     </div>

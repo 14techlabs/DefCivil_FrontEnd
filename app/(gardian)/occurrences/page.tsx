@@ -88,8 +88,29 @@ export default function OccurrencesPage() {
             </div>
             <div className="p-6 space-y-6">
               <div>
-                <MetaTag className="block mb-2">RELATÓRIO DO OPERADOR</MetaTag>
-                <p className="text-[13px] text-on-surface leading-relaxed">{sel.report}</p>
+                <MetaTag className="block mb-2">OCORRÊNCIA RELATADA</MetaTag>
+                <p className="text-[13px] text-on-surface leading-relaxed">{sel.citizenReport}</p>
+                <p className="text-[11px] text-on-surface-variant mt-2 flex items-center gap-1.5">
+                  <Icon name={sel.source === "cidadao" ? "person" : sel.source === "iot" ? "sensors" : "handshake"} className="text-[14px]" />
+                  {sel.reportedBy} · {sel.reportedAt}
+                </p>
+              </div>
+
+              <div className="card-recessed p-4 border-l-4 border-secondary">
+                <div className="flex items-center gap-2 mb-2">
+                  <Icon name="psychology" filled className="text-secondary text-[18px]" />
+                  <MetaTag className="text-secondary">ANÁLISE DE IA</MetaTag>
+                  <Chip tone="secondary" className="!text-[9px]">{sel.aiAnalysis.generatedAt}</Chip>
+                </div>
+                <p className="text-[13px] text-on-surface leading-relaxed">{sel.aiAnalysis.summary}</p>
+                <div className="flex flex-wrap gap-2 mt-3">
+                  <Chip tone="primarySoft">{sel.aiAnalysis.classification}</Chip>
+                  <Chip tone="error">{sel.aiAnalysis.riskLevel}</Chip>
+                  <Chip tone="secondary">{sel.aiAnalysis.confidence}% confiança</Chip>
+                </div>
+                <p className="text-[12px] text-on-surface-variant mt-3 leading-relaxed">
+                  <strong className="text-primary">Recomendação:</strong> {sel.aiAnalysis.recommendation}
+                </p>
               </div>
 
               <div>

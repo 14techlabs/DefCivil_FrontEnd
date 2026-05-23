@@ -145,12 +145,24 @@ const OCCURRENCES = [
     location: "Vila Esperança, Setor 4",
     zoneId: "PT-ZN-02",
     reportedAt: "há 12 min",
-    reportedBy: "Sensor IoT #VP-B-042",
-    source: "iot",
-    report: "Identificadas fissuras transversais superiores a 5cm em muro de contenção. Solo saturado devido às chuvas das últimas 24h. Risco iminente de colapso parcial.",
+    reportedBy: "Cidadão (Maria L.)",
+    source: "cidadao",
+    citizenReport:
+      "Moradora relatou rachaduras novas no muro de contenção da encosta sul, com umidade nas paredes do imóvel vizinho. Informa estalos desde a madrugada após chuva forte e pede vistoria urgente por medo de deslizamento.",
+    aiAnalysis: {
+      summary:
+        "Cruzamento de relato cidadão, saturação de solo em 88%, previsão CPTEC de 45mm/h e histórico geológico da zona indica risco elevado de movimentação de massa nas próximas 3–6 horas.",
+      confidence: 94.2,
+      riskLevel: "R3",
+      classification: "Geológico · Instabilidade de encosta",
+      recommendation:
+        "Evacuação preventiva recomendada no Setor 4. Acionar equipe geotécnica para vistoria imediata e monitoramento contínuo da encosta.",
+      generatedAt: "14:35",
+    },
     timeline: [
-      { time: "14:32", event: "Detectado por sensor de fibra ótica", actor: "IoT" },
-      { time: "14:35", event: "Triagem automática classificou como Geológico R3", actor: "IA" },
+      { time: "14:20", event: "Relato recebido via app cidadão", actor: "Cidadão" },
+      { time: "14:32", event: "IA correlacionou saturação de solo (88%) e chuva prevista", actor: "IA" },
+      { time: "14:35", event: "Classificação automática: Geológico R3 · confiança 94,2%", actor: "IA" },
       { time: "14:41", event: "Alocada para análise técnica", actor: "Operador Delta" },
     ],
   },
@@ -167,10 +179,20 @@ const OCCURRENCES = [
     reportedAt: "há 45 min",
     reportedBy: "Cidadão (Ana M.)",
     source: "cidadao",
-    report: "Via interditada por nível d'água acima de 60cm. Dois veículos parados. Trânsito desviado para Rua Lateral.",
+    citizenReport:
+      "Motorista relatou via interditada por nível d'água acima de 60 cm na Av. Central. Dois veículos parados e trânsito desviado para rua lateral. Chuva intensa no momento do relato.",
+    aiAnalysis: {
+      summary:
+        "Relato compatível com acúmulo pluviométrico de 28,4mm/3h na zona e modelo de drenagem saturado. Câmera CT-04 confirma alagamento ativo.",
+      confidence: 91.5,
+      riskLevel: "R2",
+      classification: "Climático · Alagamento de via",
+      recommendation: "Despacho imediato de equipe hidrológica. Sinalização de desvio e monitoramento do nível por 2h.",
+      generatedAt: "14:02",
+    },
     timeline: [
       { time: "13:58", event: "Relato recebido via app cidadão", actor: "Cidadão" },
-      { time: "14:02", event: "Confirmado por câmera de tráfego CT-04", actor: "Sistema" },
+      { time: "14:02", event: "IA validou com câmera CT-04 e dados CPTEC", actor: "IA" },
       { time: "14:10", event: "Equipe Beta despachada", actor: "Operador Delta" },
     ],
   },
@@ -187,9 +209,20 @@ const OCCURRENCES = [
     reportedAt: "há 2h",
     reportedBy: "Concessionária Light",
     source: "parceiro",
-    report: "Eucalipto de grande porte caiu sobre rede de média tensão. Sem moradores afetados. Aguardando equipe da concessionária para isolamento.",
+    citizenReport:
+      "Concessionária informou queda de eucalipto de grande porte sobre rede de média tensão. Sem moradores feridos. Via parcialmente bloqueada aguardando isolamento elétrico.",
+    aiAnalysis: {
+      summary:
+        "Ocorrência de vias públicas com risco elétrico secundário. Vento de 22 km/h e solo encharcado podem ter contribuído para a queda. Prioridade média até isolamento.",
+      confidence: 87.0,
+      riskLevel: "R1",
+      classification: "Vias Públicas · Queda de árvore",
+      recommendation: "Manter isolamento perimetral. Coordenar com concessionária antes de liberação da via.",
+      generatedAt: "12:38",
+    },
     timeline: [
       { time: "12:30", event: "Notificação recebida da concessionária", actor: "Parceiro" },
+      { time: "12:38", event: "IA classificou risco elétrico e prioridade média", actor: "IA" },
       { time: "12:45", event: "Aguardando confirmação de janela operacional", actor: "Sistema" },
     ],
   },
@@ -206,9 +239,20 @@ const OCCURRENCES = [
     reportedAt: "há 1h",
     reportedBy: "PRF (canal direto)",
     source: "parceiro",
-    report: "Caminhão-tanque com produto inflamável tombado em curva. Vazamento controlado. Bombeiros no local. Isolamento de 200m em curso.",
+    citizenReport:
+      "PRF reportou caminhão-tanque com produto inflamável tombado em curva da BR-040. Vazamento controlado, bombeiros no local e isolamento de 200 m em curso.",
+    aiAnalysis: {
+      summary:
+        "Evento crítico de produtos perigosos. IA cruzou vento, visibilidade e histórico da rodovia; recomenda manutenção do perímetro e acionamento HAZMAT.",
+      confidence: 96.8,
+      riskLevel: "R4",
+      classification: "Produtos Perigosos · Vazamento controlado",
+      recommendation: "Manter isolamento de 200 m. Equipe HAZMAT e Bombeiros em coordenação conjunta.",
+      generatedAt: "13:18",
+    },
     timeline: [
       { time: "13:15", event: "Acionamento via PRF", actor: "Parceiro" },
+      { time: "13:18", event: "IA classificou R4 e acionou protocolo HAZMAT", actor: "IA" },
       { time: "13:20", event: "Acionamento conjunto com Corpo de Bombeiros", actor: "Operador Delta" },
       { time: "13:42", event: "Equipe Alpha + HAZMAT em deslocamento", actor: "Operador Delta" },
     ],
@@ -226,9 +270,20 @@ const OCCURRENCES = [
     reportedAt: "há 3h",
     reportedBy: "Cidadão (Roberto S.)",
     source: "cidadao",
-    report: "Comerciante relata estalos recorrentes na laje de cobertura. Sem fissuras visíveis. Solicita vistoria preventiva.",
+    citizenReport:
+      "Comerciante relata estalos recorrentes na laje de cobertura da galeria. Sem fissuras visíveis ao relato. Solicita vistoria preventiva por precaução.",
+    aiAnalysis: {
+      summary:
+        "Sintomas compatíveis com sobrecarga estrutural leve ou dilatação térmica; sem correlação imediata com saturação crítica na zona. Risco baixo, vistoria preventiva adequada.",
+      confidence: 78.3,
+      riskLevel: "R1",
+      classification: "Geológico · Estrutural preventivo",
+      recommendation: "Agendar vistoria técnica. Monitorar se novos estalos ou fissuras forem reportados.",
+      generatedAt: "11:38",
+    },
     timeline: [
       { time: "11:30", event: "Relato recebido via central 199", actor: "Cidadão" },
+      { time: "11:38", event: "IA classificou risco baixo e sugeriu vistoria", actor: "IA" },
       { time: "11:45", event: "Agendada vistoria para 16h", actor: "Operador Delta" },
     ],
   },
@@ -268,6 +323,15 @@ const WEATHER = {
     { h: "21h", mm: 5, temp: 16 },
     { h: "22h", mm: 3, temp: 16 },
   ],
+  weeklyPrecipitation: [
+    { day: "Seg", pct: 88, level: "high" as const },
+    { day: "Ter", pct: 76, level: "high" as const },
+    { day: "Qua", pct: 52, level: "medium" as const },
+    { day: "Qui", pct: 38, level: "medium" as const },
+    { day: "Sex", pct: 18, level: "low" as const },
+    { day: "Sáb", pct: 10, level: "low" as const },
+    { day: "Dom", pct: 45, level: "medium" as const },
+  ],
 };
 
 const NAV = [
@@ -297,12 +361,14 @@ const KPIS = {
 };
 
 const SENSORS_LIVE = [
-  { id: "VP-B-042", zone: "Vila Esperança", type: "Fibra Ótica", value: "82%", trend: "up", status: "critical", lastSeen: "12s" },
-  { id: "PT-ZS-018", zone: "Porto Seguro - Bahia Sul", type: "Pluviômetro", value: "28.4mm/3h", trend: "up", status: "critical", lastSeen: "08s" },
-  { id: "MR-S-007", zone: "Morro Esperança", type: "Inclinômetro", value: "0.8°", trend: "up", status: "warning", lastSeen: "15s" },
-  { id: "VA-H-003", zone: "Vale Acácias", type: "Nível Rio", value: "2.4m", trend: "up", status: "warning", lastSeen: "22s" },
-  { id: "CI-T-001", zone: "Centro Indust.", type: "Sísmico", value: "0.2v", trend: "stable", status: "ok", lastSeen: "04s" },
-  { id: "ZR-M-014", zone: "Rural Norte", type: "Umidade Solo", value: "54%", trend: "stable", status: "ok", lastSeen: "33s" },
+  { id: "IA-PS-001", zone: "Porto Seguro - Zona Sul", type: "Risco de Deslizamento [dados de ia]", value: "94%", trend: "up", status: "critical", lastSeen: "12s" },
+  { id: "IA-VE-002", zone: "Vila Esperança", type: "Instabilidade Geológica [dados de ia]", value: "R3", trend: "up", status: "critical", lastSeen: "08s" },
+  { id: "IA-AC-003", zone: "Vale das Acácias", type: "Probabilidade de Alagamento [dados de ia]", value: "78%", trend: "up", status: "warning", lastSeen: "15s" },
+  { id: "IA-MR-004", zone: "Morro da Esperança", type: "Saturação de Solo Prevista [dados de ia]", value: "88%", trend: "up", status: "warning", lastSeen: "22s" },
+  { id: "IA-CT-005", zone: "Centro · Litoral", type: "Ressaca e Maré Alta [dados de ia]", value: "72%", trend: "up", status: "warning", lastSeen: "18s" },
+  { id: "IA-RN-006", zone: "Rural Norte", type: "Janela de Chuva Intensa [dados de ia]", value: "45mm/h", trend: "stable", status: "ok", lastSeen: "33s" },
+  { id: "IA-ZS-007", zone: "Zona Sul · Setor 7", type: "Evacuação Preventiva Sugerida [dados de ia]", value: "3h", trend: "up", status: "critical", lastSeen: "06s" },
+  { id: "IA-IN-008", zone: "Centro Industrial", type: "Índice de Risco Hidrológico [dados de ia]", value: "62%", trend: "stable", status: "ok", lastSeen: "41s" },
 ];
 
 export const GARDIAN_DATA = { ZONES, OCCURRENCES, WEATHER, NAV, CATEGORIES, KPIS, SENSORS_LIVE };

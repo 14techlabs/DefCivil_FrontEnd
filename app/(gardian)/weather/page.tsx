@@ -5,6 +5,38 @@ import { Bar, type BarTone, Chip, Icon, MetaTag, SectionHeader } from "@/app/com
 import { useGardian } from "@/app/components/GardianContext";
 import { GARDIAN_DATA } from "@/app/data/gardian";
 
+type PrecipLevel = "low" | "medium" | "high";
+
+const PRECIP_STYLES: Record<
+  PrecipLevel,
+  { label: string; text: string; bg: string; border: string; bar: string; drops: number }
+> = {
+  low: {
+    label: "Baixa",
+    text: "text-secondary",
+    bg: "bg-secondary/10",
+    border: "border-secondary/40",
+    bar: "bg-secondary",
+    drops: 1,
+  },
+  medium: {
+    label: "Média",
+    text: "text-orange-600",
+    bg: "bg-orange-50",
+    border: "border-orange-400/50",
+    bar: "bg-orange-500",
+    drops: 2,
+  },
+  high: {
+    label: "Alta",
+    text: "text-error",
+    bg: "bg-error-container/40",
+    border: "border-error/50",
+    bar: "bg-error",
+    drops: 3,
+  },
+};
+
 export default function WeatherPage() {
   const { alertMode } = useGardian();
   const W = GARDIAN_DATA.WEATHER;
@@ -97,20 +129,53 @@ export default function WeatherPage() {
           </div>
         </div>
 
-        {/* Hourly chart */}
+        {/* Weekly precipitation */}
         <div className="col-span-12 card-tonal p-8 shadow-ambient-sm">
-          <SectionHeader overline="PRÓXIMAS 8 HORAS" title="Acumulado de Chuva" />
-          <div className="flex items-end gap-2 h-48">
-            {W.hourly.map((h, i) => {
-              const pct = (h.mm/30)*100;
-              const tone = h.mm > 20 ? "bg-error" : h.mm > 10 ? "bg-orange-500" : "bg-secondary";
+          <SectionHeader
+            overline="PREVISÃO SEMANAL"
+            title="Precipitação"
+            action={
+              <div className="flex flex-wrap gap-2">
+                <Chip tone="secondary" icon="water_drop">Baixa</Chip>
+                <Chip tone="warning" icon="water_drop">Média</Chip>
+                <Chip tone="error" icon="water_drop">Alta</Chip>
+              </div>
+            }
+          />
+          <div className="grid grid-cols-2 sm:grid-cols-4 lg:grid-cols-7 gap-4">
+            {W.weeklyPrecipitation.map((d, i) => {
+              const style = PRECIP_STYLES[d.level];
               return (
-                <div key={i} className="flex-1 flex flex-col items-center gap-2">
-                  <span className="text-[10px] font-mono font-bold text-primary">{h.mm}<span className="text-slate-400">mm</span></span>
-                  <div className="w-full bg-surface-container-low rounded-md h-full flex items-end overflow-hidden">
-                    <div className={`w-full ${tone} rounded-md transition-all`} style={{ height: `${pct}%` }} />
+                <div
+                  key={i}
+                  className={`rounded-xl border-2 p-5 flex flex-col items-center text-center gap-3 ${style.bg} ${style.border}`}
+                >
+                  <p className="text-[10px] font-bold tracking-mono uppercase text-on-surface-variant">
+                    {d.day}
+                  </p>
+                  <div className="flex items-end justify-center gap-0.5 h-8">
+                    {Array.from({ length: style.drops }).map((_, j) => (
+                      <Icon
+                        key={j}
+                        name="water_drop"
+                        filled
+                        className={`text-[22px] ${style.text} ${j === 1 ? "scale-110" : j === 2 ? "scale-125" : ""}`}
+                        style={{ marginBottom: j * 2 }}
+                      />
+                    ))}
                   </div>
-                  <span className="text-[10px] font-bold text-on-surface-variant">{h.h}</span>
+                  <p className={`font-headline font-black text-3xl tracking-tighter ${style.text}`}>
+                    {d.pct}%
+                  </p>
+                  <div className="w-full h-1.5 rounded-full bg-surface-container-low overflow-hidden">
+                    <div
+                      className={`h-full rounded-full ${style.bar} transition-all`}
+                      style={{ width: `${d.pct}%` }}
+                    />
+                  </div>
+                  <span className={`text-[10px] font-black uppercase tracking-mono-tight ${style.text}`}>
+                    {style.label}
+                  </span>
                 </div>
               );
             })}
