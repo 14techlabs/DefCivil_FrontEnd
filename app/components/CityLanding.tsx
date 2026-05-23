@@ -149,7 +149,7 @@ function cityStats(city: CityConfig) {
     { label: "Altitude média", value: city.altitude, unit: "m", icon: "landscape" as const },
     { label: "População estimada", value: city.population, unit: "mil", icon: "groups" as const },
     { label: "Zonas monitoradas", value: String(GARDIAN_DATA.KPIS.zonasTotal), unit: "", icon: "hub" as const },
-    { label: "Sensores IoT ativos", value: String(GARDIAN_DATA.KPIS.sensoresAtivos), unit: "", icon: "sensors" as const },
+    { label: "Usuários ativos", value: String(GARDIAN_DATA.KPIS.sensoresAtivos), unit: "", icon: "sensors" as const },
   ];
 }
 
