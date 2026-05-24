@@ -57,7 +57,7 @@ export default function DashboardPage() {
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-5">
         <KPI label="Total de Zonas" value={KPIS.zonasTotal} icon="hub" tone="secondary" sub="32 urbanas · 10 rurais" />
         <KPI label="Em Alerta" value={alertMode ? KPIS.emAlerta : 3} icon="warning" tone={alertMode ? "error" : "warning"} sub={`${alertMode?2:1} críticas · ${alertMode?3:2} atenção`} />
-        <KPI label="Sensores Ativos" value={KPIS.sensoresAtivos} icon="sensors" tone="secondary" sub="LoRaWAN · AES-256" />
+        <KPI label="Usuários Ativos" value={KPIS.sensoresAtivos} icon="sensors" tone="secondary" sub="Usuários" />
         <KPI label="Acurácia IA" value={`${KPIS.acuraciaIA}%`} icon="psychology" tone="primary" sub="Janela 90 dias · 1,247 eventos" />
       </div>
 

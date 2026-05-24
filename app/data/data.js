@@ -169,7 +169,6 @@ const OCCURRENCES = [
     source: "cidadao",
     report: "Via interditada por nível d'água acima de 60cm. Dois veículos parados. Trânsito desviado para Rua Lateral.",
     timeline: [
-      { time: "13:58", event: "Relato recebido via app cidadão", actor: "Cidadão" },
       { time: "14:02", event: "Confirmado por câmera de tráfego CT-04", actor: "Sistema" },
       { time: "14:10", event: "Equipe Beta despachada", actor: "Operador Delta" },
     ],

@@ -97,7 +97,6 @@ export function CriticalAlertModal({
             <div className="grid grid-cols-2 gap-2">
               {[
                 { id: "sms", l: "SMS Defesa Civil (40199)", icon: "sms" },
-                { id: "push", l: "Push App Cidadão", icon: "notifications_active" },
                 { id: "siren", l: "Sirenes Comunitárias", icon: "campaign" },
                 { id: "media", l: "Imprensa & Rádio", icon: "radio" },
               ].map(c => {

@@ -164,11 +164,7 @@ const NEWS = [
     title: "Simulado de evacuação no distrito Centro registra 85% de adesão",
     tag: "Simulado",
   },
-  {
-    date: "12 MAI 2026",
-    title: "Nova rede LoRaWAN expande cobertura para o litoral sul do município",
-    tag: "Tecnologia",
-  },
+  
 ] as const;
 
 const SERVICES = [
@@ -197,15 +193,7 @@ const PREVENTION = [
       "Manchas de umidade em paredes",
     ],
   },
-  {
-    icon: "campaign",
-    title: "Canais oficiais",
-    items: [
-      "Central 199 — Defesa Civil",
-      "SMS Defesa Civil (40199)",
-      "App Cidadão · alertas push",
-    ],
-  },
+ 
 ] as const;
 
 function cityFaq(cityName: string) {
@@ -380,18 +368,7 @@ export function CityLanding() {
                       Acessar Sistema
                     </Btn>
                   </Link>
-                  <a
-                    href="#sistema"
-                    onClick={(e) => {
-                      e.preventDefault();
-                      scrollToSection("sistema");
-                      window.history.replaceState(null, "", "#sistema");
-                    }}
-                  >
-                    <Btn variant="ghostDark" icon="info">
-                      Saiba Mais
-                    </Btn>
-                  </a>
+                
                 </div>
                 <div className="flex flex-wrap gap-6 mt-8 text-[10px] font-mono uppercase tracking-mono font-bold text-white/50">
                   <span>
@@ -584,11 +561,11 @@ export function CityLanding() {
             title="Informativos"
             className="!justify-center [&_h3]:text-center [&_span]:text-center"
           />
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-5">
+          <div className=" flex justify-center items-center gap-5">
             {NEWS.map((n) => (
               <article
                 key={n.title}
-                className="bg-gradient-to-br from-primary to-primary-container rounded-xl p-6 text-white shadow-ambient-sm flex flex-col min-h-[220px]"
+                className="bg-gradient-to-br from-primary to-primary-container rounded-xl p-6 text-white shadow-ambient-sm flex flex-col min-h-[220px] max-w-[320px]"
               >
                 <div className="flex items-center justify-between mb-4">
                   <small className="text-[10px] font-mono text-white/60">{n.date}</small>

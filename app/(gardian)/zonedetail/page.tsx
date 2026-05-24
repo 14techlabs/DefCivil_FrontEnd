@@ -269,7 +269,7 @@ function ZoneDetailContent() {
           </div>
         </section>
 
-        <section className="col-span-12 card-tonal p-8 shadow-ambient-sm flex items-center justify-between gap-8 flex-wrap">
+        {/* <section className="col-span-12 card-tonal p-8 shadow-ambient-sm flex items-center justify-between gap-8 flex-wrap">
           <div>
             <div className="flex items-center gap-2 mb-2">
               <span className="w-2 h-2 rounded-full bg-secondary animate-live-dot" />
@@ -290,7 +290,7 @@ function ZoneDetailContent() {
               </div>
             ))}
           </div>
-        </section>
+        </section> */}
       </div>
     </div>
   );
