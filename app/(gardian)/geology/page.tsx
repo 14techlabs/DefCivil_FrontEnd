@@ -125,8 +125,6 @@ export default function GeologyPage() {
             <p className="text-sm text-on-surface-variant mt-2 max-w-2xl">Indicadores de impacto integrados por tipo de situação · Foco em desastres geo-hidrológicos · Escala de 0,00 a 1,00</p>
           </div>
           <div className="flex gap-3">
-            <Btn variant="secondary" icon="download">Copiar URL</Btn>
-            <Btn variant="secondary" icon="place">Localizar</Btn>
             <Btn variant="primary" icon="tune">Opções</Btn>
           </div>
         </div>
