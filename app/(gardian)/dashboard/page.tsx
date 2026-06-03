@@ -76,7 +76,7 @@ export default function DashboardPage() {
               <span className="text-secondary-container">Defesa Civil - Zona Sul</span>
             </h2>
             <p className="text-white/70 text-sm mt-4 leading-relaxed max-w-xl">
-              Padrões de saturação de solo detectados via sensores IoT cruzados com previsão de 45mm/h.
+              Padrões de saturação de solo detectados via cruzamento de dados com previsão de 45mm/h.
               Recomendação: Evacuação preventiva imediata no Setor 7.
             </p>
             <div className="flex items-center gap-6 mt-6 text-[10px] font-mono uppercase tracking-mono font-bold text-white/50">
