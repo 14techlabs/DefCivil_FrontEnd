@@ -40,7 +40,7 @@ function LoginForm() {
     <div className="min-h-screen bg-surface flex flex-col">
       <div className="bg-primary text-white/80 text-[10px] font-mono uppercase tracking-mono font-bold py-2 px-6">
         <div className="max-w-[1200px] mx-auto flex items-center justify-between">
-          <span>Prefeitura de Porto Seguro · Defesa Civil</span>
+          <span>Defesa Civil</span>
           <Link href="/" className="hover:text-white transition-colors">
             Voltar ao site
           </Link>
@@ -68,7 +68,7 @@ function LoginForm() {
               Entrar no sistema
             </h1>
             <p className="text-sm text-on-surface-variant mt-2">
-              Ambiente operacional da Defesa Civil · Porto Seguro-BA
+              Ambiente operacional da Defesa Civil
             </p>
           </div>
 

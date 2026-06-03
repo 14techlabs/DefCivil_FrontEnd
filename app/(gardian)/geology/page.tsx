@@ -117,7 +117,7 @@ export default function GeologyPage() {
           <span className="w-1 h-1 rounded-full bg-outline-variant" />
           <MetaTag>BASE CONCEITUAL CONFORME DEFINIÇÕES DO IPCC</MetaTag>
           <span className="w-1 h-1 rounded-full bg-outline-variant" />
-          <MetaTag>PORTO SEGURO - BAHIA</MetaTag>
+          <MetaTag>DEFESA CIVIL</MetaTag>
         </div>
         <div className="flex items-end justify-between gap-6 flex-wrap">
           <div>

@@ -35,7 +35,7 @@ export default function DashboardPage() {
       <header>
         <div className="flex items-center gap-2 mb-3">
           <span className="w-1 h-1 rounded-full bg-outline-variant" />
-          <MetaTag>Painel Geral · Porto Seguro - Bahia</MetaTag>
+          <MetaTag>Painel Geral · Defesa Civil</MetaTag>
           <span className="w-1 h-1 rounded-full bg-outline-variant" />
           <span className="flex items-center gap-1.5">
             <StatusDot tone={alertMode ? "error" : "secondary"} />
@@ -73,7 +73,7 @@ export default function DashboardPage() {
             </Chip>
             <h2 className="font-headline font-black text-4xl tracking-tighter mt-5 leading-tight">
               Alto risco de deslizamento em<br/>
-              <span className="text-secondary-container">Porto Seguro - Bahia - Zona Sul</span>
+              <span className="text-secondary-container">Defesa Civil - Zona Sul</span>
             </h2>
             <p className="text-white/70 text-sm mt-4 leading-relaxed max-w-xl">
               Padrões de saturação de solo detectados via sensores IoT cruzados com previsão de 45mm/h.

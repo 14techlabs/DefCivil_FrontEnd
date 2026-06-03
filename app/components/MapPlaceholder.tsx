@@ -180,7 +180,7 @@ export function MapPlaceholder({
       style={{ minHeight: height }}
     >
       <iframe
-        title="Mapa de Porto Seguro, Bahia"
+        title="Mapa de Defesa Civil"
         className="absolute inset-0 w-full h-full border-0 block"
         src={osmEmbedSrc(bbox, CENTER)}
         loading="lazy"
@@ -288,7 +288,7 @@ export function MapPlaceholder({
               : "bg-white/95 text-primary border-outline-variant/30 shadow-ambient-sm"
           }`}
         >
-          Limite municipal · Porto Seguro-BA
+          Limite municipal · Defesa Civil
         </div>
       </div>
 
@@ -358,7 +358,7 @@ export function MapPlaceholder({
             <p className="text-[8px] font-black uppercase tracking-mono opacity-60">
               Município
             </p>
-            <p className="text-[10px] font-mono font-bold">Porto Seguro-BA</p>
+            <p className="text-[10px] font-mono font-bold">Defesa Civil</p>
           </div>
         </div>
       </div>

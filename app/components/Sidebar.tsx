@@ -1,6 +1,5 @@
 "use client";
 
-import Image from "next/image";
 import Link from "next/link";
 import { GARDIAN_DATA } from "@/app/data/gardian";
 import { SCREEN_ROUTES } from "@/app/lib/navigation";
@@ -20,14 +19,8 @@ export function Sidebar({
     <aside className="hidden lg:flex flex-col h-screen w-64 fixed left-0 top-0 z-40 bg-surface-container-low pl-4 pr-0 py-8 gap-2">
       <div className="px-4 mb-10">
         <div className="flex items-center gap-3">
-          <div className=" relative h-14 w-24 shrink-0 overflow-hidden rounded-xl mb-2">
-            <Image
-              src="/logo_portoseguro.png"
-              alt="Logo de Porto Seguro"
-              fill
-              sizes="90px"
-              className="object-contain "
-            />
+          <div className="w-10 h-10 rounded-lg bg-primary flex items-center justify-center shrink-0">
+            <Icon name="shield" filled className="text-white text-[22px]" />
           </div>
           <div>
             <h1 className="font-headline font-black text-xl text-primary leading-tight tracking-tight">

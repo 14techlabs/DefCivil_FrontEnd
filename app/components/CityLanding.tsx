@@ -5,7 +5,7 @@ import { useState } from "react";
 import { Btn, Chip, Icon, MetaTag, SectionHeader } from "@/app/components/Primitives";
 import { GARDIAN_DATA } from "@/app/data/gardian";
 
-type CityId = "porto-seguro" | "jequie" | "eunapolis" | "itagimirim";
+type CityId = "porto-seguro" | "jequie" | "eunapolis" | "itagimirim" | "simoes-filho";
 
 type CityConfig = {
   id: CityId;
@@ -105,6 +105,26 @@ const CITIES: CityConfig[] = [
     mapDescription:
       "Monitoramento no município de Itagimirim-BA, incluindo zona urbana e comunidades com histórico de vulnerabilidade hidrológica.",
     email: "defesacivil@itagimirim.ba.gov.br",
+  },
+  {
+    id: "simoes-filho",
+    label: "Simões Filho",
+    prefeitura: "Prefeitura de Simões Filho",
+    region: "Região Metropolitana de Salvador · Bahia",
+    tagline: "POLO INDUSTRIAL · RMS",
+    heroDescription:
+      "Integrante da Região Metropolitana de Salvador, Simões Filho concentra área urbana em expansão e polos logísticos sujeitos a alagamentos e acúmulo hídrico em períodos de chuva intensa. O GARDIAN apoia a Defesa Civil no monitoramento de áreas sensíveis e na resposta a ocorrências.",
+    coords: "12°47′S · 38°24′W",
+    lat: -12.7867,
+    lon: -38.4031,
+    mapBbox: "-38.47%2C-12.85%2C-38.34%2C-12.72",
+    altitude: "10",
+    population: "144",
+    aboutText:
+      "A Defesa Civil de Simões Filho atua na prevenção e resposta a alagamentos, enxurradas e eventos associados ao regime pluviométrico da região metropolitana, com foco em vias críticas, bairros urbanos e áreas de drenagem.",
+    mapDescription:
+      "Monitoramento no município de Simões Filho-BA, com atenção a corredores urbanos, córregos e trechos sujeitos a acúmulo hídrico em períodos chuvosos.",
+    email: "defesacivil@simoesfilho.ba.gov.br",
   },
 ];
 

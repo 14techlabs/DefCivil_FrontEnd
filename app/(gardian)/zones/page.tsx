@@ -35,7 +35,7 @@ export default function ZonesPage() {
         <div className="flex items-end justify-between gap-6 flex-wrap">
           <div>
             <h1 className="font-headline font-black text-5xl tracking-tighter text-primary">Gerenciamento de Zonas</h1>
-            <p className="text-sm text-on-surface-variant mt-2">Mapeamento territorial completo · Porto Seguro - Bahia · Distritos urbanos e rural</p>
+            <p className="text-sm text-on-surface-variant mt-2">Mapeamento territorial completo · Defesa Civil · Distritos urbanos e rural</p>
           </div>
           <div className="flex gap-3">
             <Btn variant="secondary" icon="filter_list">Filtros Avançados</Btn>
