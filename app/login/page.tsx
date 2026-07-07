@@ -4,7 +4,9 @@ import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
 import { Suspense, useEffect, useState } from "react";
 import { Btn, Icon, MetaTag } from "@/app/components/Primitives";
+import { FormInput } from "@/app/components/Forminput";
 import { isAuthenticated, setSession } from "@/app/lib/session";
+import { authService } from "@/app/services/Authservice";
 
 function LoginRedirectIfAuthed() {
   const router = useRouter();
@@ -28,12 +30,26 @@ function LoginForm() {
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [loading, setLoading] = useState(false);
+  const [error, setError] = useState("");
 
-  const handleSubmit = (e: React.FormEvent) => {
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+    setError("");
     setLoading(true);
-    setSession(email || "operador");
-    router.push(next.startsWith("/") ? next : "/dashboard");
+
+    try {
+      await authService.login({ email, password });
+      setSession(email || "operador");
+      router.push(next.startsWith("/") ? next : "/dashboard");
+    } catch (err: any) {
+      const status = err?.response?.status;
+      if (status === 400 || status === 401) {
+        setError("E-mail ou senha inválidos.");
+      } else {
+        setError("Não foi possível entrar. Tente novamente em instantes.");
+      }
+      setLoading(false);
+    }
   };
 
   return (
@@ -73,39 +89,31 @@ function LoginForm() {
           </div>
 
           <form onSubmit={handleSubmit} className="card-tonal p-8 shadow-ambient space-y-5">
-            <div>
-              <MetaTag className="block mb-2">Usuário ou e-mail</MetaTag>
-              <input
-                type="text"
-                value={email}
-                onChange={(e) => setEmail(e.target.value)}
-                autoComplete="username"
-                placeholder="ex: operador.delta"
-                className="w-full bg-surface-container-low border-none rounded-lg px-4 py-3 text-sm font-medium text-primary focus:ring-2 focus:ring-secondary placeholder:text-on-surface-variant/60"
-              />
-            </div>
-            <div>
-              <MetaTag className="block mb-2">Senha</MetaTag>
-              <input
-                type="password"
-                value={password}
-                onChange={(e) => setPassword(e.target.value)}
-                autoComplete="current-password"
-                placeholder="••••••••"
-                className="w-full bg-surface-container-low border-none rounded-lg px-4 py-3 text-sm font-medium text-primary focus:ring-2 focus:ring-secondary placeholder:text-on-surface-variant/60"
-              />
-            </div>
+            <FormInput
+              label="E-mail"
+              type="email"
+              value={email}
+              onChange={setEmail}
+              autoComplete="username"
+              placeholder="ex: operador@defesacivil.gov.br"
+              disabled={loading}
+            />
+            <FormInput
+              label="Senha"
+              type="password"
+              value={password}
+              onChange={setPassword}
+              autoComplete="current-password"
+              placeholder="••••••••"
+              disabled={loading}
+            />
 
-            <p className="text-[11px] text-on-surface-variant leading-relaxed">
-              Use qualquer usuário e senha para acessar o ambiente de demonstração.
-            </p>
+            {error && <p className="text-[12px] text-red-600 font-medium -mt-2">{error}</p>}
 
             <Btn type="submit" variant="primary" icon="login" full disabled={loading}>
               {loading ? "Entrando…" : "Acessar Centro de Comando"}
             </Btn>
           </form>
-
-        
         </div>
       </div>
     </div>
