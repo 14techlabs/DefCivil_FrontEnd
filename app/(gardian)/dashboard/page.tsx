@@ -1,7 +1,7 @@
 "use client";
 
+import dynamic from "next/dynamic";
 import { useEffect, useState } from "react";
-import { MapPlaceholder } from "@/app/components/MapPlaceholder";
 import {
   Bar,
   type BarTone,
@@ -17,6 +17,18 @@ import {
 import { useGardian } from "@/app/components/GardianContext";
 import { GARDIAN_DATA } from "@/app/data/gardian";
 import { useAppNavigation } from "@/app/lib/useAppNavigation";
+
+const AreaDrawMap = dynamic(
+  () => import("@/app/components/AreaDrawMap").then((m) => m.AreaDrawMap),
+  {
+    ssr: false,
+    loading: () => (
+      <div className="flex items-center justify-center rounded-xl bg-surface-container-low min-h-[420px]">
+        <p className="text-sm text-on-surface-variant font-medium">Carregando mapa…</p>
+      </div>
+    ),
+  },
+);
 
 export default function DashboardPage() {
   const { alertMode } = useGardian();
@@ -152,8 +164,8 @@ export default function DashboardPage() {
       {/* Map + Impact signals */}
       <div className="grid grid-cols-12 gap-5 items-stretch">
         <div className="col-span-12 lg:col-span-8 min-h-0">
-          <div className="card-tonal p-2 shadow-ambient-sm h-full">
-            <MapPlaceholder variant="topo" height={420} alertMode={false} />
+          <div className="card-tonal p-4 shadow-ambient-sm h-full">
+            <AreaDrawMap height={420} />
           </div>
         </div>
         <div className="col-span-12 lg:col-span-4 card-tonal p-7 shadow-ambient-sm flex flex-col min-h-0 h-full lg:max-h-[436px]">
