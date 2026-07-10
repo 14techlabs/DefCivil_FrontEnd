@@ -8,12 +8,30 @@ import {
   useState,
   type ReactNode,
 } from "react";
+import { useRouter } from "next/navigation";
 import { CriticalAlertModal } from "./Modals";
 import { Tweaks } from "./Tweaks";
+import { api } from "@/app/services/Api";
+import { authService } from "@/app/services/Authservice";
+import { clearSession } from "@/app/lib/session";
 
 type ToastTone = "error" | "secondary";
 
 type ToastState = { msg: string; tone: ToastTone } | null;
+
+export interface UserData {
+  id: number;
+  user_sys: {
+    id: number;
+    username: string;
+    first_name: string;
+    email: string;
+  } | null;
+  telefone: string;
+  nome_anonimo: string | null;
+  tipo: number;
+  entidade: number | null;
+}
 
 type GardianContextValue = {
   alertMode: boolean;
@@ -26,17 +44,40 @@ type GardianContextValue = {
   setSidebarStyle: (value: string) => void;
   showToast: (msg: string, tone?: ToastTone) => void;
   emitCriticalAlert: () => void;
+  user: UserData | null;
+  logout: () => void;
 };
 
 const GardianContext = createContext<GardianContextValue | null>(null);
 
 export function GardianProvider({ children }: { children: ReactNode }) {
+  const router = useRouter();
+
   const [alertMode, setAlertMode] = useState(true);
   const [search, setSearch] = useState("");
   const [density, setDensity] = useState("comfortable");
   const [sidebarStyle, setSidebarStyle] = useState("light");
   const [showAlertModal, setShowAlertModal] = useState(false);
   const [toast, setToast] = useState<ToastState>(null);
+  const [user, setUser] = useState<UserData | null>(null);
+
+  // Fetch user data on mount
+  useEffect(() => {
+    if (!authService.getAccessToken()) return;
+
+    let cancelled = false;
+    api
+      .get<{ usuario: UserData }>("/acess/me/")
+      .then((res) => {
+        if (!cancelled) setUser(res.data.usuario);
+      })
+      .catch(() => {
+        // Silently fail — the auth gate will redirect if needed
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, []);
 
   useEffect(() => {
     const open = () => setShowAlertModal(true);
@@ -53,6 +94,15 @@ export function GardianProvider({ children }: { children: ReactNode }) {
     window.dispatchEvent(new CustomEvent("gardian:emit-alert"));
   }, []);
 
+  const logout = useCallback(() => {
+    // Clear client-side auth state
+    authService.logout();
+    clearSession();
+    setUser(null);
+    // Redirect to login
+    router.push("/login");
+  }, [router]);
+
   const value: GardianContextValue = {
     alertMode,
     setAlertMode,
@@ -64,6 +114,8 @@ export function GardianProvider({ children }: { children: ReactNode }) {
     setSidebarStyle,
     showToast,
     emitCriticalAlert,
+    user,
+    logout,
   };
 
   return (

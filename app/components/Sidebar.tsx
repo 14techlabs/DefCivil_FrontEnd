@@ -1,5 +1,6 @@
 "use client";
 
+import { useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import { GARDIAN_DATA } from "@/app/data/gardian";
 import { SCREEN_ROUTES } from "@/app/lib/navigation";
@@ -13,7 +14,31 @@ export function Sidebar({
   active: string;
   alertMode: boolean;
 }) {
-  const { emitCriticalAlert } = useGardian();
+  const { user, logout } = useGardian();
+  const [menuOpen, setMenuOpen] = useState(false);
+  const menuRef = useRef<HTMLDivElement>(null);
+
+  // Close menu on outside click
+  useEffect(() => {
+    if (!menuOpen) return;
+    const handleClick = (e: MouseEvent) => {
+      if (menuRef.current && !menuRef.current.contains(e.target as Node)) {
+        setMenuOpen(false);
+      }
+    };
+    document.addEventListener("mousedown", handleClick);
+    return () => document.removeEventListener("mousedown", handleClick);
+  }, [menuOpen]);
+
+  const displayName = user?.user_sys?.username
+    ?? user?.nome_anonimo
+    ?? "Operador";
+
+  const displayRole = user?.tipo === 2
+    ? "Técnico"
+    : user?.tipo === 1
+      ? "Cidadão"
+      : "";
 
   return (
     <aside className="hidden lg:flex flex-col h-screen w-64 fixed left-0 top-0 z-40 bg-surface-container-low pl-4 pr-0 py-8 gap-2">
@@ -81,19 +106,47 @@ export function Sidebar({
         </button> */}
       </div>
 
-      <div className="px-4 mt-auto">
-        <div className="p-3 rounded-xl bg-surface-container-highest/60 flex items-center gap-3">
+      <div className="px-4 mt-auto relative" ref={menuRef}>
+        <div className="p-3 rounded-xl bg-surface-container-highest/60 flex items-center gap-3 hover:bg-surface-container-highest transition-colors duration-150">
           <div className="w-9 h-9 rounded-md bg-primary-container flex items-center justify-center">
             <Icon name="person" className="text-white text-sm" />
           </div>
           <div className="overflow-hidden flex-1">
-            <p className="text-xs font-bold truncate text-primary">Operador Delta</p>
+            <p className="text-xs font-bold truncate text-primary">{displayName}</p>
             <p className="text-[10px] text-on-surface-variant uppercase font-bold tracking-mono-tight">
-              Sessão · 04:22
+              {displayRole || "Sessão ativa"}
             </p>
           </div>
-          <Icon name="more_vert" className="text-on-surface-variant text-[18px]" />
+          <button
+            type="button"
+            onClick={() => setMenuOpen((v) => !v)}
+            className={`shrink-0 p-1.5 rounded-lg transition-all duration-150 ${
+              menuOpen
+                ? "bg-surface-container text-secondary"
+                : "text-on-surface-variant hover:bg-surface-container hover:text-primary active:scale-90"
+            }`}
+            aria-label="Opções da sessão"
+          >
+            <Icon name="more_vert" className="text-on-surface-variant text-[18px]" />
+          </button>
         </div>
+
+        {/* Dropdown menu */}
+        {menuOpen && (
+          <div className="absolute bottom-full left-4 right-4 mb-2 rounded-xl bg-white shadow-ambient border border-outline-variant/20 overflow-hidden animate-[fadeIn_150ms_ease]">
+            <button
+              type="button"
+              onClick={() => {
+                setMenuOpen(false);
+                logout();
+              }}
+              className="w-full flex items-center gap-3 px-4 py-3.5 text-sm font-semibold text-error transition-all duration-150 hover:bg-error-container/20 hover:pl-5 active:bg-error-container/40 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-error/40"
+            >
+              <Icon name="logout" className="text-[18px]" />
+              Encerrar sessão
+            </button>
+          </div>
+        )}
       </div>
     </aside>
   );
