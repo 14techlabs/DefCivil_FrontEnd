@@ -1,12 +1,23 @@
 "use client";
 
+import dynamic from "next/dynamic";
 import { Suspense, useEffect, useMemo, useState } from "react";
 import { useSearchParams } from "next/navigation";
-import { MapPlaceholder } from "@/app/components/MapPlaceholder";
 import { Chip, Icon, MetaTag, SectionHeader } from "@/app/components/Primitives";
-import { useGardian } from "@/app/components/GardianContext";
 import { useAppNavigation } from "@/app/lib/useAppNavigation";
 import { api } from "@/app/services/Api";
+
+const ZoneMap = dynamic(
+  () => import("@/app/components/ZoneMap").then((m) => m.ZoneMap),
+  {
+    ssr: false,
+    loading: () => (
+      <div className="flex items-center justify-center rounded-xl bg-surface-container-low min-h-[450px]">
+        <p className="text-sm text-on-surface-variant font-medium">Carregando mapa…</p>
+      </div>
+    ),
+  },
+);
 
 interface Zona {
   id: number;
@@ -61,7 +72,6 @@ function formatYear(dateStr: string): string {
 function ZoneDetailContent() {
   const searchParams = useSearchParams();
   const zoneId = searchParams.get("zone");
-  const { alertMode } = useGardian();
   const { router } = useAppNavigation();
   const back = () => router.push("/zones");
 
@@ -214,10 +224,11 @@ function ZoneDetailContent() {
       <div className="grid grid-cols-12 gap-5">
         {/* Map */}
         <section className="col-span-12 lg:col-span-7 card-tonal p-2 shadow-ambient-sm">
-          <MapPlaceholder
-            variant="topo"
+          <ZoneMap
+            zoneId={z.id}
+            zoneName={z.nome}
             height={500}
-            alertMode={alertMode && z.status === "critico"}
+            editable={true}
           />
         </section>
 
