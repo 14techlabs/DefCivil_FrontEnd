@@ -1,8 +1,16 @@
 "use client";
 
 import dynamic from "next/dynamic";
-import { useEffect, useMemo, useState } from "react";
-import { Btn, Chip, Icon, KPI, MetaTag, StatusDot } from "@/app/components/Primitives";
+import { useCallback, useEffect, useMemo, useState } from "react";
+import {
+  Btn,
+  Chip,
+  Icon,
+  KPI,
+  MetaTag,
+  SectionHeader,
+  StatusDot,
+} from "@/app/components/Primitives";
 import { useGardian } from "@/app/components/GardianContext";
 import { useAppNavigation } from "@/app/lib/useAppNavigation";
 import { api } from "@/app/services/Api";
@@ -15,7 +23,7 @@ interface DashboardZona {
   descricao: string;
   tipo: "urbana" | "rural";
   status: "critico" | "atencao" | "estavel";
-  area?: unknown;
+  area: GeoJSON.Polygon | null;
 }
 
 interface DashboardAlerta {
@@ -41,12 +49,12 @@ interface MonitoramentoResponse {
 
 // --- componente do mapa (lazy, ssr=false) ---
 
-const AreaDrawMap = dynamic(
-  () => import("@/app/components/AreaDrawMap").then((m) => m.AreaDrawMap),
+const DashboardMap = dynamic(
+  () => import("@/app/components/DashboardMap").then((m) => m.DashboardMap),
   {
     ssr: false,
     loading: () => (
-      <div className="flex items-center justify-center rounded-xl bg-surface-container-low min-h-[420px]">
+      <div className="flex items-center justify-center rounded-xl bg-surface-container-low min-h-[480px]">
         <p className="text-sm text-on-surface-variant font-medium">Carregando mapa…</p>
       </div>
     ),
@@ -55,22 +63,39 @@ const AreaDrawMap = dynamic(
 
 // --- helpers ---
 
-function toneForStatus(status: string): "error" | "warning" | "secondary" {
+function toneForStatus(
+  status: string,
+): "error" | "warning" | "secondary" {
   if (status === "critico") return "error";
   if (status === "atencao") return "warning";
   return "secondary";
 }
 
+const STATUS_LABEL: Record<string, string> = {
+  critico: "Crítico",
+  atencao: "Atenção",
+  estavel: "Estável",
+};
+
+const TIPO_LABEL: Record<string, string> = {
+  urbana: "Urbana",
+  rural: "Rural",
+};
+
 // --- página ---
 
 export default function DashboardPage() {
   const { alertMode } = useGardian();
-  const { go } = useAppNavigation();
+  const { go, openZone } = useAppNavigation();
 
   // estado dos dados
-  const [dashboardData, setDashboardData] = useState<DashboardResponse | null>(null);
+  const [dashboardData, setDashboardData] =
+    useState<DashboardResponse | null>(null);
   const [totalOcorrencias, setTotalOcorrencias] = useState(0);
   const [loading, setLoading] = useState(true);
+
+  // estado de seleção do mapa
+  const [selectedZoneId, setSelectedZoneId] = useState<number | null>(null);
 
   // busca dados reais
   useEffect(() => {
@@ -94,19 +119,27 @@ export default function DashboardPage() {
     };
 
     fetchDashboard();
-    return () => { cancelled = true; };
+    return () => {
+      cancelled = true;
+    };
   }, []);
 
   // --- valores derivados ---
 
-  const zonas = dashboardData?.zonas ?? [];
-  const alertas = dashboardData?.alertas ?? [];
+  const zonas = useMemo(() => dashboardData?.zonas ?? [], [dashboardData]);
+  const alertas = useMemo(() => dashboardData?.alertas ?? [], [dashboardData]);
 
   const totalZonas = zonas.length;
   const urbanas = zonas.filter((z) => z.tipo === "urbana").length;
   const rurais = zonas.filter((z) => z.tipo === "rural").length;
   const emAlerta = zonas.filter((z) => z.status === "critico").length;
   const atencaoCount = zonas.filter((z) => z.status === "atencao").length;
+
+  // zona selecionada
+  const selectedZone = useMemo(
+    () => zonas.find((z) => z.id === selectedZoneId) ?? null,
+    [zonas, selectedZoneId],
+  );
 
   // alerta com maior confiança (aprovados primeiro)
   const featuredAlerta = useMemo(
@@ -116,6 +149,18 @@ export default function DashboardPage() {
         .sort((a, b) => b.confianca - a.confianca)[0] ?? null,
     [alertas],
   );
+
+  // callback de seleção no mapa
+  const handleZoneSelect = useCallback(
+    (zoneId: number | null) => {
+      setSelectedZoneId(zoneId === selectedZoneId ? null : zoneId);
+    },
+    [selectedZoneId],
+  );
+
+  const handleCloseZone = useCallback(() => {
+    setSelectedZoneId(null);
+  }, []);
 
   // --- renderização ---
 
@@ -147,7 +192,9 @@ export default function DashboardPage() {
           <span className="w-1 h-1 rounded-full bg-outline-variant" />
           <span className="flex items-center gap-1.5">
             <StatusDot tone={alertMode ? "error" : "secondary"} />
-            <MetaTag className={alertMode ? "text-error" : "text-secondary"}>
+            <MetaTag
+              className={alertMode ? "text-error" : "text-secondary"}
+            >
               {alertMode ? "Estado de Alerta" : "Operacional"}
             </MetaTag>
           </span>
@@ -217,7 +264,10 @@ export default function DashboardPage() {
               <Icon name="psychology" filled className="text-[400px]" />
             </div>
             <div className="relative z-10 max-w-2xl">
-              <Chip tone="secondary" className="!bg-secondary/20 !text-secondary-container">
+              <Chip
+                tone="secondary"
+                className="!bg-secondary/20 !text-secondary-container"
+              >
                 <span className="w-1.5 h-1.5 rounded-full bg-secondary-container animate-live-dot" />{" "}
                 ALERTA ATIVO
               </Chip>
@@ -267,7 +317,10 @@ export default function DashboardPage() {
             <Icon name="shield" filled className="text-[400px]" />
           </div>
           <div className="relative z-10 max-w-2xl">
-            <Chip tone="secondary" className="!bg-secondary/20 !text-secondary-container">
+            <Chip
+              tone="secondary"
+              className="!bg-secondary/20 !text-secondary-container"
+            >
               <span className="w-1.5 h-1.5 rounded-full bg-secondary-container animate-live-dot" />{" "}
               SISTEMA OPERACIONAL
             </Chip>
@@ -275,16 +328,159 @@ export default function DashboardPage() {
               Nenhum alerta crítico no momento
             </h2>
             <p className="text-white/70 text-sm mt-4 leading-relaxed max-w-xl">
-              Monitoramento contínuo ativo. {totalZonas} zonas sob vigilância,
-              {totalOcorrencias} ocorrências em andamento.
+              Monitoramento contínuo ativo. {totalZonas} zonas sob
+              vigilância, {totalOcorrencias} ocorrências em andamento.
             </p>
           </div>
         </div>
       )}
 
-      {/* Mapa interativo */}
-      <div className="card-tonal p-4 shadow-ambient-sm">
-        <AreaDrawMap height={420} />
+      {/* Mapa interativo + painel de zona */}
+      <div className="grid grid-cols-12 gap-5 items-stretch">
+        {/* Mapa */}
+        <div className="col-span-12 lg:col-span-7 min-h-0">
+          <div className="card-tonal p-2 shadow-ambient-sm h-full">
+            <DashboardMap
+              zones={zonas}
+              height={480}
+              onZoneSelect={handleZoneSelect}
+              selectedZoneId={selectedZoneId}
+            />
+          </div>
+        </div>
+
+        {/* Painel lateral */}
+        <div className="col-span-12 lg:col-span-5 card-tonal p-7 shadow-ambient-sm flex flex-col min-h-0 h-full lg:max-h-[496px]">
+          {selectedZone ? (
+            <>
+              <SectionHeader
+                overline={`ZONA #${selectedZone.id}`}
+                title={selectedZone.nome}
+                action={
+                  <button
+                    type="button"
+                    onClick={handleCloseZone}
+                    className="w-8 h-8 rounded-md flex items-center justify-center hover:bg-surface-container transition-all"
+                    aria-label="Fechar"
+                  >
+                    <Icon name="close" className="text-on-surface-variant text-[18px]" />
+                  </button>
+                }
+              />
+
+              <div className="flex gap-2 mt-4 mb-4">
+                <Chip tone={toneForStatus(selectedZone.status)}>
+                  {STATUS_LABEL[selectedZone.status]}
+                </Chip>
+                <Chip tone="neutral">
+                  {TIPO_LABEL[selectedZone.tipo] ?? selectedZone.tipo}
+                </Chip>
+              </div>
+
+              {selectedZone.descricao && (
+                <p className="text-[13px] text-on-surface-variant leading-relaxed mb-6">
+                  {selectedZone.descricao}
+                </p>
+              )}
+
+              {!selectedZone.descricao && (
+                <p className="text-[13px] text-on-surface-variant italic mb-6">
+                  Sem descrição cadastrada.
+                </p>
+              )}
+
+              <div className="mt-auto flex gap-3 pt-4 border-t border-outline-variant/20">
+                <Btn variant="ghost" icon="close" onClick={handleCloseZone}>
+                  Fechar
+                </Btn>
+                <Btn
+                  variant="primary"
+                  icon="arrow_forward"
+                  onClick={() => openZone(String(selectedZone.id))}
+                >
+                  Ver Detalhes
+                </Btn>
+              </div>
+            </>
+          ) : (
+            <>
+              <SectionHeader
+                overline="EM CAMPO"
+                title="Sinalizadores de Impacto"
+              />
+              <div className="flex-1 min-h-0 overflow-y-auto overscroll-contain space-y-3 pr-1 mt-4">
+                {[
+                  {
+                    icon: "warning",
+                    iconColor: "text-orange-700",
+                    iconBg: "bg-orange-100",
+                    label: "Zonas em Crítico",
+                    sub: "Zonas com status de risco máximo",
+                    value: String(emAlerta),
+                  },
+                  {
+                    icon: "trending_up",
+                    iconColor: "text-amber-700",
+                    iconBg: "bg-amber-100",
+                    label: "Zonas em Atenção",
+                    sub: "Zonas com status de risco moderado",
+                    value: String(atencaoCount),
+                  },
+                  {
+                    icon: "hub",
+                    iconColor: "text-secondary",
+                    iconBg: "bg-secondary/10",
+                    label: "Total de Zonas",
+                    sub: "Todas as zonas monitoradas",
+                    value: String(totalZonas),
+                  },
+                  {
+                    icon: "emergency",
+                    iconColor: "text-rose-700",
+                    iconBg: "bg-rose-100",
+                    label: "Ocorrências Ativas",
+                    sub: "Registros válidos não concluídos",
+                    value: String(totalOcorrencias),
+                  },
+                  {
+                    icon: "notifications",
+                    iconColor: "text-violet-700",
+                    iconBg: "bg-violet-100",
+                    label: "Alertas",
+                    sub: "Alertas registrados no sistema",
+                    value: String(alertas.length),
+                  },
+                ].map((s, i) => (
+                  <div
+                    key={i}
+                    className="flex items-center gap-3 p-3 rounded-lg bg-surface-container-low hover:bg-surface-container transition-all"
+                  >
+                    <div
+                      className={`w-9 h-9 rounded-md flex items-center justify-center shrink-0 ${s.iconBg}`}
+                    >
+                      <Icon
+                        name={s.icon}
+                        filled
+                        className={`text-[18px] ${s.iconColor}`}
+                      />
+                    </div>
+                    <div className="flex-1 min-w-0">
+                      <p className="text-[10px] font-black uppercase tracking-mono-tight text-primary">
+                        {s.label}
+                      </p>
+                      <p className="text-[11px] text-on-surface-variant line-clamp-2">
+                        {s.sub}
+                      </p>
+                    </div>
+                    <Chip tone="secondary" className="shrink-0">
+                      {s.value}
+                    </Chip>
+                  </div>
+                ))}
+              </div>
+            </>
+          )}
+        </div>
       </div>
     </div>
   );
