@@ -487,7 +487,7 @@ export function DashboardMap({
       <div ref={mapContainerRef} className="h-full w-full" />
 
       {/* botões de filtro de status da zona */}
-      <div className="absolute top-4 left-4 z-10 flex flex-wrap gap-1.5">
+      <div className="absolute top-3 left-4 z-10 flex flex-wrap gap-1.5">
         {filterOptions.map((opt) => {
           const active = statusFilter === opt.id;
           return (
@@ -523,11 +523,12 @@ export function DashboardMap({
       <button
         type="button"
         onClick={handleFitAll}
-        className="absolute top-4 right-4 z-10 px-2.5 py-1 rounded bg-white/90 text-primary text-[10px] font-bold uppercase tracking-mono-tight hover:bg-white shadow-ambient-sm transition-all"
+        className="absolute top-3 right-14 z-10 flex items-center px-2.5 py-1 rounded bg-white/90 text-primary text-[10px] font-bold uppercase tracking-mono-tight hover:bg-white shadow-ambient-sm transition-all"
       >
-        <Icon name="fit_screen" className="text-[14px] mr-1 align-text-bottom" />
-        Mostrar todas
+        <Icon name="fit_screen" className="text-[14px] mr-1" />
+        <span>Mostrar todas</span>
       </button>
+
 
       {/* legenda */}
       <div className="absolute bottom-14 right-4 z-10 pointer-events-none">
