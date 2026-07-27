@@ -1,10 +1,23 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import dynamic from "next/dynamic";
 import { Btn, Icon, MetaTag } from "@/app/components/Primitives";
 import { ModalShell } from "@/app/components/Modals";
 import { useGardian } from "@/app/components/GardianContext";
 import { api } from "@/app/services/Api";
+
+const CoordsPickerMap = dynamic(
+  () => import("@/app/components/CoordsPickerMap").then((m) => m.CoordsPickerMap),
+  {
+    ssr: false,
+    loading: () => (
+      <div className="flex items-center justify-center rounded-xl bg-surface-container-low h-[200px]">
+        <span className="text-xs text-on-surface-variant font-medium">carregando mapa…</span>
+      </div>
+    ),
+  },
+);
 
 /* ───────────── types ───────────── */
 
@@ -195,6 +208,9 @@ export function CreateOccurrenceModal({ open, onClose, onCreated, zonas }: Props
             />
           </div>
         </div>
+
+        {/* mapa de coordenadas */}
+        <CoordsPickerMap lat={lat} lng={lng} onChange={(newLat, newLng) => { setLat(newLat); setLng(newLng); }} />
 
         {/* zona (opcional) */}
         <div>
