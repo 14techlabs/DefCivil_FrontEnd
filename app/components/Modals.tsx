@@ -4,7 +4,7 @@ import { useEffect, useState } from "react";
 import { GARDIAN_DATA } from "@/app/data/gardian";
 import { Btn, Chip, Icon, MetaTag } from "./Primitives";
 
-function ModalShell({
+export function ModalShell({
   open,
   onClose,
   children,
@@ -18,7 +18,7 @@ function ModalShell({
   if (!open) return null;
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-6 animate-[fadeIn_150ms_ease]">
-      <div className="absolute inset-0 bg-primary/40 backdrop-blur-sm" onClick={onClose} />
+      <div className="absolute inset-0 bg-primary/40 backdrop-blur-sm animate-[fadeIn_1000ms_ease]" onClick={onClose} />
       <div className={`relative ${maxWidth} w-full bg-white rounded-xl shadow-ambient overflow-hidden`}>
         {children}
       </div>
@@ -325,4 +325,3 @@ export function NewOccurrenceModal({
     </ModalShell>
   );
 }
-

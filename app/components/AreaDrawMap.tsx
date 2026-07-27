@@ -15,7 +15,9 @@ import { MAPLIBRE_DRAW_STYLES } from "@/app/lib/maplibreDrawStyles";
 import "maplibre-gl/dist/maplibre-gl.css";
 import "@mapbox/mapbox-gl-draw/dist/mapbox-gl-draw.css";
 
-type PolygonGeometry = {
+/* ─────────── type da geometria do polígono (export) ─────────── */
+
+export type PolygonGeometry = {
   type: "Polygon";
   coordinates: number[][][];
 };
@@ -370,6 +372,117 @@ export function AreaDrawMap({ height = 420 }: { height?: number }) {
           </div>
         )}
       </div>
+    </div>
+  );
+}
+
+/* ────────────── DrawOnlyMap (reutilizável, sem load/save) ────────────── */
+
+interface DrawOnlyMapProps {
+  height?: number;
+  onPolygonChange: (polygon: PolygonGeometry | null) => void;
+}
+
+export function DrawOnlyMap({ height = 420, onPolygonChange }: DrawOnlyMapProps) {
+  const mapContainerRef = useRef<HTMLDivElement>(null);
+  const mapRef = useRef<maplibregl.Map | null>(null);
+  const drawRef = useRef<MapboxDraw | null>(null);
+
+  const patchDrawForMapLibreHere = () => {
+    const classes = MapboxDraw.constants.classes as Record<string, string>;
+    classes.CANVAS = "maplibregl-canvas";
+    classes.CONTROL_BASE = "maplibregl-ctrl";
+    classes.CONTROL_PREFIX = "maplibregl-ctrl-";
+    classes.CONTROL_GROUP = "maplibregl-ctrl-group";
+    classes.ATTRIBUTION = "maplibregl-ctrl-attrib";
+  };
+
+  useEffect(() => {
+    const container = mapContainerRef.current;
+    if (!container || mapRef.current) return;
+
+    patchDrawForMapLibreHere();
+
+    const centerLon = (PORTO_SEGURO_BBOX.west + PORTO_SEGURO_BBOX.east) / 2;
+    const centerLat = (PORTO_SEGURO_BBOX.south + PORTO_SEGURO_BBOX.north) / 2;
+    const center: [number, number] = [centerLon, centerLat];
+
+    const map = new maplibregl.Map({
+      container,
+      style: MAP_STYLE,
+      center,
+      zoom: 11,
+      attributionControl: { compact: true },
+    });
+
+    map.addControl(new maplibregl.NavigationControl({ showCompass: false }), "top-right");
+
+    let disposed = false;
+
+    const resizeMap = () => {
+      if (!disposed) map.resize();
+    };
+
+    const resizeObserver = new ResizeObserver(() => resizeMap());
+    resizeObserver.observe(container);
+    window.addEventListener("resize", resizeMap);
+
+    const onMapLoad = () => {
+      resizeMap();
+      addBoundaryLayer(map);
+
+      const draw = new MapboxDraw({
+        displayControlsDefault: false,
+        controls: {
+          polygon: true,
+          trash: true,
+        },
+        defaultMode: "draw_polygon",
+        styles: [...MAPLIBRE_DRAW_STYLES],
+      });
+
+      map.addControl(draw as unknown as maplibregl.IControl, "top-left");
+      drawRef.current = draw;
+
+      const update = () => {
+        const collection = draw.getAll();
+        const feature = collection.features.find((f) => f.geometry?.type === "Polygon");
+        if (feature && feature.geometry.type === "Polygon") {
+          onPolygonChange({
+            type: "Polygon",
+            coordinates: feature.geometry.coordinates as number[][][],
+          });
+        } else {
+          onPolygonChange(null);
+        }
+      };
+
+      map.on("draw.create", update);
+      map.on("draw.update", update);
+      map.on("draw.delete", () => onPolygonChange(null));
+    };
+
+    map.on("load", onMapLoad);
+    mapRef.current = map;
+    requestAnimationFrame(resizeMap);
+
+    return () => {
+      disposed = true;
+      resizeObserver.disconnect();
+      window.removeEventListener("resize", resizeMap);
+      drawRef.current = null;
+      mapRef.current = null;
+      map.remove();
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  return (
+    <div
+      className="relative rounded-xl overflow-hidden border border-outline-variant/30 bg-surface-container-low w-full"
+      style={{ height }}
+    >
+      <div ref={mapContainerRef} className="h-full w-full" />
     </div>
   );
 }

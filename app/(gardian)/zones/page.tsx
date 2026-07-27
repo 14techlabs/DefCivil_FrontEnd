@@ -1,9 +1,11 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
+import { useRouter } from "next/navigation";
 import { Btn, Chip, Icon, MetaTag, Tab } from "@/app/components/Primitives";
 import { api } from "@/app/services/Api";
 import { useAppNavigation } from "@/app/lib/useAppNavigation";
+import { CreateZoneModal } from "@/app/components/CreateZoneModal";
 
 interface Zona {
   id: number;
@@ -26,12 +28,15 @@ const TIPO_LABEL: Record<string, string> = {
 
 export default function ZonesPage() {
   const { openZone } = useAppNavigation();
+  const router = useRouter();
   const [zonas, setZonas] = useState<Zona[]>([]);
   const [loading, setLoading] = useState(true);
   const [filter, setFilter] = useState("todas");
+  const [showCreateModal, setShowCreateModal] = useState(false);
 
-  useEffect(() => {
+  const fetchZonas = useCallback(() => {
     let cancelled = false;
+    setLoading(true);
     api
       .get<{ zonas: Zona[] }>("/zonas/")
       .then((res) => {
@@ -47,6 +52,10 @@ export default function ZonesPage() {
       cancelled = true;
     };
   }, []);
+
+  useEffect(() => {
+    fetchZonas();
+  }, [fetchZonas]);
 
   const filtered = zonas.filter((z) => {
     if (filter === "todas") return true;
@@ -98,7 +107,7 @@ export default function ZonesPage() {
             <Btn variant="secondary" icon="filter_list">
               Filtros Avançados
             </Btn>
-            <Btn variant="primary" icon="add">
+            <Btn variant="primary" icon="add" onClick={() => setShowCreateModal(true)}>
               Nova Zona
             </Btn>
           </div>
@@ -188,6 +197,16 @@ export default function ZonesPage() {
           <p className="text-sm text-on-surface-variant">Nenhuma zona encontrada para este filtro.</p>
         </div>
       )}
+
+      <CreateZoneModal
+        open={showCreateModal}
+        onClose={() => setShowCreateModal(false)}
+        onCreated={(zoneId) => {
+          setShowCreateModal(false);
+          fetchZonas();
+          router.push(`/zonedetail?zone=${zoneId}`);
+        }}
+      />
     </div>
   );
 }
