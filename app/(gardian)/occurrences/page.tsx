@@ -1,8 +1,9 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { Btn, Chip, Icon, MetaTag, Tab } from "@/app/components/Primitives";
 import { api } from "@/app/services/Api";
+import { CreateOccurrenceModal } from "@/app/components/CreateOccurrenceModal";
 
 // --- tipos da resposta da api ---
 
@@ -113,55 +114,49 @@ export default function OccurrencesPage() {
   // estado da ui
   const [filter, setFilter] = useState("todas");
   const [selected, setSelected] = useState<number | null>(null);
+  const [showCreateModal, setShowCreateModal] = useState(false);
 
-  // busca ocorrencias + zonas + usuarios
-  useEffect(() => {
-    let cancelled = false;
+  const fetchData = useCallback(async () => {
+    setLoading(true);
+    try {
+      const [occRes, zonRes, usuRes] = await Promise.all([
+        api.get<OcorrenciaListResponse>("/ocorrencias/"),
+        api.get<ZonaListResponse>("/zonas/"),
+        api.get<UsuarioInfo[]>("/usuarios/"),
+      ]);
 
-    const fetchAll = async () => {
-      try {
-        const [occRes, zonRes, usuRes] = await Promise.all([
-          api.get<OcorrenciaListResponse>("/ocorrencias/"),
-          api.get<ZonaListResponse>("/zonas/"),
-          api.get<UsuarioInfo[]>("/usuarios/"),
-        ]);
+      const lista = occRes.data.ocorrencias;
+      setOcorrencias(lista);
+      if (lista.length > 0) setSelected(lista[0].id);
 
-        if (cancelled) return;
-
-        const lista = occRes.data.ocorrencias;
-        setOcorrencias(lista);
-        if (lista.length > 0) setSelected(lista[0].id);
-
-        // lookup de zonas
-        const zLookup = new Map<number, string>();
-        for (const z of zonRes.data.zonas) {
-          zLookup.set(z.id, z.nome);
-        }
-        setZonaLookup(zLookup);
-
-        // lookup de usuarios
-        const uLookup = new Map<number, string>();
-        for (const u of usuRes.data) {
-          const nome =
-            u.user_sys?.username ??
-            u.nome_anonimo ??
-            u.telefone ??
-            `Usuário #${u.id}`;
-          uLookup.set(u.id, nome);
-        }
-        setUsuarioLookup(uLookup);
-      } catch {
-        // falha silenciosa — estado vazio será exibido
-      } finally {
-        if (!cancelled) setLoading(false);
+      // lookup de zonas
+      const zLookup = new Map<number, string>();
+      for (const z of zonRes.data.zonas) {
+        zLookup.set(z.id, z.nome);
       }
-    };
+      setZonaLookup(zLookup);
 
-    fetchAll();
-    return () => {
-      cancelled = true;
-    };
+      // lookup de usuarios
+      const uLookup = new Map<number, string>();
+      for (const u of usuRes.data) {
+        const nome =
+          u.user_sys?.username ??
+          u.nome_anonimo ??
+          u.telefone ??
+          `Usuário #${u.id}`;
+        uLookup.set(u.id, nome);
+      }
+      setUsuarioLookup(uLookup);
+    } catch {
+      // falha silenciosa — estado vazio será exibido
+    } finally {
+      setLoading(false);
+    }
   }, []);
+
+  useEffect(() => {
+    fetchData();
+  }, [fetchData]);
 
   // agrupa categorias disponiveis a partir dos dados reais
   const categoriasDisponiveis = useMemo(() => {
@@ -236,8 +231,8 @@ export default function OccurrencesPage() {
             </p>
           </div>
           <div className="flex gap-3">
-            <Btn variant="secondary" icon="filter_list">
-              Filtros
+            <Btn variant="primary" icon="add" onClick={() => setShowCreateModal(true)}>
+              Nova Ocorrência
             </Btn>
           </div>
         </div>
@@ -496,6 +491,16 @@ export default function OccurrencesPage() {
           )}
         </div>
       )}
+
+      <CreateOccurrenceModal
+        open={showCreateModal}
+        onClose={() => setShowCreateModal(false)}
+        onCreated={() => {
+          setShowCreateModal(false);
+          fetchData();
+        }}
+        zonas={Array.from(zonaLookup.entries()).map(([id, nome]) => ({ id, nome }))}
+      />
     </div>
   );
 }
