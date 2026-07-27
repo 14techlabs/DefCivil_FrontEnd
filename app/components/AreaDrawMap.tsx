@@ -457,7 +457,19 @@ export function DrawOnlyMap({ height = 420, onPolygonChange }: DrawOnlyMapProps)
         }
       };
 
-      map.on("draw.create", update);
+      map.on("draw.create", (e) => {
+        // remove polígonos antigos, mantém só o que acabou de ser desenhado
+        const all = draw.getAll().features;
+        const polys = all.filter((f) => f.geometry?.type === "Polygon");
+        if (polys.length > 1) {
+          const toRemove = polys
+            .filter((f) => f.id !== e.features[0]?.id)
+            .map((f) => f.id)
+            .filter(Boolean) as string[];
+          if (toRemove.length > 0) draw.delete(toRemove);
+        }
+        update();
+      });
       map.on("draw.update", update);
       map.on("draw.delete", () => onPolygonChange(null));
     };
