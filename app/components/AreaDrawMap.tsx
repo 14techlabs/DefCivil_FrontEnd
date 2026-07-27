@@ -378,15 +378,23 @@ export function AreaDrawMap({ height = 420 }: { height?: number }) {
 
 /* ────────────── DrawOnlyMap (reutilizável, sem load/save) ────────────── */
 
+interface NeighborZone {
+  id: number;
+  nome: string;
+  area: GeoJSON.Polygon;
+}
+
 interface DrawOnlyMapProps {
   height?: number;
   onPolygonChange: (polygon: PolygonGeometry | null) => void;
+  neighborZones?: NeighborZone[];
 }
 
-export function DrawOnlyMap({ height = 420, onPolygonChange }: DrawOnlyMapProps) {
+export function DrawOnlyMap({ height = 420, onPolygonChange, neighborZones }: DrawOnlyMapProps) {
   const mapContainerRef = useRef<HTMLDivElement>(null);
   const mapRef = useRef<maplibregl.Map | null>(null);
   const drawRef = useRef<MapboxDraw | null>(null);
+  const autoFitDone = useRef(false);
 
   const patchDrawForMapLibreHere = () => {
     const classes = MapboxDraw.constants.classes as Record<string, string>;
@@ -488,6 +496,126 @@ export function DrawOnlyMap({ height = 420, onPolygonChange }: DrawOnlyMapProps)
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
+
+  /* renderizar zonas vizinhas (cinza) quando neighborZones mudar */
+  useEffect(() => {
+    const map = mapRef.current;
+    if (!map || !neighborZones || neighborZones.length === 0) return;
+
+    const apply = () => {
+      const NEIGHBOR_SOURCE = "neighbor-zones";
+      const NEIGHBOR_FILL = "neighbor-zones-fill";
+      const NEIGHBOR_LINE = "neighbor-zones-line";
+      const NEIGHBOR_LABEL = "neighbor-zones-label";
+
+      // limpar layers anteriores
+      for (const id of [NEIGHBOR_LABEL, NEIGHBOR_LINE, NEIGHBOR_FILL]) {
+        try { if (map.getLayer(id)) map.removeLayer(id); } catch { /* ok */ }
+      }
+      try { if (map.getSource(NEIGHBOR_SOURCE)) map.removeSource(NEIGHBOR_SOURCE); } catch { /* ok */ }
+
+      const features: GeoJSON.Feature<GeoJSON.Polygon>[] = [];
+      const centroids: GeoJSON.Feature<GeoJSON.Point>[] = [];
+
+      for (const z of neighborZones) {
+        const ring = z.area.coordinates[0];
+        const isDeg = ring.every((c, i) => i === 0 || (c[0] === ring[0][0] && c[1] === ring[0][1]));
+        if (isDeg) continue;
+
+        features.push({
+          type: "Feature",
+          properties: { nome: z.nome },
+          geometry: z.area,
+        });
+
+        const cx = ring.reduce((s, c) => s + c[0], 0) / ring.length;
+        const cy = ring.reduce((s, c) => s + c[1], 0) / ring.length;
+        centroids.push({
+          type: "Feature",
+          properties: { nome: z.nome },
+          geometry: { type: "Point", coordinates: [cx, cy] },
+        });
+      }
+
+      if (features.length === 0) return;
+
+      map.addSource(NEIGHBOR_SOURCE, {
+        type: "geojson",
+        data: { type: "FeatureCollection", features },
+      });
+
+      map.addLayer({
+        id: NEIGHBOR_FILL,
+        type: "fill",
+        source: NEIGHBOR_SOURCE,
+        paint: { "fill-color": "#888", "fill-opacity": 0.15 },
+      });
+
+      map.addLayer({
+        id: NEIGHBOR_LINE,
+        type: "line",
+        source: NEIGHBOR_SOURCE,
+        paint: { "line-color": "#888", "line-width": 1.5, "line-dasharray": [3, 2] },
+      });
+
+      if (centroids.length > 0) {
+        try { if (map.getSource("neighbor-centroids")) map.removeSource("neighbor-centroids"); } catch { /* ok */ }
+
+        map.addSource("neighbor-centroids", {
+          type: "geojson",
+          data: { type: "FeatureCollection", features: centroids },
+        });
+
+        map.addLayer({
+          id: NEIGHBOR_LABEL,
+          type: "symbol",
+          source: "neighbor-centroids",
+          layout: {
+            "text-field": ["get", "nome"],
+            "text-size": 10,
+            "text-offset": [0, -0.5],
+            "text-anchor": "bottom",
+            "text-font": ["Open Sans Bold", "Arial Unicode MS Bold"],
+          },
+          paint: {
+            "text-color": "#666",
+            "text-halo-color": "#fff",
+            "text-halo-width": 1.5,
+          },
+        });
+      }
+
+      // dar zoom para caber todas as zonas (só na primeira vez)
+      if (!autoFitDone.current) {
+        autoFitDone.current = true;
+        const bounds = features.reduce((b, f) => {
+          const coords = f.geometry.coordinates[0];
+          const lons = coords.map((c) => c[0]);
+          const lats = coords.map((c) => c[1]);
+          const fb = new maplibregl.LngLatBounds(
+            [Math.min(...lons), Math.min(...lats)],
+            [Math.max(...lons), Math.max(...lats)],
+          );
+          return b ? b.extend(fb) : fb;
+        }, null as maplibregl.LngLatBounds | null);
+
+        if (bounds) {
+          map.fitBounds(bounds, { padding: 60, maxZoom: 14, duration: 600 });
+        }
+      }
+    };
+
+    if (map.isStyleLoaded()) apply();
+    else map.once("style.load", apply);
+
+    return () => {
+      for (const id of ["neighbor-zones-label", "neighbor-zones-line", "neighbor-zones-fill"]) {
+        try { if (map.getLayer(id)) map.removeLayer(id); } catch { /* ok */ }
+      }
+      try { if (map.getSource("neighbor-zones")) map.removeSource("neighbor-zones"); } catch { /* ok */ }
+      try { if (map.getSource("neighbor-centroids")) map.removeSource("neighbor-centroids"); } catch { /* ok */ }
+    };
+  }, [neighborZones]);
 
   return (
     <div

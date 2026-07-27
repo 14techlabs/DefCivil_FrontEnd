@@ -46,6 +46,9 @@ export function CreateZoneModal({ open, onClose, onCreated }: CreateZoneModalPro
   // formulario - passo 1, polígono
   const [polygon, setPolygon] = useState<PolygonGeometry | null>(null);
 
+  // zonas vizinhas para exibir no mapa (cinza)
+  const [neighborZones, setNeighborZones] = useState<{ id: number; nome: string; area: GeoJSON.Polygon }[]>([]);
+
   // shared state
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState("");
@@ -59,6 +62,7 @@ export function CreateZoneModal({ open, onClose, onCreated }: CreateZoneModalPro
       setStatus("estavel");
       setDescricao("");
       setPolygon(null);
+      setNeighborZones([]);
       setSaving(false);
       setError("");
     }
@@ -75,6 +79,17 @@ export function CreateZoneModal({ open, onClose, onCreated }: CreateZoneModalPro
     }
     setError("");
     setStep(1);
+    // busca zonas existentes para mostrar como referência no mapa
+    api.get<{ zonas: { id: number; nome: string; area: GeoJSON.Polygon | null }[] }>("/zonas/")
+      .then((res) => {
+        const validas = res.data.zonas.filter((z): z is { id: number; nome: string; area: GeoJSON.Polygon } =>
+          z.area !== null && z.area.type === "Polygon" && z.area.coordinates?.length > 0
+        );
+        setNeighborZones(validas);
+      })
+      .catch(() => {
+        // falha silenciosa — o mapa só não mostra as referências
+      });
   };
 
   /* envio */
@@ -229,6 +244,7 @@ export function CreateZoneModal({ open, onClose, onCreated }: CreateZoneModalPro
             <DrawOnlyMap
               height={420}
               onPolygonChange={setPolygon}
+              neighborZones={neighborZones}
             />
 
             {/* indicador "poligono definido" */}
