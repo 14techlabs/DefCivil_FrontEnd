@@ -88,6 +88,7 @@ export function DashboardMap({
   const layersInitialized = useRef(false);
   const hoveredIdRef = useRef<number | string | null>(null);
   const autoFitDone = useRef(false);
+  const cycleRef = useRef({ point: { x: 0, y: 0 }, index: 0, ids: [] as number[] });
 
   /* ── inicializar o mapa (uma vez apenas) ── */
   useEffect(() => {
@@ -383,10 +384,33 @@ export function DashboardMap({
       const features = map.queryRenderedFeatures(e.point, {
         layers: [ZONES_FILL, ZONES_LINE],
       });
-      if (features.length > 0) {
-        const id = features[0].properties?.id;
-        if (id != null) onZoneSelect?.(Number(id));
+
+      // extrair ids únicos (sem duplicatas)
+      const uniqueIds = features
+        .map((f) => f.properties?.id)
+        .filter((id): id is number => id != null)
+        .filter((id, i, arr) => arr.indexOf(id) === i);
+
+      if (uniqueIds.length === 0) return;
+
+      // verificar se é o mesmo ponto (tolerância ~8px para ignorar micro-movimentos)
+      const samePoint =
+        Math.abs(e.point.x - cycleRef.current.point.x) < 8 &&
+        Math.abs(e.point.y - cycleRef.current.point.y) < 8;
+
+      if (samePoint && cycleRef.current.ids.length === uniqueIds.length) {
+        // mesmo local, avançar no cíclico
+        cycleRef.current.index = (cycleRef.current.index + 1) % uniqueIds.length;
+      } else {
+        // local diferente ou lista de ids mudou, começar do primeiro
+        cycleRef.current.index = 0;
       }
+
+      cycleRef.current.point = { x: e.point.x, y: e.point.y };
+      cycleRef.current.ids = uniqueIds;
+
+      const selectedId = uniqueIds[cycleRef.current.index];
+      onZoneSelect?.(selectedId);
     };
 
     map.on("click", ZONES_FILL, handleClick);
