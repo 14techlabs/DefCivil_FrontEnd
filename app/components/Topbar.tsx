@@ -7,7 +7,8 @@ export function Topbar() {
   const { search, setSearch, alertMode } = useGardian();
 
   return (
-    <header className="sticky top-0 z-30 bg-surface/85 backdrop-blur-xl flex items-center justify-between px-8 h-16">
+    <header className="sticky top-0 z-30 bg-surface/85 backdrop-blur-xl flex items-end justify-end px-8 h-16">
+      {/*
       <div className="flex items-center gap-4 flex-1 max-w-md">
         <div className="relative w-full">
           <Icon
@@ -18,10 +19,11 @@ export function Topbar() {
             value={search}
             onChange={(e) => setSearch(e.target.value)}
             className="w-full bg-surface-container-low border-none rounded-lg pl-10 pr-4 py-2.5 text-xs font-medium focus:ring-2 focus:ring-secondary transition-all placeholder:text-on-surface-variant/60"
-            placeholder="Pesquisar zona, ocorrência, sensor..."
+            placeholder="Pesquisar zona, ocorrência, sensor...
           />
         </div>
       </div>
+       */ }
       <div className="flex items-center gap-3">
         <div className="flex items-center gap-2 px-3 py-1.5 rounded-full bg-surface-container-low">
           <StatusDot tone={alertMode ? "error" : "secondary"} />
