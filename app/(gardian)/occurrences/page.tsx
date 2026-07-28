@@ -225,10 +225,12 @@ export default function OccurrencesPage() {
             <h1 className="font-headline font-black text-5xl tracking-tighter text-primary">
               Ocorrências em Aberto
             </h1>
+            { /*
             <p className="text-sm text-on-surface-variant mt-2">
               Triagem unificada · Relatos da população, sensores IoT e parceiros
               institucionais
             </p>
+             */ }
           </div>
           <div className="flex gap-3">
             <Btn variant="primary" icon="add" onClick={() => setShowCreateModal(true)}>
