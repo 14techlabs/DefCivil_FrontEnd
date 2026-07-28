@@ -82,11 +82,11 @@ export function Sidebar({
             >
               <Icon name={item.icon} filled={isActive} className="text-[22px]" />
               {item.label}
-              {item.id === "occurrences" && alertMode && (
+              {item.id === "occurrences" && alertMode /*  && (
                 <span className="ml-auto text-[10px] font-black bg-error text-white px-1.5 py-0.5 rounded">
                   5
                 </span>
-              )}
+              ) */}
             </Link>
           );
         })}
