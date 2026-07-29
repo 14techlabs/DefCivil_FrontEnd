@@ -4,6 +4,7 @@ import { MapPlaceholder } from "@/app/components/MapPlaceholder";
 import { Bar, type BarTone, Chip, Icon, MetaTag, SectionHeader } from "@/app/components/Primitives";
 import { useGardian } from "@/app/components/GardianContext";
 import { GARDIAN_DATA } from "@/app/data/gardian";
+import { MOCK_METEO_ORGAOS, MOCK_PLUVIOMETROS, zonaNome } from "@/app/data/mock";
 
 type PrecipLevel = "low" | "medium" | "high";
 
@@ -37,6 +38,12 @@ const PRECIP_STYLES: Record<
   },
 };
 
+/* média / extremos dos pluviômetros — o dado "real" é o acumulado de chuva */
+const REAL_MEDIO =
+  MOCK_PLUVIOMETROS.reduce((a, p) => a + p.mm24h, 0) / MOCK_PLUVIOMETROS.length;
+const REAL_MAX = Math.max(...MOCK_PLUVIOMETROS.map((p) => p.mm24h));
+const REAL_MIN = Math.min(...MOCK_PLUVIOMETROS.map((p) => p.mm24h));
+
 export default function WeatherPage() {
   const { alertMode } = useGardian();
   const W = GARDIAN_DATA.WEATHER;
@@ -50,6 +57,129 @@ export default function WeatherPage() {
         </div>
         <h1 className="font-headline font-black text-5xl tracking-tighter text-primary">Vigilância Meteorológica</h1>
       </header>
+
+      {/* ── Fontes oficiais: INMET · CPTEC · CEMADEN ── */}
+      <section className="card-tonal p-8 shadow-ambient-sm">
+        <SectionHeader
+          overline="FONTES OFICIAIS · PRÓXIMAS 24H"
+          title="INMET · CPTEC · CEMADEN"
+          action={
+            <Chip tone="primarySoft" icon="hub">
+              3 ÓRGÃOS COMPARADOS
+            </Chip>
+          }
+        />
+
+        <div className="grid grid-cols-1 lg:grid-cols-3 gap-5">
+          {MOCK_METEO_ORGAOS.map((o) => (
+            <div key={o.id} className="card-recessed p-6">
+              {/* identificação da fonte */}
+              <div className="flex items-start justify-between mb-1">
+                <h3 className="font-headline font-black text-xl text-primary tracking-tighter">
+                  {o.nome}
+                </h3>
+                <MetaTag>{o.atualizado}</MetaTag>
+              </div>
+              <p className="text-[10px] text-on-surface-variant mb-5">{o.fonte}</p>
+
+              {/* previsão */}
+              <div className="flex items-center gap-3 p-4 rounded-lg bg-white mb-4">
+                <div className="w-11 h-11 rounded-lg bg-secondary/10 flex items-center justify-center shrink-0">
+                  <Icon name={o.icone} filled className="text-secondary text-[24px]" />
+                </div>
+                <div className="min-w-0">
+                  <MetaTag className="block">PREVISÃO</MetaTag>
+                  <p className="text-[13px] font-black text-primary leading-tight">{o.previsao}</p>
+                  <p className="text-[10px] text-on-surface-variant mt-0.5">
+                    {o.tempMin}° a {o.tempMax}°C
+                  </p>
+                </div>
+              </div>
+
+              {/* chance de chuva */}
+              <div className="mb-4">
+                <div className="flex items-center justify-between mb-1.5">
+                  <MetaTag>CHANCE DE CHUVA</MetaTag>
+                  <span className="text-[13px] font-black text-primary">{o.chanceChuva}%</span>
+                </div>
+                <Bar
+                  value={o.chanceChuva}
+                  tone={o.chanceChuva >= 80 ? "error" : o.chanceChuva >= 50 ? "warning" : "secondary"}
+                />
+              </div>
+
+              {/* precipitação · umidade · vento */}
+              <div className="grid grid-cols-3 gap-2">
+                <div className="p-3 rounded-lg bg-white text-center">
+                  <Icon name="rainy" className="text-error text-[18px]" />
+                  <p className="font-headline font-black text-lg text-primary tracking-tighter mt-1">
+                    {o.precipitacao}
+                  </p>
+                  <MetaTag className="block">MM PRECIP.</MetaTag>
+                </div>
+                <div className="p-3 rounded-lg bg-white text-center">
+                  <Icon name="humidity_mid" className="text-secondary text-[18px]" />
+                  <p className="font-headline font-black text-lg text-primary tracking-tighter mt-1">
+                    {o.umidade}%
+                  </p>
+                  <MetaTag className="block">UMIDADE</MetaTag>
+                </div>
+                <div className="p-3 rounded-lg bg-white text-center">
+                  <Icon name="air" className="text-orange-500 text-[18px]" />
+                  <p className="font-headline font-black text-lg text-primary tracking-tighter mt-1">
+                    {o.vento}
+                  </p>
+                  <MetaTag className="block">KM/H {o.ventoDir}</MetaTag>
+                </div>
+              </div>
+            </div>
+          ))}
+        </div>
+
+        {/* chuva acumulada real medida em campo */}
+        <div className="mt-5 rounded-xl p-6 bg-gradient-to-br from-primary to-primary-container text-white relative overflow-hidden">
+          <div className="absolute -top-6 -right-4 opacity-[0.07]">
+            <Icon name="rainy" filled className="text-[160px]" />
+          </div>
+          <div className="relative flex flex-wrap items-end justify-between gap-6">
+            <div>
+              <span className="text-[10px] font-mono tracking-mono uppercase font-bold text-white/60">
+                CHUVA ACUMULADA REAL · MÉDIA DE {MOCK_PLUVIOMETROS.length} SENSORES
+              </span>
+              <p className="text-[10px] text-white/60 mb-3">
+                Único dado medido em campo — pluviômetros do CEMADEN
+              </p>
+              <div className="flex items-baseline gap-2">
+                <span className="font-headline font-black text-5xl tracking-tighter">
+                  {REAL_MEDIO.toFixed(1).replace(".", ",")}
+                </span>
+                <span className="text-sm font-bold text-white/50">mm/24h</span>
+              </div>
+            </div>
+
+            <div className="flex flex-wrap gap-2">
+              <span className="px-3 py-2 rounded-lg bg-white/15 text-[10px] font-bold uppercase tracking-mono-tight">
+                MÁX {REAL_MAX.toFixed(1).replace(".", ",")}mm
+              </span>
+              <span className="px-3 py-2 rounded-lg bg-white/15 text-[10px] font-bold uppercase tracking-mono-tight">
+                MÍN {REAL_MIN.toFixed(1).replace(".", ",")}mm
+              </span>
+              {MOCK_METEO_ORGAOS.map((o) => {
+                const desvio = o.precipitacao - REAL_MEDIO;
+                return (
+                  <span
+                    key={o.id}
+                    className="px-3 py-2 rounded-lg bg-white/10 text-[10px] font-bold uppercase tracking-mono-tight"
+                  >
+                    {o.nome}: {desvio > 0 ? "+" : ""}
+                    {desvio.toFixed(1).replace(".", ",")}mm
+                  </span>
+                );
+              })}
+            </div>
+          </div>
+        </div>
+      </section>
 
       <div className="grid grid-cols-12 gap-5">
         {/* Hero */}
@@ -182,6 +312,56 @@ export default function WeatherPage() {
           </div>
         </div>
       </div>
+
+      {/* ── Pluviômetros CEMADEN (dados reais coletados) ── */}
+      <section className="card-tonal p-8 shadow-ambient-sm">
+        <SectionHeader
+          overline="PAINEL INTERATIVO DO CEMADEN · COLETA AUTOMÁTICA"
+          title="Pluviômetros em Campo"
+          action={<Chip tone="secondary" icon="sensors">{MOCK_PLUVIOMETROS.length} ESTAÇÕES</Chip>}
+        />
+        <div className="overflow-x-auto">
+          <table className="w-full text-left">
+            <thead>
+              <tr className="border-b border-outline-variant/30">
+                <th className="py-3 pr-4"><MetaTag>ESTAÇÃO</MetaTag></th>
+                <th className="py-3 pr-4"><MetaTag>ZONA</MetaTag></th>
+                <th className="py-3 pr-4 text-right"><MetaTag>1H</MetaTag></th>
+                <th className="py-3 pr-4 text-right"><MetaTag>6H</MetaTag></th>
+                <th className="py-3 pr-4 text-right"><MetaTag>12H</MetaTag></th>
+                <th className="py-3 pr-4 text-right"><MetaTag>24H</MetaTag></th>
+                <th className="py-3 pr-4"><MetaTag>LEITURA</MetaTag></th>
+                <th className="py-3"><MetaTag>STATUS</MetaTag></th>
+              </tr>
+            </thead>
+            <tbody>
+              {MOCK_PLUVIOMETROS.map((p) => (
+                <tr key={p.codigo} className="border-b border-outline-variant/15 hover:bg-surface-container-low transition-colors">
+                  <td className="py-3.5 pr-4">
+                    <p className="text-[13px] font-bold text-primary">{p.nome}</p>
+                    <p className="text-[10px] font-mono font-bold text-slate-400">{p.codigo}</p>
+                  </td>
+                  <td className="py-3.5 pr-4 text-[12px] text-on-surface-variant">{zonaNome(p.zona)}</td>
+                  <td className="py-3.5 pr-4 text-[12px] font-mono font-bold text-on-surface text-right">{p.mm1h.toFixed(1)}</td>
+                  <td className="py-3.5 pr-4 text-[12px] font-mono font-bold text-on-surface text-right">{p.mm6h.toFixed(1)}</td>
+                  <td className="py-3.5 pr-4 text-[12px] font-mono font-black text-primary text-right">{p.mm12h.toFixed(1)}</td>
+                  <td className="py-3.5 pr-4 text-[12px] font-mono font-black text-primary text-right">{p.mm24h.toFixed(1)}</td>
+                  <td className="py-3.5 pr-4 text-[11px] font-mono font-bold text-slate-400">{p.ultimaLeitura}</td>
+                  <td className="py-3.5">
+                    <Chip tone={p.status === "critico" ? "error" : p.status === "atencao" ? "warning" : "secondary"}>
+                      {p.status === "critico" ? "Crítico" : p.status === "atencao" ? "Atenção" : "Normal"}
+                    </Chip>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+        <p className="text-[11px] text-on-surface-variant mt-5 flex items-center gap-1.5">
+          <Icon name="info" className="text-[14px]" />
+          Valores em milímetros acumulados, coletados do painel interativo do CEMADEN.
+        </p>
+      </section>
     </div>
   );
 }

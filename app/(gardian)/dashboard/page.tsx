@@ -14,6 +14,14 @@ import {
 import { useGardian } from "@/app/components/GardianContext";
 import { useAppNavigation } from "@/app/lib/useAppNavigation";
 import { api } from "@/app/services/Api";
+import {
+  MOCK_ZONAS,
+  MOCK_POSSIVEIS_EVENTOS,
+  MOCK_OCORRENCIAS,
+  MOCK_CIDADAOS_CONECTADOS,
+  MOCK_AI_REPORT,
+  zonaNome,
+} from "@/app/data/mock";
 
 // --- tipos da resposta da api ---
 
@@ -77,6 +85,13 @@ const STATUS_LABEL: Record<string, string> = {
   estavel: "Estável",
 };
 
+// cards exibidos no resumo do painel geral
+const RESUMO_CARDS = [
+  "Ocorrências ativas",
+  "Acumulado Máx. 12h",
+  "Similaridade Histórico",
+];
+
 const TIPO_LABEL: Record<string, string> = {
   urbana: "Urbana",
   rural: "Rural",
@@ -112,7 +127,22 @@ export default function DashboardPage() {
         setDashboardData(geralRes.data);
         setTotalOcorrencias(monRes.data["total ocorrencias"]);
       } catch {
-        // erro de rede ou api, mostrar só no console por enquanto
+        // api indisponível — usa base mockada enquanto não está integrado
+        if (cancelled) return;
+        setDashboardData({
+          zonas: MOCK_ZONAS,
+          alertas: MOCK_POSSIVEIS_EVENTOS.map((p) => ({
+            id: p.id,
+            titulo: p.titulo,
+            resumo: `${p.base[0]} · Janela: ${p.janela}`,
+            confianca: p.confianca,
+            aprovado: p.status === "aprovado" ? true : p.status === "descartado" ? false : null,
+          })),
+          indicadores_climaticos: { metereologia: null, geologia: null },
+        });
+        setTotalOcorrencias(
+          MOCK_OCORRENCIAS.filter((o) => o.status !== "concluido").length,
+        );
       } finally {
         if (!cancelled) setLoading(false);
       }
@@ -146,7 +176,9 @@ export default function DashboardPage() {
     () =>
       alertas
         .filter((a) => a.aprovado)
-        .sort((a, b) => b.confianca - a.confianca)[0] ?? null,
+        .sort((a, b) => b.confianca - a.confianca)[0] ??
+      [...alertas].sort((a, b) => b.confianca - a.confianca)[0] ??
+      null,
     [alertas],
   );
 
@@ -212,6 +244,13 @@ export default function DashboardPage() {
           </div>
           <div className="flex gap-3">
             <Btn
+              variant="secondary"
+              icon="psychology"
+              onClick={() => go("ai-report")}
+            >
+              Relatório de IA
+            </Btn>
+            <Btn
               variant="primary"
               icon="play_circle"
               onClick={() => go("monitoring")}
@@ -246,15 +285,11 @@ export default function DashboardPage() {
           sub="Validadas · Não concluídas"
         />
         <KPI
-          label="Alertas"
-          value={alertas.length}
-          icon="notifications"
-          tone={alertas.length > 0 ? "warning" : "secondary"}
-          sub={
-            featuredAlerta
-              ? `Maior: ${featuredAlerta.confianca}% confiança`
-              : "Nenhum ativo"
-          }
+          label="Cidadãos Conectados"
+          value={MOCK_CIDADAOS_CONECTADOS.toLocaleString("pt-BR")}
+          icon="groups"
+          tone="secondary"
+          sub="Acessando o canal público agora"
         />
       </div>
 
@@ -336,6 +371,59 @@ export default function DashboardPage() {
           </div>
         </div>
       )}
+
+      {/* Grande Relatório de IA (resumo) */}
+      <section className="card-tonal p-7 shadow-ambient-sm">
+        <SectionHeader
+          overline={`RELATÓRIO GERAL · ${MOCK_AI_REPORT.versao}`}
+          title="Resumo"
+          action={
+            <Btn variant="primary" icon="arrow_forward" onClick={() => go("ai-report")}>
+              Abrir relatório
+            </Btn>
+          }
+        />
+        <p className="text-[13px] text-on-surface leading-relaxed max-w-4xl mb-6">
+          {MOCK_AI_REPORT.resumo}
+        </p>
+
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-3 mb-6">
+          {MOCK_AI_REPORT.estatisticas
+            .filter((e) => RESUMO_CARDS.includes(e.label))
+            .map((e, i) => (
+              <div key={i} className="card-recessed p-5">
+                <MetaTag className="block mb-2">{e.label}</MetaTag>
+                <p className="font-headline font-black text-3xl text-primary tracking-tighter">{e.valor}</p>
+                <p className="text-[10px] font-bold text-on-surface-variant uppercase tracking-mono-tight mt-1">{e.sub}</p>
+              </div>
+            ))}
+        </div>
+
+        <MetaTag className="block mb-3">POSSÍVEIS EVENTOS · APROVAR CONVERTE EM OCORRÊNCIA</MetaTag>
+        <div className="grid grid-cols-1 lg:grid-cols-3 gap-3">
+          {MOCK_POSSIVEIS_EVENTOS.map((p) => (
+            <button
+              key={p.id}
+              type="button"
+              onClick={() => go("ai-report")}
+              className="card-recessed p-4 text-left hover:shadow-ambient-sm transition-all"
+            >
+              <div className="flex items-center justify-between mb-2">
+                <Chip tone={p.confianca >= 85 ? "error" : "warning"}>
+                  {p.confianca.toFixed(1).replace(".", ",")}% CONFIANÇA
+                </Chip>
+                <MetaTag>{p.janela}</MetaTag>
+              </div>
+              <p className="text-[13px] font-bold text-primary leading-snug">{p.titulo}</p>
+              <p className="text-[11px] text-on-surface-variant mt-1">{zonaNome(p.zona)}</p>
+              <p className="text-[11px] text-on-surface-variant mt-2 flex items-start gap-1.5">
+                <Icon name="database" className="text-[14px] mt-0.5 shrink-0" />
+                {p.base[0]}
+              </p>
+            </button>
+          ))}
+        </div>
+      </section>
 
       {/* Mapa interativo + painel de zona */}
       <div className="grid grid-cols-12 gap-5 items-stretch">
@@ -445,12 +533,12 @@ export default function DashboardPage() {
                     value: String(totalOcorrencias),
                   },
                   {
-                    icon: "notifications",
+                    icon: "groups",
                     iconColor: "text-violet-700",
                     iconBg: "bg-violet-100",
-                    label: "Alertas",
-                    sub: "Alertas registrados no sistema",
-                    value: String(alertas.length),
+                    label: "Cidadãos Conectados",
+                    sub: "Pessoas usando o canal público",
+                    value: MOCK_CIDADAOS_CONECTADOS.toLocaleString("pt-BR"),
                   },
                 ].map((s, i) => (
                   <div

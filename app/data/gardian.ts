@@ -335,11 +335,18 @@ const WEATHER = {
 
 const NAV = [
   { id: "dashboard", label: "Painel Geral", icon: "dashboard" },
+  { id: "cupula", label: "Cúpula", icon: "cupula" },
   { id: "monitoring", label: "Monitoramento", icon: "stat_2" },
   { id: "geology", label: "Geologia", icon: "terrain" },
   { id: "weather", label: "Meteorologia", icon: "cloudy_snowing" },
   { id: "occurrences", label: "Ocorrências", icon: "emergency" },
   { id: "zones", label: "Zonas", icon: "hub" },
+  { id: "events", label: "Eventos", icon: "cyclone" },
+  { id: "damages", label: "Danos", icon: "payments" },
+  { id: "families", label: "Famílias", icon: "family_restroom" },
+  { id: "team", label: "Equipe", icon: "groups" },
+  { id: "history", label: "Histórico", icon: "history" },
+  { id: "profile", label: "Meu Perfil", icon: "badge" },
 ];
 
 const CATEGORIES = [

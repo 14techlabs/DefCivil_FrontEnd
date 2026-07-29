@@ -5,6 +5,7 @@ import Link from "next/link";
 import { GARDIAN_DATA } from "@/app/data/gardian";
 import { SCREEN_ROUTES } from "@/app/lib/navigation";
 import { Icon } from "./Primitives";
+import { CupulaIcon } from "./CupulaIcon";
 import { useGardian } from "./GardianContext";
 
 export function Sidebar({
@@ -58,7 +59,7 @@ export function Sidebar({
         </div>
       </div>
 
-      <nav className="flex-1 flex flex-col gap-1 pr-4">
+      <nav className="flex-1 min-h-0 overflow-y-auto flex flex-col gap-1 pr-4">
         {GARDIAN_DATA.NAV.map((item) => {
           const isActive = active === item.id;
           const href = SCREEN_ROUTES[item.id] ?? "/dashboard";
@@ -80,7 +81,11 @@ export function Sidebar({
                   : undefined
               }
             >
-              <Icon name={item.icon} filled={isActive} className="text-[22px]" />
+              {item.icon === "cupula" ? (
+                <CupulaIcon size={22} active={isActive} className="shrink-0" />
+              ) : (
+                <Icon name={item.icon} filled={isActive} className="text-[22px]" />
+              )}
               {item.label}
               {item.id === "occurrences" && alertMode /*  && (
                 <span className="ml-auto text-[10px] font-black bg-error text-white px-1.5 py-0.5 rounded">

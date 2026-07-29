@@ -2,9 +2,10 @@
 
 import { useMemo, useState } from "react";
 import { MapPlaceholder } from "@/app/components/MapPlaceholder";
-import { Btn, Icon, MetaTag, SectionHeader } from "@/app/components/Primitives";
+import { Btn, Chip, Icon, MetaTag, SectionHeader } from "@/app/components/Primitives";
 import { useGardian } from "@/app/components/GardianContext";
 import { ADAPTABRASIL } from "@/app/data/adaptabrasil";
+import { MOCK_GEOLOGIA_ZONAS, MOCK_ZONAS, type GeologiaZona } from "@/app/data/mock";
 
 type GeoNode = {
   id: string;
@@ -87,9 +88,52 @@ function LevelLegend() {
 }
 
 export default function GeologyPage() {
-  const { alertMode } = useGardian();
+
   const TYPES = ADAPTABRASIL.TYPES;
   const GEO = ADAPTABRASIL.GEO as Record<string, GeoNode>;
+
+  const { showToast, alertMode } = useGardian();
+
+  // geologia cadastrada por zona (mock local)
+  const [geologias, setGeologias] = useState<GeologiaZona[]>(MOCK_GEOLOGIA_ZONAS);
+  const [editZona, setEditZona] = useState<number | null>(null);
+  const [form, setForm] = useState<Omit<GeologiaZona, "zona">>({
+    litologia: "",
+    tipoSolo: "",
+    declividade: "",
+    suscetibilidade: "media",
+    observacoes: "",
+  });
+
+  const abrirForm = (zonaId: number) => {
+    const existente = geologias.find((g) => g.zona === zonaId);
+    setEditZona(zonaId);
+    setForm(
+      existente
+        ? {
+            litologia: existente.litologia,
+            tipoSolo: existente.tipoSolo,
+            declividade: existente.declividade,
+            suscetibilidade: existente.suscetibilidade,
+            observacoes: existente.observacoes,
+          }
+        : { litologia: "", tipoSolo: "", declividade: "", suscetibilidade: "media", observacoes: "" },
+    );
+  };
+
+  const salvarGeologia = () => {
+    if (editZona == null) return;
+    if (!form.litologia.trim() || !form.tipoSolo.trim()) {
+      showToast("Preencha ao menos litologia e tipo de solo.", "error");
+      return;
+    }
+    setGeologias((prev) => {
+      const outros = prev.filter((g) => g.zona !== editZona);
+      return [...outros, { zona: editZona, ...form }].sort((a, b) => a.zona - b.zona);
+    });
+    showToast("Geologia da zona salva.");
+    setEditZona(null);
+  };
 
   const [selectedType, setSelectedType] = useState("geohidrologicos");
   const [path, setPath] = useState<string[]>(["root"]);
@@ -314,6 +358,150 @@ export default function GeologyPage() {
           </div>
         </div>
       )}
+
+      {/* ── Geologia por Zona ── */}
+      <section className="card-tonal p-7 shadow-ambient-sm">
+        <SectionHeader
+          overline="CADASTRO TERRITORIAL"
+          title="Geologia por Zona"
+          action={
+            <Chip tone="primarySoft" icon="database">
+              {geologias.length}/{MOCK_ZONAS.length} ZONAS CADASTRADAS
+            </Chip>
+          }
+        />
+        <p className="text-[12px] text-on-surface-variant -mt-3 mb-6 max-w-3xl">
+          Registre a caracterização geológica de cada zona. Esses dados alimentam a análise de
+          suscetibilidade usada pela IA nas previsões de deslizamento.
+        </p>
+
+        <div className="space-y-3">
+          {MOCK_ZONAS.map((z) => {
+            const g = geologias.find((x) => x.zona === z.id);
+            const editando = editZona === z.id;
+            return (
+              <div key={z.id} className="card-recessed p-5">
+                <div className="flex items-start justify-between gap-4 flex-wrap">
+                  <div className="min-w-0">
+                    <div className="flex items-center gap-2 flex-wrap">
+                      <h3 className="font-headline font-bold text-[16px] text-primary tracking-tight">
+                        {z.nome}
+                      </h3>
+                      {g ? (
+                        <Chip
+                          tone={
+                            g.suscetibilidade === "alta"
+                              ? "error"
+                              : g.suscetibilidade === "media"
+                                ? "warning"
+                                : "secondary"
+                          }
+                        >
+                          SUSCETIBILIDADE {g.suscetibilidade.toUpperCase()}
+                        </Chip>
+                      ) : (
+                        <Chip tone="neutral">SEM CADASTRO</Chip>
+                      )}
+                    </div>
+                    {g && (
+                      <div className="grid grid-cols-1 md:grid-cols-3 gap-x-8 gap-y-2 mt-3">
+                        <div>
+                          <MetaTag className="block">LITOLOGIA</MetaTag>
+                          <p className="text-[12px] font-bold text-primary">{g.litologia}</p>
+                        </div>
+                        <div>
+                          <MetaTag className="block">TIPO DE SOLO</MetaTag>
+                          <p className="text-[12px] font-bold text-primary">{g.tipoSolo}</p>
+                        </div>
+                        <div>
+                          <MetaTag className="block">DECLIVIDADE</MetaTag>
+                          <p className="text-[12px] font-bold text-primary">{g.declividade}</p>
+                        </div>
+                        {g.observacoes && (
+                          <p className="md:col-span-3 text-[11px] text-on-surface-variant leading-relaxed mt-1">
+                            {g.observacoes}
+                          </p>
+                        )}
+                      </div>
+                    )}
+                  </div>
+                  <Btn
+                    variant={editando ? "ghost" : "secondary"}
+                    icon={editando ? "close" : g ? "edit" : "add"}
+                    onClick={() => (editando ? setEditZona(null) : abrirForm(z.id))}
+                  >
+                    {editando ? "Cancelar" : g ? "Editar" : "Inserir geologia"}
+                  </Btn>
+                </div>
+
+                {editando && (
+                  <div className="mt-5 pt-5 border-t border-outline-variant/20 grid grid-cols-1 md:grid-cols-2 gap-4">
+                    <div>
+                      <MetaTag className="block mb-1.5">LITOLOGIA</MetaTag>
+                      <input
+                        value={form.litologia}
+                        onChange={(e) => setForm((f) => ({ ...f, litologia: e.target.value }))}
+                        placeholder="Ex.: Grupo Barreiras — arenitos argilosos"
+                        className="w-full bg-white rounded-lg px-4 py-2.5 text-sm font-medium focus:ring-2 focus:ring-secondary outline-none"
+                      />
+                    </div>
+                    <div>
+                      <MetaTag className="block mb-1.5">TIPO DE SOLO</MetaTag>
+                      <input
+                        value={form.tipoSolo}
+                        onChange={(e) => setForm((f) => ({ ...f, tipoSolo: e.target.value }))}
+                        placeholder="Ex.: Latossolo Amarelo distrófico"
+                        className="w-full bg-white rounded-lg px-4 py-2.5 text-sm font-medium focus:ring-2 focus:ring-secondary outline-none"
+                      />
+                    </div>
+                    <div>
+                      <MetaTag className="block mb-1.5">DECLIVIDADE</MetaTag>
+                      <input
+                        value={form.declividade}
+                        onChange={(e) => setForm((f) => ({ ...f, declividade: e.target.value }))}
+                        placeholder="Ex.: 30–50%"
+                        className="w-full bg-white rounded-lg px-4 py-2.5 text-sm font-medium focus:ring-2 focus:ring-secondary outline-none"
+                      />
+                    </div>
+                    <div>
+                      <MetaTag className="block mb-1.5">SUSCETIBILIDADE</MetaTag>
+                      <select
+                        value={form.suscetibilidade}
+                        onChange={(e) =>
+                          setForm((f) => ({
+                            ...f,
+                            suscetibilidade: e.target.value as GeologiaZona["suscetibilidade"],
+                          }))
+                        }
+                        className="w-full bg-white rounded-lg px-4 py-2.5 text-sm font-medium focus:ring-2 focus:ring-secondary outline-none"
+                      >
+                        <option value="alta">Alta</option>
+                        <option value="media">Média</option>
+                        <option value="baixa">Baixa</option>
+                      </select>
+                    </div>
+                    <div className="md:col-span-2">
+                      <MetaTag className="block mb-1.5">OBSERVAÇÕES</MetaTag>
+                      <textarea
+                        value={form.observacoes}
+                        onChange={(e) => setForm((f) => ({ ...f, observacoes: e.target.value }))}
+                        rows={2}
+                        placeholder="Notas de campo, estruturas observadas, obras de contenção…"
+                        className="w-full bg-white rounded-lg px-4 py-2.5 text-sm font-medium focus:ring-2 focus:ring-secondary outline-none resize-none"
+                      />
+                    </div>
+                    <div className="md:col-span-2">
+                      <Btn variant="success" icon="check" onClick={salvarGeologia}>
+                        Salvar geologia
+                      </Btn>
+                    </div>
+                  </div>
+                )}
+              </div>
+            );
+          })}
+        </div>
+      </section>
     </div>
   );
 }

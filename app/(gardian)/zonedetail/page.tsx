@@ -6,6 +6,25 @@ import { useSearchParams } from "next/navigation";
 import { Chip, Icon, MetaTag, SectionHeader } from "@/app/components/Primitives";
 import { useAppNavigation } from "@/app/lib/useAppNavigation";
 import { api } from "@/app/services/Api";
+import {
+  MOCK_OCORRENCIAS,
+  MOCK_EVENTOS,
+  tecnicoNome,
+  zonaNome as zonaNomeMock,
+} from "@/app/data/mock";
+import type { MapPoint } from "@/app/components/PointsMap";
+
+const PointsMap = dynamic(
+  () => import("@/app/components/PointsMap").then((m) => m.PointsMap),
+  {
+    ssr: false,
+    loading: () => (
+      <div className="flex items-center justify-center rounded-xl bg-surface-container-low min-h-[440px]">
+        <p className="text-sm text-on-surface-variant font-medium">Carregando mapa…</p>
+      </div>
+    ),
+  },
+);
 
 const ZoneMap = dynamic(
   () => import("@/app/components/ZoneMap").then((m) => m.ZoneMap),
@@ -111,6 +130,53 @@ function ZoneDetailContent() {
     () => eventos.filter((e) => e.tipo === "mitigacao"),
     [eventos],
   );
+
+  // pontos do mapa: ocorrências + eventos registrados na zona (mock)
+  const pontosZona: MapPoint[] = useMemo(() => {
+    const zid = z?.id;
+    const ocorrencias: MapPoint[] = MOCK_OCORRENCIAS.filter(
+      (o) => o.coordenadas != null && (zid == null || o.zona === zid),
+    ).map((o) => ({
+      id: `oc-${o.id}`,
+      lat: o.coordenadas!.lat,
+      lng: o.coordenadas!.lng,
+      titulo: `#${o.id} · ${o.titulo}`,
+      subtitulo: `${zonaNomeMock(o.zona)} — ${o.endereco}`,
+      kind:
+        o.status === "concluido"
+          ? ("ocorrencia_concluida" as const)
+          : o.status === "em_andamento" || o.status === "alta_prioridade"
+            ? ("ocorrencia_andamento" as const)
+            : ("ocorrencia_aberta" as const),
+      tecnicoNoLocal:
+        (o.status === "em_andamento" || o.status === "alta_prioridade") && o.tecnico_responsavel
+          ? tecnicoNome(o.tecnico_responsavel)
+          : null,
+    }));
+
+    // eventos: posiciona no centroide das ocorrências vinculadas
+    const eventos: MapPoint[] = MOCK_EVENTOS.filter(
+      (ev) => zid == null || ev.zonas.includes(zid),
+    ).flatMap((ev) => {
+      const ocs = MOCK_OCORRENCIAS.filter((o) => o.evento === ev.id && o.coordenadas);
+      if (ocs.length === 0) return [];
+      const lat = ocs.reduce((a, o) => a + o.coordenadas!.lat, 0) / ocs.length;
+      const lng = ocs.reduce((a, o) => a + o.coordenadas!.lng, 0) / ocs.length;
+      return [
+        {
+          id: `ev-${ev.id}`,
+          lat,
+          lng,
+          titulo: ev.nome,
+          subtitulo: `${ev.tipo} · ${ocs.length} ocorrências vinculadas`,
+          kind: "evento" as const,
+        },
+      ];
+    });
+
+    return [...ocorrencias, ...eventos];
+  }, [z?.id]);
+
 
   const allEventsSorted = useMemo(
     () =>
@@ -447,6 +513,20 @@ function ZoneDetailContent() {
             </div>
           </section>
         )}
+
+        {/* Mapa de eventos e ocorrências da zona */}
+        <section className="col-span-12 card-tonal p-7 shadow-ambient-sm">
+          <SectionHeader
+            overline="LOCALIZAÇÃO DOS REGISTROS"
+            title="Eventos e Ocorrências no Território"
+            action={
+              <Chip tone="primarySoft" icon="filter_alt">
+                FILTRE PELOS CHIPS NO MAPA
+              </Chip>
+            }
+          />
+          <PointsMap points={pontosZona} height={440} />
+        </section>
       </div>
     </div>
   );

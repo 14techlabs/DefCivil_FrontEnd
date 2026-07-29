@@ -1,11 +1,31 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
-import { MapPlaceholder } from "@/app/components/MapPlaceholder";
-import { Chip, Icon, KPI, MetaTag, SectionHeader, StatusDot } from "@/app/components/Primitives";
-import { useGardian } from "@/app/components/GardianContext";
+import dynamic from "next/dynamic";
+import { Btn, Chip, Icon, KPI, MetaTag, SectionHeader, StatusDot } from "@/app/components/Primitives";
 import { useAppNavigation } from "@/app/lib/useAppNavigation";
 import { api } from "@/app/services/Api";
+import {
+  MOCK_RESUMO_ZONAS,
+  MOCK_POSSIVEIS_EVENTOS,
+  MOCK_OCORRENCIAS,
+  MOCK_ZONAS,
+  tecnicoNome,
+  zonaNome as zonaNomeMock,
+} from "@/app/data/mock";
+import type { MapPoint } from "@/app/components/PointsMap";
+
+const PointsMap = dynamic(
+  () => import("@/app/components/PointsMap").then((m) => m.PointsMap),
+  {
+    ssr: false,
+    loading: () => (
+      <div className="flex items-center justify-center rounded-xl bg-surface-container-low min-h-[520px]">
+        <p className="text-sm text-on-surface-variant font-medium">Carregando mapa…</p>
+      </div>
+    ),
+  },
+);
 
 // --- tipos da resposta da api ---
 
@@ -76,7 +96,6 @@ function formatDate(iso: string): string {
 // --- componente ---
 
 export default function MonitoringPage() {
-  const { alertMode } = useGardian();
   const { openZone } = useAppNavigation();
 
   // estado dos dados
@@ -110,7 +129,30 @@ export default function MonitoringPage() {
         }
         setZonaLookup(lookup);
       } catch {
-        // falha silenciosa — o estado vazio será exibido
+        // api indisponível — usa base mockada enquanto não está integrado
+        if (cancelled) return;
+        setZonaList(
+          MOCK_RESUMO_ZONAS.map((r, i) => ({
+            id: 1000 + i,
+            tipo: "zona" as const,
+            status:
+              r.status === "critico"
+                ? ("critico" as const)
+                : r.status === "atencao"
+                  ? ("risco_moderado" as const)
+                  : ("estavel" as const),
+            entidade: null,
+            zona: r.zona,
+            resumo: r.resumo,
+            etiquetas: r.possiveisEventos.length > 0 ? ["possível evento"] : [],
+            created_at: new Date().toISOString(),
+            sinalizador_impacto: null,
+          })),
+        );
+        setTotalOcorrencias(
+          MOCK_OCORRENCIAS.filter((o) => o.status !== "concluido").length,
+        );
+        setZonaLookup(new Map(MOCK_ZONAS.map((z) => [z.id, z.nome])));
       } finally {
         if (!cancelled) setLoading(false);
       }
@@ -145,6 +187,33 @@ export default function MonitoringPage() {
         (a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime(),
       ),
     [entidadeList, zonaList],
+  );
+
+  // --- pontos do mapa: ocorrências em aberto e em andamento ---
+
+  const pontosMapa: MapPoint[] = useMemo(
+    () =>
+      MOCK_OCORRENCIAS.filter(
+        (o) => o.status !== "concluido" && o.coordenadas != null,
+      ).map((o) => {
+        const emAndamento =
+          o.status === "em_andamento" || o.status === "alta_prioridade";
+        return {
+          id: o.id,
+          lat: o.coordenadas!.lat,
+          lng: o.coordenadas!.lng,
+          titulo: `#${o.id} · ${o.titulo}`,
+          subtitulo: `${zonaNomeMock(o.zona)} — ${o.endereco}`,
+          kind: emAndamento
+            ? ("ocorrencia_andamento" as const)
+            : ("ocorrencia_aberta" as const),
+          tecnicoNoLocal:
+            emAndamento && o.tecnico_responsavel
+              ? tecnicoNome(o.tecnico_responsavel)
+              : null,
+        };
+      }),
+    [],
   );
 
   // --- renderização ---
@@ -217,11 +286,82 @@ export default function MonitoringPage() {
         />
       </div>
 
+      {/* resumo por zona em lista, destacando possíveis eventos */}
+      <section className="card-tonal p-7 shadow-ambient-sm">
+        <SectionHeader
+          overline="VISÃO CONSOLIDADA"
+          title="Resumo por Zona"
+          action={
+            <Chip tone="warning" icon="online_prediction">
+              {MOCK_POSSIVEIS_EVENTOS.length} POSSÍVEIS EVENTOS
+            </Chip>
+          }
+        />
+        <div className="space-y-3">
+          {MOCK_RESUMO_ZONAS.map((r) => {
+            const tone =
+              r.status === "critico" ? "error" : r.status === "atencao" ? "warning" : "secondary";
+            const possiveis = MOCK_POSSIVEIS_EVENTOS.filter((p) =>
+              r.possiveisEventos.includes(p.id),
+            );
+            return (
+              <div key={r.zona} className="card-recessed p-5">
+                <div className="flex items-start justify-between gap-4 flex-wrap">
+                  <div className="flex items-center gap-2.5 min-w-0">
+                    <span
+                      className={`w-2.5 h-2.5 rounded-full shrink-0 ${
+                        tone === "error" ? "bg-error" : tone === "warning" ? "bg-orange-500" : "bg-secondary"
+                      }`}
+                    />
+                    <h3 className="font-headline font-bold text-[16px] text-primary tracking-tight">
+                      {zonaNomeMock(r.zona)}
+                    </h3>
+                    <Chip tone={tone}>
+                      {r.status === "critico" ? "Crítico" : r.status === "atencao" ? "Atenção" : "Estável"}
+                    </Chip>
+                  </div>
+                  <Btn variant="ghost" icon="arrow_forward" onClick={() => openZone(String(r.zona))}>
+                    Ver zona
+                  </Btn>
+                </div>
+
+                <p className="text-[12px] text-on-surface-variant leading-relaxed mt-2">{r.resumo}</p>
+
+                {possiveis.length > 0 && (
+                  <div className="mt-4 space-y-3">
+                    {possiveis.map((p) => (
+                      <div key={p.id} className="rounded-lg bg-orange-50 border-l-4 border-orange-400 p-4">
+                        <div className="flex items-center gap-2 flex-wrap mb-2">
+                          <Icon name="online_prediction" filled className="text-orange-600 text-[18px]" />
+                          <span className="text-[13px] font-black text-primary">{p.titulo}</span>
+                          <Chip tone="warning">
+                            {p.confianca.toFixed(1).replace(".", ",")}% · {p.janela}
+                          </Chip>
+                        </div>
+                        <MetaTag className="block mb-1.5">BASE PARA ESTE EVENTO</MetaTag>
+                        <ul className="space-y-1">
+                          {p.base.map((b, i) => (
+                            <li key={i} className="flex items-start gap-2 text-[11px] text-on-surface">
+                              <Icon name="check_small" className="text-orange-600 text-[15px] mt-0.5 shrink-0" />
+                              {b}
+                            </li>
+                          ))}
+                        </ul>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+            );
+          })}
+        </div>
+      </section>
+
       {/* mapa + feed de monitoramento */}
       <div className="grid grid-cols-12 gap-5">
         {/* mapa */}
         <div className="col-span-12 lg:col-span-7 card-tonal p-2 shadow-ambient-sm">
-          <MapPlaceholder variant="dark" height={520} alertMode={alertMode} showZones={false} />
+          <PointsMap points={pontosMapa} height={520} />
         </div>
 
         {/* feed */}

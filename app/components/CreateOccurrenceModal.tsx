@@ -58,6 +58,7 @@ export function CreateOccurrenceModal({ open, onClose, onCreated, zonas }: Props
   const [zonaId, setZonaId] = useState<number | null>(null);
   const [lat, setLat] = useState("");
   const [lng, setLng] = useState("");
+  const [anexos, setAnexos] = useState<{ nome: string; tamanho: string; tipo: string }[]>([]);
 
   // shared
   const [saving, setSaving] = useState(false);
@@ -73,10 +74,32 @@ export function CreateOccurrenceModal({ open, onClose, onCreated, zonas }: Props
       setZonaId(null);
       setLat("");
       setLng("");
+      setAnexos([]);
       setSaving(false);
       setError("");
     }
   }, [open]);
+
+  /* ── anexos ── */
+  const handleFiles = (files: FileList | null) => {
+    if (!files) return;
+    const novos = Array.from(files).map((f) => ({
+      nome: f.name,
+      tamanho:
+        f.size > 1024 * 1024
+          ? `${(f.size / (1024 * 1024)).toFixed(1).replace(".", ",")} MB`
+          : `${Math.max(1, Math.round(f.size / 1024))} KB`,
+      tipo: f.type.startsWith("video")
+        ? "video"
+        : f.type.startsWith("image")
+          ? "foto"
+          : "documento",
+    }));
+    setAnexos((prev) => [...prev, ...novos]);
+  };
+
+  const removerAnexo = (i: number) =>
+    setAnexos((prev) => prev.filter((_, idx) => idx !== i));
 
   /* ── submit ── */
   const handleSubmit = async () => {
@@ -101,6 +124,7 @@ export function CreateOccurrenceModal({ open, onClose, onCreated, zonas }: Props
         coordenadas: { lat: parsedLat, lng: parsedLng },
       };
       if (zonaId !== null) body.zona = zonaId;
+      if (anexos.length > 0) body.anexos = anexos;
 
       await api.post("/ocorrencias/", body);
       showToast("ocorrência registrada com sucesso.");
@@ -237,6 +261,53 @@ export function CreateOccurrenceModal({ open, onClose, onCreated, zonas }: Props
             placeholder="descreva o que foi observado, dimensões aproximadas, número de pessoas afetadas…"
             className="w-full bg-surface-container-low border-none rounded-lg px-4 py-3 text-sm font-medium text-primary focus:ring-2 focus:ring-secondary placeholder:text-on-surface-variant/60 resize-none"
           />
+        </div>
+
+        {/* anexos */}
+        <div>
+          <MetaTag className="block mb-2">Anexos (opcional)</MetaTag>
+          <label className="flex flex-col items-center justify-center gap-2 py-6 rounded-lg bg-surface-container-low border-2 border-dashed border-outline-variant/40 cursor-pointer hover:bg-surface-container transition-all">
+            <Icon name="upload_file" className="text-secondary text-[24px]" />
+            <span className="text-[12px] font-bold text-primary">
+              Clique para anexar fotos, vídeos ou documentos
+            </span>
+            <span className="text-[10px] text-on-surface-variant">
+              JPG, PNG, MP4 ou PDF
+            </span>
+            <input
+              type="file"
+              multiple
+              accept="image/*,video/*,.pdf"
+              className="hidden"
+              onChange={(e) => handleFiles(e.target.files)}
+            />
+          </label>
+
+          {anexos.length > 0 && (
+            <div className="space-y-2 mt-3">
+              {anexos.map((a, i) => (
+                <div
+                  key={i}
+                  className="flex items-center gap-3 p-3 rounded-lg bg-surface-container-low text-[12px]"
+                >
+                  <Icon
+                    name={a.tipo === "video" ? "movie" : a.tipo === "documento" ? "description" : "image"}
+                    className="text-secondary text-[18px]"
+                  />
+                  <span className="font-bold text-primary flex-1 truncate">{a.nome}</span>
+                  <span className="text-[10px] font-mono font-bold text-slate-400">{a.tamanho}</span>
+                  <button
+                    type="button"
+                    onClick={() => removerAnexo(i)}
+                    className="p-1 rounded-md hover:bg-surface-container"
+                    aria-label="Remover anexo"
+                  >
+                    <Icon name="close" className="text-on-surface-variant text-[16px]" />
+                  </button>
+                </div>
+              ))}
+            </div>
+          )}
         </div>
 
         {/* erro */}
