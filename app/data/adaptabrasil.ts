@@ -16,6 +16,9 @@ const ADAPTABRASIL_LEVELS = [
 const ADAPTABRASIL_TYPES = [
   {
     id: "geohidrologicos",
+    indicador: 60001 as number | null, // Índice de risco para deslizamento de terra
+    ano: 2015,
+    resolucao: "municipio",
     label: "Desastres Geo-hidrológicos",
     icon: "landslide",
     color: "#9C27B0",
@@ -24,6 +27,9 @@ const ADAPTABRASIL_TYPES = [
   },
   {
     id: "hidricos",
+    indicador: 2 as number | null, // Índice de risco de impacto do estresse hídrico
+    ano: 2020,
+    resolucao: "municipio",
     label: "Recursos Hídricos",
     icon: "water_drop",
     color: "#1E88E5",
@@ -31,6 +37,9 @@ const ADAPTABRASIL_TYPES = [
   },
   {
     id: "alimentar",
+    indicador: 5001 as number | null, // Índice de risco de impacto
+    ano: 2017,
+    resolucao: "municipio",
     label: "Segurança Alimentar",
     icon: "restaurant",
     color: "#43A047",
@@ -38,6 +47,9 @@ const ADAPTABRASIL_TYPES = [
   },
   {
     id: "energetica",
+    indicador: 10001 as number | null, // risco climático ao acesso à energia elétrica
+    ano: 2019,
+    resolucao: "municipio",
     label: "Segurança Energética",
     icon: "bolt",
     color: "#FB8C00",
@@ -45,6 +57,10 @@ const ADAPTABRASIL_TYPES = [
   },
   {
     id: "portuaria",
+    // AdaptaBrasil publica este setor por PORTO (21 portos), não por município.
+    indicador: 40001 as number | null,
+    ano: 2020,
+    resolucao: "porto",
     label: "Infraestrutura Portuária",
     icon: "directions_boat",
     color: "#00ACC1",
@@ -52,6 +68,10 @@ const ADAPTABRASIL_TYPES = [
   },
   {
     id: "rodoviaria",
+    // AdaptaBrasil publica este setor por TRECHO DE RODOVIA (7304 trechos).
+    indicador: 70001 as number | null,
+    ano: 2021,
+    resolucao: "trechorodovia",
     label: "Infraestrutura Rodoviária",
     icon: "local_shipping",
     color: "#2E7D32",
@@ -59,6 +79,10 @@ const ADAPTABRASIL_TYPES = [
   },
   {
     id: "ferroviaria",
+    // AdaptaBrasil publica este setor por TRECHO DE FERROVIA (2741 trechos).
+    indicador: 80001 as number | null,
+    ano: 2021,
+    resolucao: "trechoferrovia",
     label: "Infraestrutura Ferroviária",
     icon: "train",
     color: "#E53935",

@@ -1,10 +1,11 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { MapPlaceholder } from "@/app/components/MapPlaceholder";
 import { Btn, Icon, MetaTag, SectionHeader } from "@/app/components/Primitives";
 import { useGardian } from "@/app/components/GardianContext";
 import { ADAPTABRASIL } from "@/app/data/adaptabrasil";
+import { api } from "@/app/services/Api";
 
 type GeoNode = {
   id: string;
@@ -32,6 +33,9 @@ function AdaptaGauge({ value, size = "md" }: { value: number; size?: "sm" | "md"
         <span className="font-headline font-black text-xl tracking-tight" style={{ color: level.color }}>
           {level.label}
         </span>
+        <span className="text-[15px] font-mono font-bold" style={{ color: level.color }}>
+          ({pct.toFixed(0)}%)
+        </span>
       </div>
       <div className="relative">
         <div className={`w-full ${heightCls} rounded-sm overflow-hidden flex`}>
@@ -42,24 +46,60 @@ function AdaptaGauge({ value, size = "md" }: { value: number; size?: "sm" | "md"
         {/* Needle */}
         <div className="absolute top-[-4px] bottom-[-4px] w-[3px] bg-primary" style={{ left: `${pct}%`, transform: "translateX(-1.5px)" }} />
         <div className="flex justify-between mt-1.5">
-          <span className="text-[10px] font-mono font-bold text-slate-400">0</span>
-          <span className="text-[10px] font-mono font-bold text-slate-400">1,00</span>
+          <span className="text-[10px] font-mono font-bold text-slate-400">0 · 0%</span>
+          <span className="text-[10px] font-mono font-bold text-slate-400">1,00 · 100%</span>
         </div>
       </div>
     </div>
   );
 }
 
-// Mini inline gauge for composition rows
+// Mini inline gauge for composition rows — mostra a % do valor ao lado da barra
 function MiniGauge({ value }: { value: number }) {
   const LEVELS = ADAPTABRASIL.LEVELS;
-  const pct = value * 100;
+  const v = value ?? 0;
+  const pct = v * 100;
+  const level = LEVELS.find(l => v >= l.range[0] && v <= l.range[1]) || LEVELS[0];
   return (
-    <div className="relative flex-1 max-w-[180px]">
-      <div className="w-full h-2 rounded-sm overflow-hidden flex">
-        {LEVELS.map(l => <div key={l.id} className="flex-1" style={{ background: l.color }} />)}
+    <div className="flex items-center gap-2 flex-1 max-w-[240px]">
+      <div className="relative flex-1 max-w-[180px]">
+        <div className="w-full h-2 rounded-sm overflow-hidden flex">
+          {LEVELS.map(l => <div key={l.id} className="flex-1" style={{ background: l.color }} />)}
+        </div>
+        <div className="absolute top-[-3px] bottom-[-3px] w-[2px] bg-primary" style={{ left: `${pct}%`, transform: "translateX(-1px)" }} />
       </div>
-      <div className="absolute top-[-3px] bottom-[-3px] w-[2px] bg-primary" style={{ left: `${pct}%`, transform: "translateX(-1px)" }} />
+      <span className="text-[11px] font-mono font-bold w-10 text-right flex-shrink-0" style={{ color: level.color }}>
+        {pct.toFixed(0)}%
+      </span>
+    </div>
+  );
+}
+
+type ImpactType = (typeof ADAPTABRASIL.TYPES)[number];
+
+// Card genérico de estado (sem dados / carregando / erro) — mantém a
+// identidade visual do tipo selecionado.
+function EstadoCard({
+  type,
+  titulo,
+  texto,
+  children,
+}: {
+  type: ImpactType;
+  titulo: string;
+  texto: string;
+  children?: React.ReactNode;
+}) {
+  return (
+    <div className="card-tonal p-12 shadow-ambient-sm text-center">
+      <div
+        className="w-16 h-16 rounded-full mx-auto mb-4 flex items-center justify-center"
+        style={{ background: type.color + "1A" }}>
+        <Icon name={type.icon} filled className="text-[32px]" style={{ color: type.color }} />
+      </div>
+      <h3 className="font-headline font-black text-2xl text-primary tracking-tight">{titulo}</h3>
+      <p className="text-sm text-on-surface-variant mt-2 max-w-lg mx-auto">{texto}</p>
+      {children}
     </div>
   );
 }
@@ -89,12 +129,76 @@ function LevelLegend() {
 export default function GeologyPage() {
   const { alertMode } = useGardian();
   const TYPES = ADAPTABRASIL.TYPES;
-  const GEO = ADAPTABRASIL.GEO as Record<string, GeoNode>;
 
   const [selectedType, setSelectedType] = useState("geohidrologicos");
+  const selectedTypeData = TYPES.find((t) => t.id === selectedType) ?? TYPES[0];
+  const indicadorId = selectedTypeData.indicador;
+  // Cada indicador do AdaptaBrasil tem seu próprio ano-base (geo-hidrológico
+  // é 2015, hídricos 2020, rodoviária 2021...). Por isso o ano vai junto.
+  const anoBase = selectedTypeData.ano;
+  // Alguns setores do AdaptaBrasil não são medidos por município (portos e
+  // trechos de rodovia/ferrovia). Num painel municipal, eles não se aplicam.
+  const porMunicipio = selectedTypeData.resolucao === "municipio";
+
+  // Árvore do indicador do tipo selecionado. O setor geo-hidrológico tem o mock
+  // estático como reserva; os demais dependem exclusivamente do backend.
+  const [GEO, setGEO] = useState<Record<string, GeoNode>>(
+    ADAPTABRASIL.GEO as Record<string, GeoNode>
+  );
   const [path, setPath] = useState<string[]>(["root"]);
+  const [loading, setLoading] = useState(false);
+  const [erro, setErro] = useState<string | null>(null);
+  const [tentativa, setTentativa] = useState(0); // usado pelo botão "Tentar de novo"
+
+  useEffect(() => {
+    // Tipo ainda sem indicador mapeado: a UI mostra o aviso, sem chamar a API.
+    if (indicadorId == null || !porMunicipio) {
+      setErro(null);
+      setLoading(false);
+      return;
+    }
+
+    let cancelado = false;
+    setLoading(true);
+    setErro(null);
+
+    api
+      .get<{ geo: Record<string, GeoNode>; root?: string }>(
+        `geologia/arvore/?indicador=${indicadorId}&ano=${anoBase}`
+      )
+      .then((res) => {
+        if (cancelado) return;
+        if (res.data?.geo && Object.keys(res.data.geo).length > 0) {
+          setGEO(res.data.geo);
+          setPath([res.data.root ?? "root"]); // volta ao topo com os dados reais
+        } else {
+          setErro("O AdaptaBrasil não retornou dados para este indicador.");
+        }
+      })
+      .catch((e: unknown) => {
+        if (cancelado) return;
+        const msg =
+          (e as { response?: { data?: { error?: string } } })?.response?.data?.error ??
+          "Não foi possível carregar os dados deste indicador.";
+        if (selectedType === "geohidrologicos") {
+          // Só este setor tem mock de reserva — mantém a tela utilizável.
+          setGEO(ADAPTABRASIL.GEO as Record<string, GeoNode>);
+          setPath(["root"]);
+        } else {
+          setErro(msg);
+        }
+      })
+      .finally(() => {
+        if (!cancelado) setLoading(false);
+      });
+
+    return () => {
+      cancelado = true;
+    };
+  }, [indicadorId, anoBase, porMunicipio, selectedType, tentativa]);
+
   const currentId = path[path.length - 1];
-  const current = GEO[currentId] || GEO.root;
+  const current: GeoNode | undefined = GEO[currentId] ?? GEO.root;
 
   const drillInto = (id: string) => {
     if (GEO[id] && !GEO[id].leaf) setPath([...path, id]);
@@ -106,8 +210,6 @@ export default function GeologyPage() {
   const breadcrumb = useMemo(() => {
     return path.map((id) => ({ id, label: GEO[id]?.label || id }));
   }, [path, GEO]);
-
-  const selectedTypeData = TYPES.find((t) => t.id === selectedType) ?? TYPES[0];
 
   return (
     <div className="p-8 space-y-8 max-w-[1600px] mx-auto">
@@ -122,9 +224,7 @@ export default function GeologyPage() {
         <div className="flex items-end justify-between gap-6 flex-wrap">
           <div>
             <h1 className="font-headline font-black text-5xl tracking-tighter text-primary">Risco Climático</h1>
-            { /*
-            <p className="text-sm text-on-surface-variant mt-2 max-w-2xl">Indicadores de impacto integrados por tipo de situação · Foco em desastres geo-hidrológicos · Escala de 0,00 a 1,00</p>
-            */ }
+            <p className="text-sm text-on-surface-variant mt-2 max-w-2xl">{`Indicadores de impacto integrados por tipo de situação · ${selectedTypeData.label} · Escala de 0,00 a 1,00`}</p>
           </div>
           <div className="flex gap-3">
             <Btn variant="primary" icon="tune">Opções</Btn>
@@ -167,16 +267,42 @@ export default function GeologyPage() {
         </div>
       </section>
 
-      {/* Main drill-down area (only for geohidrologicos; others show a soft placeholder) */}
-      {selectedType !== "geohidrologicos" ? (
-        <div className="card-tonal p-12 shadow-ambient-sm text-center">
-          <div className="w-16 h-16 rounded-full mx-auto mb-4 flex items-center justify-center"
-            style={{ background: selectedTypeData.color + "1A" }}>
-            <Icon name={selectedTypeData.icon} filled className="text-[32px]" style={{ color: selectedTypeData.color }} />
-          </div>
-          <h3 className="font-headline font-black text-2xl text-primary tracking-tight">{selectedTypeData.label}</h3>
-          <p className="text-sm text-on-surface-variant mt-2 max-w-md mx-auto">Dados AdaptaBrasil disponíveis · Clique em "Desastres Geo-hidrológicos" para explorar a árvore completa de indicadores no foco atual.</p>
-        </div>
+      {/* Área principal: aviso / carregando / erro / árvore de drill-down */}
+      {!porMunicipio ? (
+        <EstadoCard
+          type={selectedTypeData}
+          titulo={selectedTypeData.label}
+          texto={`O AdaptaBrasil publica este setor por ${
+            selectedTypeData.resolucao === "porto"
+              ? "porto (21 portos no Brasil)"
+              : selectedTypeData.resolucao === "trechorodovia"
+              ? "trecho de rodovia (7.304 trechos)"
+              : "trecho de ferrovia (2.741 trechos)"
+          }, e não por município. Por isso não há um índice municipal para exibir neste painel.`}
+        />
+      ) : indicadorId == null ? (
+        <EstadoCard
+          type={selectedTypeData}
+          titulo={selectedTypeData.label}
+          texto={`Este setor ainda não está associado a um indicador do AdaptaBrasil. Descubra o id em GET /geologia/indicadores/ e preencha o campo "indicador" deste tipo em app/data/adaptabrasil.ts.`}
+        />
+      ) : loading ? (
+        <EstadoCard
+          type={selectedTypeData}
+          titulo={`Carregando ${selectedTypeData.label}…`}
+          texto="Consultando o AdaptaBrasil e montando a árvore de indicadores."
+        />
+      ) : erro || !current ? (
+        <EstadoCard
+          type={selectedTypeData}
+          titulo={selectedTypeData.label}
+          texto={erro ?? "Sem dados para exibir."}>
+          <button
+            onClick={() => setTentativa((n) => n + 1)}
+            className="mt-5 inline-flex items-center gap-2 px-4 py-2 rounded-md bg-secondary text-white text-[12px] font-bold hover:opacity-90">
+            <Icon name="refresh" className="text-[16px]" /> Tentar de novo
+          </button>
+        </EstadoCard>
       ) : (
         <div className="grid grid-cols-12 gap-5">
           {/* Left column — drill-down indicator detail */}
@@ -185,30 +311,56 @@ export default function GeologyPage() {
             <div className="card-tonal p-5 shadow-ambient-sm">
               <MetaTag className="block mb-3">NAVEGAÇÃO</MetaTag>
               <div className="space-y-2">
-                {["Todos os Impactos", "Desastres Geo-hidrológicos", "Deslizamento de terra"].map((l, i) => (
-                  <div key={i} className="flex items-center gap-2 px-3 py-2 rounded-md bg-surface-container-low">
-                    <Icon name="chevron_left" className="text-on-surface-variant text-[16px]" />
-                    <span className="text-[12px] font-bold text-primary">{l}</span>
-                  </div>
-                ))}
-                {breadcrumb.slice(1).map((b, i) => (
-                  <button key={b.id} onClick={() => goBack(i + 1)}
-                    className="flex items-center gap-2 px-3 py-2 rounded-md bg-secondary/10 w-full text-left hover:bg-secondary/15">
-                    <Icon name="chevron_left" className="text-secondary text-[16px]" />
-                    <span className="text-[12px] font-bold text-secondary">{b.label}</span>
+                {/* Voltar um nível — só aparece quando já se desceu na árvore */}
+                {path.length > 1 && (
+                  <button
+                    onClick={() => goBack(path.length - 2)}
+                    className="flex items-center gap-2 px-3 py-2.5 rounded-md bg-secondary w-full text-left hover:opacity-90 transition-opacity">
+                    <Icon name="arrow_back" className="text-white text-[18px]" />
+                    <span className="text-[12px] font-bold text-white">
+                      Voltar para {GEO[path[path.length - 2]]?.label ?? "o nível anterior"}
+                    </span>
                   </button>
-                ))}
+                )}
+                {/* Trilha real da árvore: cada item volta para aquele nível */}
+                <div className="flex items-center gap-2 px-3 py-2 rounded-md bg-surface-container-low">
+                  <Icon name={selectedTypeData.icon} className="text-on-surface-variant text-[16px]" />
+                  <span className="text-[12px] font-bold text-primary">{selectedTypeData.label}</span>
+                </div>
+                {breadcrumb.map((b, i) => {
+                  const atual = i === breadcrumb.length - 1;
+                  return (
+                    <button
+                      key={b.id}
+                      onClick={() => goBack(i)}
+                      disabled={atual}
+                      className={`flex items-center gap-2 px-3 py-2 rounded-md w-full text-left ${
+                        atual
+                          ? "bg-secondary/20 cursor-default"
+                          : "bg-secondary/10 hover:bg-secondary/15"
+                      }`}
+                      style={{ marginLeft: `${i * 10}px` }}>
+                      <Icon
+                        name={atual ? "my_location" : "arrow_back"}
+                        className="text-secondary text-[16px]"
+                      />
+                      <span className="text-[12px] font-bold text-secondary">{b.label}</span>
+                    </button>
+                  );
+                })}
               </div>
             </div>
 
             {/* Current indicator */}
             <div className="card-tonal p-7 shadow-ambient-sm">
               <div className="flex items-start gap-4 mb-5">
-                <div className="w-12 h-12 rounded-full flex items-center justify-center flex-shrink-0" style={{ background: "#9C27B01A" }}>
-                  <Icon name="landslide" filled className="text-[24px]" style={{ color: "#9C27B0" }} />
+                <div className="w-12 h-12 rounded-full flex items-center justify-center flex-shrink-0" style={{ background: selectedTypeData.color + "1A" }}>
+                  <Icon name={selectedTypeData.icon} filled className="text-[24px]" style={{ color: selectedTypeData.color }} />
                 </div>
                 <div className="flex-1">
-                  <MetaTag className="block mb-1">{current.parent ? current.parent.toUpperCase() : "DESLIZAMENTO DE TERRA"}</MetaTag>
+                  <MetaTag className="block mb-1">
+                    {(current.parent ? GEO[current.parent]?.label ?? selectedTypeData.label : selectedTypeData.label).toUpperCase()}
+                  </MetaTag>
                   <h2 className="font-headline font-black text-2xl text-primary tracking-tight leading-tight">{current.label}</h2>
                 </div>
               </div>
