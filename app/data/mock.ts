@@ -622,6 +622,261 @@ export const MOCK_HIST_ACOES_EQUIPE: HistAcaoEquipe[] = [
   { id: 6, tecnico: 103, acao: "Instalação de marcadores de gesso em fissura", local: "Rua Alta do Setor 7, 45", zona: 2, ocorrenciaId: 9007, quando: "24/07 15:40" },
 ];
 
+/* ═══════════ ENTIDADE ═══════════ */
+
+export type StatusCidade = "estavel" | "alerta" | "critico";
+
+export const STATUS_CIDADE_META: Record<
+  StatusCidade,
+  { label: string; descricao: string; icon: string; cor: string; tone: "secondary" | "warning" | "error" }
+> = {
+  estavel: {
+    label: "Estável",
+    descricao: "Operação em rotina. Sem eventos ativos ou riscos iminentes identificados.",
+    icon: "check_circle",
+    cor: "#006A60",
+    tone: "secondary",
+  },
+  alerta: {
+    label: "Em Alerta",
+    descricao: "Condições de risco identificadas. Equipes em prontidão e monitoramento reforçado.",
+    icon: "warning",
+    cor: "#C2570B",
+    tone: "warning",
+  },
+  critico: {
+    label: "Crítico",
+    descricao: "Evento em curso com risco à população. Operação em regime de emergência.",
+    icon: "e911_emergency",
+    cor: "#BA1A1A",
+    tone: "error",
+  },
+};
+
+export interface MockEntidade {
+  id: number;
+  nome: string;
+  sigla: string;
+  cnpj: string;
+  municipio: string;
+  uf: string;
+  responsavel: string;
+  cargoResponsavel: string;
+  telefone: string;
+  email: string;
+  endereco: string;
+  populacao: number;
+  statusCidade: StatusCidade;
+  mensagemPublica: string;
+}
+
+export const MOCK_ENTIDADE: MockEntidade = {
+  id: 1,
+  nome: "Coordenadoria Municipal de Proteção e Defesa Civil",
+  sigla: "COMPDEC Porto Seguro",
+  cnpj: "16.238.847/0001-05",
+  municipio: "Porto Seguro",
+  uf: "BA",
+  responsavel: "Carlos Menezes",
+  cargoResponsavel: "Coordenador de Defesa Civil",
+  telefone: "(73) 3288-1990",
+  email: "defesacivil@portoseguro.ba.gov.br",
+  endereco: "Av. dos Navegantes, 500 — Centro, Porto Seguro/BA, 45810-000",
+  populacao: 155000,
+  statusCidade: "critico",
+  mensagemPublica:
+    "Município em situação crítica devido às chuvas intensas. Evite deslocamentos desnecessários e acione a Defesa Civil pelo 199 em caso de risco.",
+};
+
+export interface StatusCidadeRegistro {
+  id: number;
+  status: StatusCidade;
+  quando: string;
+  autor: string;
+  motivo: string;
+}
+
+export const MOCK_STATUS_HISTORICO: StatusCidadeRegistro[] = [
+  { id: 4, status: "critico", quando: "27/07/2026 14:20", autor: "Carlos Menezes", motivo: "Pico de 11 ocorrências em 2h e saturação de solo acima do limiar." },
+  { id: 3, status: "alerta", quando: "26/07/2026 06:15", autor: "Cúpula (automático)", motivo: "Previsão de acumulado ≥ 90mm/24h confirmada por CPTEC e CEMADEN." },
+  { id: 2, status: "estavel", quando: "18/07/2026 08:00", autor: "Renata Alves", motivo: "Encerramento do monitoramento pós-chuvas de julho." },
+  { id: 1, status: "alerta", quando: "15/07/2026 17:40", autor: "Carlos Menezes", motivo: "Frente fria com previsão de chuva persistente." },
+];
+
+/* ═══════════ CONFIGURAÇÃO DO FORMULÁRIO PÚBLICO ═══════════ */
+
+export interface CampoFormulario {
+  id: string;
+  label: string;
+  icon: string;
+  ativo: boolean;
+  fixo?: boolean; // não pode ser desativado
+}
+
+export interface ConfigFormulario {
+  ativo: boolean;
+  titulo: string;
+  subtitulo: string;
+  mensagemDesativado: string;
+  minCaracteresDescricao: number;
+  exigirLocalizacao: boolean;
+  permitirAnexos: boolean;
+  permitirAnonimo: boolean;
+  exigirContato: boolean;
+  mostrarAvisoEvento: boolean;
+  telefonesEmergencia: string;
+  categorias: CampoFormulario[];
+  checklist: CampoFormulario[];
+}
+
+export const MOCK_FORM_CONFIG: ConfigFormulario = {
+  ativo: true,
+  titulo: "Registrar uma ocorrência",
+  subtitulo:
+    "Conte o que está acontecendo perto de você. As informações vão direto para a equipe de plantão.",
+  mensagemDesativado:
+    "O canal de registro está temporariamente indisponível. Em caso de emergência, ligue 199 (Defesa Civil) ou 193 (Bombeiros).",
+  minCaracteresDescricao: 10,
+  exigirLocalizacao: true,
+  permitirAnexos: true,
+  permitirAnonimo: true,
+  exigirContato: false,
+  mostrarAvisoEvento: true,
+  telefonesEmergencia: "199 (Defesa Civil) ou 193 (Bombeiros)",
+  categorias: [
+    { id: "climatico", label: "Chuva / Alagamento", icon: "thunderstorm", ativo: true },
+    { id: "geologico", label: "Deslizamento / Encosta", icon: "terrain", ativo: true },
+    { id: "vias_publicas", label: "Via pública", icon: "directions_car", ativo: true },
+    { id: "produtos_perigosos", label: "Produto perigoso", icon: "science", ativo: true },
+  ],
+  checklist: [
+    { id: "pessoas_risco", label: "Há pessoas em risco no local", icon: "personal_injury", ativo: true, fixo: true },
+    { id: "criancas_idosos", label: "Há crianças, idosos ou pessoas com mobilidade reduzida", icon: "elderly", ativo: true },
+    { id: "agua_invadindo", label: "Água invadindo imóveis", icon: "water", ativo: true },
+    { id: "rachaduras", label: "Rachaduras, estalos ou portas emperrando", icon: "foundation", ativo: true },
+    { id: "via_bloqueada", label: "Via bloqueada ou intransitável", icon: "block", ativo: true },
+    { id: "energia", label: "Fiação caída ou falta de energia", icon: "bolt", ativo: true },
+    { id: "animais", label: "Há animais no local", icon: "pets", ativo: true },
+  ],
+};
+
+/* ═══════════ PRESTAÇÃO DE CONTAS ═══════════ */
+
+export interface ContaEvento {
+  id: number;
+  /** referência a MOCK_EVENTOS quando o evento ainda vive no sistema */
+  eventoId: number | null;
+  nome: string;
+  tipo: string;
+  periodo: string;
+  exercicio: number;
+  ocorrencias: number;
+  familiasAtingidas: number;
+  /** null = custo calculado a partir dos danos catalogados (evento em curso) */
+  custoConsolidado: number | null;
+  decretoMunicipal: string | null;
+  fonteRecurso: string;
+  repasseRecebido: number;
+  statusPrestacao: "em_curso" | "em_elaboracao" | "enviada" | "aprovada";
+  prazoLimite: string;
+  observacao: string;
+}
+
+export const MOCK_CONTAS_EVENTOS: ContaEvento[] = [
+  {
+    id: 1,
+    eventoId: 1,
+    nome: "Chuvas Intensas — Frente Fria Jul/26",
+    tipo: "Climático · Alagamentos e deslizamentos",
+    periodo: "26/07/2026 — em curso",
+    exercicio: 2026,
+    ocorrencias: 4,
+    familiasAtingidas: 3,
+    custoConsolidado: null,
+    decretoMunicipal: "Decreto 4.812/2026 — Situação de Emergência",
+    fonteRecurso: "Recurso próprio + FUNCAP (pendente)",
+    repasseRecebido: 0,
+    statusPrestacao: "em_curso",
+    prazoLimite: "30/09/2026",
+    observacao: "Custos parciais lançados conforme a catalogação de danos avança.",
+  },
+  {
+    id: 2,
+    eventoId: null,
+    nome: "Vendaval — Orla e Centro",
+    tipo: "Climático · Vendaval",
+    periodo: "08/04/2026 — 11/04/2026",
+    exercicio: 2026,
+    ocorrencias: 17,
+    familiasAtingidas: 9,
+    custoConsolidado: 63480,
+    decretoMunicipal: null,
+    fonteRecurso: "Recurso próprio",
+    repasseRecebido: 0,
+    statusPrestacao: "enviada",
+    prazoLimite: "30/06/2026",
+    observacao: "Prestação enviada ao controle interno em 22/06/2026, aguardando parecer.",
+  },
+  {
+    id: 3,
+    eventoId: null,
+    nome: "Deslizamento — Vila Esperança",
+    tipo: "Geológico · Movimento de massa",
+    periodo: "12/03/2026 — 19/03/2026",
+    exercicio: 2026,
+    ocorrencias: 12,
+    familiasAtingidas: 12,
+    custoConsolidado: 118250,
+    decretoMunicipal: "Decreto 4.740/2026 — Situação de Emergência",
+    fonteRecurso: "Transferência obrigatória — Defesa Civil Nacional",
+    repasseRecebido: 90000,
+    statusPrestacao: "aprovada",
+    prazoLimite: "30/06/2026",
+    observacao: "Aprovada sem ressalvas em 04/07/2026.",
+  },
+  {
+    id: 4,
+    eventoId: 2,
+    nome: "Enxurrada Eunápolis — Referência",
+    tipo: "Climático · Enxurrada urbana",
+    periodo: "14/11/2025 — 17/11/2025",
+    exercicio: 2025,
+    ocorrencias: 38,
+    familiasAtingidas: 31,
+    custoConsolidado: 187430,
+    decretoMunicipal: "Decreto 4.601/2025 — Situação de Emergência",
+    fonteRecurso: "Transferência obrigatória — Defesa Civil Nacional",
+    repasseRecebido: 142000,
+    statusPrestacao: "aprovada",
+    prazoLimite: "28/02/2026",
+    observacao: "Aprovada sem ressalvas em 12/02/2026.",
+  },
+  {
+    id: 5,
+    eventoId: null,
+    nome: "Ressaca — Avanço do Mar",
+    tipo: "Climático · Erosão costeira",
+    periodo: "02/08/2025 — 05/08/2025",
+    exercicio: 2025,
+    ocorrencias: 9,
+    familiasAtingidas: 4,
+    custoConsolidado: 41900,
+    decretoMunicipal: null,
+    fonteRecurso: "Recurso próprio",
+    repasseRecebido: 0,
+    statusPrestacao: "aprovada",
+    prazoLimite: "31/12/2025",
+    observacao: "Aprovada com ressalva de documentação complementar.",
+  },
+];
+
+export const STATUS_PRESTACAO_LABEL: Record<ContaEvento["statusPrestacao"], string> = {
+  em_curso: "Em curso",
+  em_elaboracao: "Em elaboração",
+  enviada: "Enviada",
+  aprovada: "Aprovada",
+};
+
 /* ═══════════ PAINEL — CIDADÃOS CONECTADOS ═══════════ */
 
 export const MOCK_CIDADAOS_CONECTADOS = 1284;

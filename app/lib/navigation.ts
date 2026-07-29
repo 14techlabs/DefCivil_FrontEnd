@@ -14,6 +14,7 @@ export const SCREEN_ROUTES: Record<string, string> = {
   team: "/team",
   profile: "/profile",
   history: "/history",
+  entity: "/entity",
 };
 
 export function screenFromPathname(pathname: string): string {
@@ -32,6 +33,7 @@ export function screenFromPathname(pathname: string): string {
   if (pathname.startsWith("/team")) return "team";
   if (pathname.startsWith("/profile")) return "profile";
   if (pathname.startsWith("/history")) return "history";
+  if (pathname.startsWith("/entity")) return "entity";
   return "dashboard";
 }
 

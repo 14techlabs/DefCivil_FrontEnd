@@ -2,30 +2,22 @@
 
 import { useState } from "react";
 import { Btn, Chip, Icon, MetaTag } from "@/app/components/Primitives";
-import { MOCK_EVENTOS } from "@/app/data/mock";
+import {
+  MOCK_EVENTOS,
+  MOCK_ENTIDADE,
+  MOCK_FORM_CONFIG,
+  STATUS_CIDADE_META,
+} from "@/app/data/mock";
 
-/* checklist rápido para o cidadão */
-const CHECKLIST = [
-  { id: "pessoas_risco", label: "Há pessoas em risco no local", icon: "personal_injury" },
-  { id: "criancas_idosos", label: "Há crianças, idosos ou pessoas com mobilidade reduzida", icon: "elderly" },
-  { id: "agua_invadindo", label: "Água invadindo imóveis", icon: "water" },
-  { id: "rachaduras", label: "Rachaduras, estalos ou portas emperrando", icon: "foundation" },
-  { id: "via_bloqueada", label: "Via bloqueada ou intransitável", icon: "block" },
-  { id: "energia", label: "Fiação caída ou falta de energia", icon: "bolt" },
-  { id: "animais", label: "Há animais no local", icon: "pets" },
-];
-
-const CATEGORIAS = [
-  { id: "climatico", label: "Chuva / Alagamento", icon: "thunderstorm" },
-  { id: "geologico", label: "Deslizamento / Encosta", icon: "terrain" },
-  { id: "vias_publicas", label: "Via pública", icon: "directions_car" },
-  { id: "produtos_perigosos", label: "Produto perigoso", icon: "science" },
-];
+/* configuração vinda da tela de Entidade */
+const CONFIG = MOCK_FORM_CONFIG;
+const CHECKLIST = CONFIG.checklist.filter((c) => c.ativo);
+const CATEGORIAS = CONFIG.categorias.filter((c) => c.ativo);
 
 export default function PublicReportPage() {
   const eventoAtivo = MOCK_EVENTOS.find((e) => e.status === "ativo") ?? null;
 
-  const [categoria, setCategoria] = useState("climatico");
+  const [categoria, setCategoria] = useState(CATEGORIAS[0]?.id ?? "climatico");
   const [descricao, setDescricao] = useState("");
   const [checks, setChecks] = useState<Record<string, boolean>>({});
   const [modoLocal, setModoLocal] = useState<"endereco" | "coordenada">("endereco");
@@ -33,6 +25,7 @@ export default function PublicReportPage() {
   const [lat, setLat] = useState("");
   const [lng, setLng] = useState("");
   const [contato, setContato] = useState("");
+  const [anexos, setAnexos] = useState<{ nome: string; tamanho: string }[]>([]);
   const [geoStatus, setGeoStatus] = useState<"idle" | "carregando" | "ok" | "erro">("idle");
   const [erro, setErro] = useState("");
   const [enviado, setEnviado] = useState(false);
@@ -57,15 +50,21 @@ export default function PublicReportPage() {
   };
 
   const enviar = () => {
-    if (descricao.trim().length < 10) {
-      setErro("Descreva o que está acontecendo com pelo menos 10 caracteres.");
+    if (descricao.trim().length < CONFIG.minCaracteresDescricao) {
+      setErro(
+        `Descreva o que está acontecendo com pelo menos ${CONFIG.minCaracteresDescricao} caracteres.`,
+      );
       return;
     }
-    if (modoLocal === "endereco" && !endereco.trim()) {
+    if (CONFIG.exigirContato && !contato.trim()) {
+      setErro("Informe um telefone de contato para prosseguir.");
+      return;
+    }
+    if (CONFIG.exigirLocalizacao && modoLocal === "endereco" && !endereco.trim()) {
       setErro("Informe o endereço ou use sua localização atual.");
       return;
     }
-    if (modoLocal === "coordenada" && (!lat.trim() || !lng.trim())) {
+    if (CONFIG.exigirLocalizacao && modoLocal === "coordenada" && (!lat.trim() || !lng.trim())) {
       setErro("Informe as coordenadas ou use sua localização atual.");
       return;
     }
@@ -75,6 +74,28 @@ export default function PublicReportPage() {
   };
 
   /* ───────── confirmação ───────── */
+  /* ───────── canal desativado pela entidade ───────── */
+  if (!CONFIG.ativo) {
+    return (
+      <main className="min-h-screen bg-surface flex items-center justify-center p-6">
+        <div className="card-tonal p-10 shadow-ambient max-w-lg w-full text-center">
+          <div className="w-16 h-16 rounded-2xl bg-surface-container-high flex items-center justify-center mx-auto mb-5">
+            <Icon name="pause_circle" filled className="text-on-surface-variant text-[32px]" />
+          </div>
+          <h1 className="font-headline font-black text-3xl tracking-tighter text-primary">
+            Canal indisponível
+          </h1>
+          <p className="text-sm text-on-surface-variant mt-3 leading-relaxed">
+            {CONFIG.mensagemDesativado}
+          </p>
+          <p className="text-[11px] text-on-surface-variant mt-6">
+            {MOCK_ENTIDADE.sigla} · {MOCK_ENTIDADE.telefone}
+          </p>
+        </div>
+      </main>
+    );
+  }
+
   if (enviado) {
     return (
       <main className="min-h-screen bg-surface flex items-center justify-center p-6">
@@ -109,6 +130,7 @@ export default function PublicReportPage() {
                 setLat("");
                 setLng("");
                 setContato("");
+                setAnexos([]);
                 setGeoStatus("idle");
               }}
             >
@@ -138,17 +160,34 @@ export default function PublicReportPage() {
             </div>
           </div>
           <h1 className="font-headline font-black text-4xl tracking-tighter leading-tight">
-            Registrar uma ocorrência
+            {CONFIG.titulo}
           </h1>
-          <p className="text-white/75 text-sm mt-3 max-w-xl leading-relaxed">
-            Conte o que está acontecendo perto de você. As informações vão direto para a equipe de plantão.
-          </p>
+          <p className="text-white/75 text-sm mt-3 max-w-xl leading-relaxed">{CONFIG.subtitulo}</p>
         </div>
       </header>
 
       <div className="max-w-3xl mx-auto px-6 py-8 space-y-6">
+        {/* situação do município, definida na tela de Entidade */}
+        <section
+          className="rounded-xl p-6 text-white"
+          style={{ background: STATUS_CIDADE_META[MOCK_ENTIDADE.statusCidade].cor }}
+        >
+          <div className="flex items-center gap-2 mb-2">
+            <Icon
+              name={STATUS_CIDADE_META[MOCK_ENTIDADE.statusCidade].icon}
+              filled
+              className="text-[20px]"
+            />
+            <span className="text-[11px] font-black uppercase tracking-mono">
+              {MOCK_ENTIDADE.municipio} · Município{" "}
+              {STATUS_CIDADE_META[MOCK_ENTIDADE.statusCidade].label}
+            </span>
+          </div>
+          <p className="text-[13px] leading-relaxed text-white/90">{MOCK_ENTIDADE.mensagemPublica}</p>
+        </section>
+
         {/* aviso do evento ativo (resumo público + recomendações) */}
-        {eventoAtivo && (
+        {CONFIG.mostrarAvisoEvento && eventoAtivo && (
           <section className="card-tonal p-6 shadow-ambient-sm border-l-4 border-error">
             <div className="flex items-center gap-2 mb-3">
               <Icon name="campaign" filled className="text-error text-[20px]" />
@@ -303,11 +342,71 @@ export default function PublicReportPage() {
           )}
         </section>
 
+        {/* anexos */}
+        {CONFIG.permitirAnexos && (
+          <section className="card-tonal p-6 shadow-ambient-sm">
+            <MetaTag className="block mb-1">FOTOS E VÍDEOS (OPCIONAL)</MetaTag>
+            <p className="text-[11px] text-on-surface-variant mb-3">
+              Imagens ajudam a equipe a dimensionar a situação antes de chegar ao local.
+            </p>
+            <label className="flex flex-col items-center justify-center gap-2 py-6 rounded-lg bg-surface-container-low border-2 border-dashed border-outline-variant/40 cursor-pointer hover:bg-surface-container transition-all">
+              <Icon name="add_a_photo" className="text-secondary text-[24px]" />
+              <span className="text-[12px] font-bold text-primary">Clique para anexar</span>
+              <span className="text-[10px] text-on-surface-variant">JPG, PNG ou MP4</span>
+              <input
+                type="file"
+                multiple
+                accept="image/*,video/*"
+                className="hidden"
+                onChange={(e) => {
+                  const arquivos = Array.from(e.target.files ?? []).map((f) => ({
+                    nome: f.name,
+                    tamanho:
+                      f.size > 1024 * 1024
+                        ? `${(f.size / (1024 * 1024)).toFixed(1).replace(".", ",")} MB`
+                        : `${Math.max(1, Math.round(f.size / 1024))} KB`,
+                  }));
+                  setAnexos((prev) => [...prev, ...arquivos]);
+                }}
+              />
+            </label>
+
+            {anexos.length > 0 && (
+              <div className="space-y-2 mt-3">
+                {anexos.map((a, i) => (
+                  <div
+                    key={i}
+                    className="flex items-center gap-3 p-3 rounded-lg bg-surface-container-low text-[12px]"
+                  >
+                    <Icon name="image" className="text-secondary text-[18px]" />
+                    <span className="font-bold text-primary flex-1 truncate">{a.nome}</span>
+                    <span className="text-[10px] font-mono font-bold text-slate-400">{a.tamanho}</span>
+                    <button
+                      type="button"
+                      onClick={() => setAnexos((prev) => prev.filter((_, idx) => idx !== i))}
+                      className="p-1 rounded-md hover:bg-surface-container"
+                      aria-label="Remover anexo"
+                    >
+                      <Icon name="close" className="text-on-surface-variant text-[16px]" />
+                    </button>
+                  </div>
+                ))}
+              </div>
+            )}
+          </section>
+        )}
+
         {/* contato */}
         <section className="card-tonal p-6 shadow-ambient-sm">
-          <MetaTag className="block mb-1">5. CONTATO (OPCIONAL)</MetaTag>
+          <MetaTag className="block mb-1">
+            5. CONTATO {CONFIG.exigirContato ? "(OBRIGATÓRIO)" : "(OPCIONAL)"}
+          </MetaTag>
           <p className="text-[11px] text-on-surface-variant mb-3">
-            Deixe um telefone se puder ser contatado pela equipe. Você pode registrar de forma anônima.
+            {CONFIG.exigirContato
+              ? "Informe um telefone para que a equipe possa confirmar os detalhes do registro."
+              : CONFIG.permitirAnonimo
+                ? "Deixe um telefone se puder ser contatado pela equipe. Você pode registrar de forma anônima."
+                : "Deixe um telefone para que a equipe possa entrar em contato."}
           </p>
           <input
             value={contato}
@@ -331,7 +430,7 @@ export default function PublicReportPage() {
         </div>
 
         <p className="text-[11px] text-on-surface-variant text-center -mt-8 pb-8">
-          Emergência com risco à vida: ligue 199 (Defesa Civil) ou 193 (Bombeiros).
+          Emergência com risco à vida: ligue {CONFIG.telefonesEmergencia}.
         </p>
       </div>
     </main>
