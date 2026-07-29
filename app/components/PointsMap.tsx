@@ -3,6 +3,8 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import maplibregl from "maplibre-gl";
 import { createMap, addBoundaryLayer } from "@/app/lib/mapShared";
+import { api } from "@/app/services/Api";
+import { useGardian } from "@/app/components/GardianContext";
 import "maplibre-gl/dist/maplibre-gl.css";
 
 /* ────────────── Types ────────────── */
@@ -41,6 +43,7 @@ export function PointsMap({ points, height = 420, showFilters = true }: PointsMa
   const containerRef = useRef<HTMLDivElement>(null);
   const mapRef = useRef<maplibregl.Map | null>(null);
   const markersRef = useRef<maplibregl.Marker[]>([]);
+  const { user } = useGardian();
 
   const [visible, setVisible] = useState<Record<MapPoint["kind"], boolean>>({
     ocorrencia_aberta: true,
@@ -65,7 +68,14 @@ export function PointsMap({ points, height = 420, showFilters = true }: PointsMa
     const map = createMap(containerRef.current, center);
     map.addControl(new maplibregl.NavigationControl({ showCompass: false }), "top-right");
     map.on("load", () => {
-      addBoundaryLayer(map);
+      if (user?.entidade) {
+        api
+          .get<{ area: { id: number; area: GeoJSON.MultiPolygon } }>(
+            "/entidades/areas/",
+          )
+          .then((res) => addBoundaryLayer(map, res.data.area.area))
+          .catch(() => {});
+      }
     });
     mapRef.current = map;
 

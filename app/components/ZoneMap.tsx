@@ -5,6 +5,7 @@ import maplibregl from "maplibre-gl";
 import MapboxDraw from "@mapbox/mapbox-gl-draw";
 import { Btn, Icon } from "@/app/components/Primitives";
 import { api } from "@/app/services/Api";
+import { useGardian } from "@/app/components/GardianContext";
 import {
   createMap,
   patchDrawForMapLibre,
@@ -12,7 +13,7 @@ import {
   addPolygonLayer,
   removePolygonLayer,
   getPolygonBounds,
-  MUNICIPIO_CENTER,
+  getMultiPolygonCenter,
   ZONE_STATUS_COLORS,
   DEFAULT_ZONE_COLOR,
 } from "@/app/lib/mapShared";
@@ -72,6 +73,8 @@ export function ZoneMap({
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [toast, setToast] = useState<{ msg: string; tone: "error" | "secondary" } | null>(null);
+  const [mapReady, setMapReady] = useState(false);
+  const { user } = useGardian();
 
   const showToast = useCallback((msg: string, tone: "error" | "secondary" = "secondary") => {
     setToast({ msg, tone });
@@ -141,7 +144,8 @@ export function ZoneMap({
 
     patchDrawForMapLibre(MapboxDraw);
 
-    const map = createMap(container, MUNICIPIO_CENTER);
+    const DEFAULT_CENTER: [number, number] = [-39.5, -16.0];
+    const map = createMap(container, DEFAULT_CENTER);
     map.addControl(
       new maplibregl.NavigationControl({ showCompass: false }),
       "top-right",
@@ -159,7 +163,7 @@ export function ZoneMap({
 
     map.on("load", () => {
       resizeMap();
-      addBoundaryLayer(map);
+      setMapReady(true);
     });
 
     mapRef.current = map;
@@ -174,6 +178,28 @@ export function ZoneMap({
       map.remove();
     };
   }, []);
+
+  /* ── buscar a área da entidade e desenhar o limite municipal ── */
+  useEffect(() => {
+    const map = mapRef.current;
+    if (!map || !mapReady || !user?.entidade) return;
+
+    const doFetch = () => {
+      api
+        .get<{ area: { id: number; area: GeoJSON.MultiPolygon } }>(
+          "/entidades/areas/",
+        )
+        .then((res) => {
+          addBoundaryLayer(map, res.data.area.area);
+        })
+        .catch(() => {
+          // Backend unavailable — boundary not shown
+        });
+    };
+
+    if (map.isStyleLoaded()) doFetch();
+    else map.once("style.load", doFetch);
+  }, [mapReady, user?.entidade]);
 
   /* ── reagir a mudanças em zonaData (view mode) ── */
   useEffect(() => {

@@ -3,11 +3,13 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import maplibregl from "maplibre-gl";
 import { Icon } from "@/app/components/Primitives";
+import { useGardian } from "@/app/components/GardianContext";
+import { api } from "@/app/services/Api";
 import {
   createMap,
   addBoundaryLayer,
   getPolygonBounds,
-  MUNICIPIO_CENTER,
+  getMultiPolygonCenter,
 } from "@/app/lib/mapShared";
 
 import "maplibre-gl/dist/maplibre-gl.css";
@@ -89,13 +91,17 @@ export function DashboardMap({
   const hoveredIdRef = useRef<number | string | null>(null);
   const autoFitDone = useRef(false);
   const cycleRef = useRef({ point: { x: 0, y: 0 }, index: 0, ids: [] as number[] });
+  const [mapReady, setMapReady] = useState(false);
+  const { user } = useGardian();
 
   /* ── inicializar o mapa (uma vez apenas) ── */
   useEffect(() => {
     const container = mapContainerRef.current;
     if (!container || mapRef.current) return;
 
-    const map = createMap(container, MUNICIPIO_CENTER);
+    // Use a generic Brazil-ish center until we load the entity area
+    const DEFAULT_CENTER: [number, number] = [-39.5, -16.0];
+    const map = createMap(container, DEFAULT_CENTER);
     map.addControl(
       new maplibregl.NavigationControl({ showCompass: false }),
       "top-right",
@@ -110,7 +116,7 @@ export function DashboardMap({
 
     map.on("load", () => {
       resize();
-      addBoundaryLayer(map);
+      setMapReady(true);
     });
 
     mapRef.current = map;
@@ -124,6 +130,29 @@ export function DashboardMap({
       map.remove();
     };
   }, []);
+
+  /* ── buscar a área da entidade e desenhar o limite municipal ── */
+  useEffect(() => {
+    const map = mapRef.current;
+    if (!map || !mapReady || !user?.entidade) return;
+
+    const doFetch = () => {
+      api
+        .get<{ area: { id: number; area: GeoJSON.MultiPolygon } }>(
+          "/entidades/areas/",
+        )
+        .then((res) => {
+          const area = res.data.area.area;
+          addBoundaryLayer(map, area);
+        })
+        .catch(() => {
+          // Backend unavailable — boundary will not be shown
+        });
+    };
+
+    if (map.isStyleLoaded()) doFetch();
+    else map.once("style.load", doFetch);
+  }, [mapReady, user?.entidade]);
 
   /* ── adicionar/atualizar layers quando zonas ou selectedZoneId mudam ── */
   useEffect(() => {

@@ -2,10 +2,6 @@
 
 import maplibregl from "maplibre-gl";
 import type { StyleSpecification } from "maplibre-gl";
-import {
-  PORTO_SEGURO_BOUNDARY,
-  PORTO_SEGURO_BBOX,
-} from "@/app/data/portoSeguroBoundary";
 
 /* ─────────── estilo do map (raster CARTO tiles) ─────────── */
 
@@ -34,13 +30,6 @@ export const MAP_STYLE: StyleSpecification = {
   ],
 };
 
-/* ─────────── centro do município ─────────── */
-
-export const MUNICIPIO_CENTER: [number, number] = [
-  (PORTO_SEGURO_BBOX.west + PORTO_SEGURO_BBOX.east) / 2,
-  (PORTO_SEGURO_BBOX.south + PORTO_SEGURO_BBOX.north) / 2,
-];
-
 /* ─────────── polygon helpers ─────────── */
 
 function closeRing(ring: number[][]) {
@@ -49,13 +38,6 @@ function closeRing(ring: number[][]) {
   const last = ring[ring.length - 1];
   if (first[0] === last[0] && first[1] === last[1]) return ring;
   return [...ring, first];
-}
-
-export function boundaryToPolygon(): GeoJSON.Polygon {
-  const ring = closeRing(
-    PORTO_SEGURO_BOUNDARY.map(([lon, lat]) => [lon, lat]),
-  );
-  return { type: "Polygon", coordinates: [ring] };
 }
 
 export function getPolygonBounds(
@@ -68,6 +50,25 @@ export function getPolygonBounds(
     [Math.min(...lons), Math.min(...lats)],
     [Math.max(...lons), Math.max(...lats)],
   );
+}
+
+/** Compute the center of a MultiPolygon from its bounding box. */
+export function getMultiPolygonCenter(
+  mp: GeoJSON.MultiPolygon,
+): [number, number] {
+  let minLon = Infinity, maxLon = -Infinity;
+  let minLat = Infinity, maxLat = -Infinity;
+  for (const polygon of mp.coordinates) {
+    for (const ring of polygon) {
+      for (const [lon, lat] of ring) {
+        if (lon < minLon) minLon = lon;
+        if (lon > maxLon) maxLon = lon;
+        if (lat < minLat) minLat = lat;
+        if (lat > maxLat) maxLat = lat;
+      }
+    }
+  }
+  return [(minLon + maxLon) / 2, (minLat + maxLat) / 2];
 }
 
 /* ─────────── factory do mapa ─────────── */
@@ -98,12 +99,20 @@ export function patchDrawForMapLibre(MapboxDrawCtor: {
   cls.ATTRIBUTION = "maplibregl-ctrl-attrib";
 }
 
-/* ─────────── linha pontilhada ─────────── */
+/* ─────────── linha pontilhada (limite municipal) ─────────── */
 
 const BOUNDARY_SOURCE_ID = "municipal-boundary";
 const BOUNDARY_LINE_ID = "municipal-boundary-line";
 
-export function addBoundaryLayer(map: maplibregl.Map) {
+/**
+ * Add a dashed line layer for the municipal boundary.
+ * @param map   The MapLibre instance.
+ * @param area  A MultiPolygon GeoJSON geometry (the Entidade.area from the backend).
+ */
+export function addBoundaryLayer(
+  map: maplibregl.Map,
+  area: GeoJSON.MultiPolygon,
+) {
   if (map.getSource(BOUNDARY_SOURCE_ID)) return;
 
   map.addSource(BOUNDARY_SOURCE_ID, {
@@ -111,7 +120,7 @@ export function addBoundaryLayer(map: maplibregl.Map) {
     data: {
       type: "Feature",
       properties: {},
-      geometry: boundaryToPolygon(),
+      geometry: area,
     },
   });
 

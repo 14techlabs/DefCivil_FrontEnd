@@ -3,6 +3,8 @@
 import { useEffect, useMemo, useRef } from "react";
 import maplibregl from "maplibre-gl";
 import { createMap, addBoundaryLayer } from "@/app/lib/mapShared";
+import { api } from "@/app/services/Api";
+import { useGardian } from "@/app/components/GardianContext";
 import "maplibre-gl/dist/maplibre-gl.css";
 
 /* ────────────── Types ────────────── */
@@ -46,6 +48,7 @@ export function RouteMap({ stops, height = 460, activeStop, onSelectStop }: Rout
   const containerRef = useRef<HTMLDivElement>(null);
   const mapRef = useRef<maplibregl.Map | null>(null);
   const markersRef = useRef<maplibregl.Marker[]>([]);
+  const { user } = useGardian();
 
   const ordenadas = useMemo(
     () => [...stops].sort((a, b) => a.ordem - b.ordem),
@@ -62,7 +65,16 @@ export function RouteMap({ stops, height = 460, activeStop, onSelectStop }: Rout
 
     const map = createMap(containerRef.current, center);
     map.addControl(new maplibregl.NavigationControl({ showCompass: false }), "top-right");
-    map.on("load", () => addBoundaryLayer(map));
+    map.on("load", () => {
+      if (user?.entidade) {
+        api
+          .get<{ area: { id: number; area: GeoJSON.MultiPolygon } }>(
+            "/entidades/areas/",
+          )
+          .then((res) => addBoundaryLayer(map, res.data.area.area))
+          .catch(() => {});
+      }
+    });
     mapRef.current = map;
 
     return () => {
