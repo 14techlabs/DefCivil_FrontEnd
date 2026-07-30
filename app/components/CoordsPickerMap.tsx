@@ -92,6 +92,12 @@ export function CoordsPickerMap({
   const markerRef = useRef<maplibregl.Marker | null>(null);
   const isDragging = useRef(false);
   const { user } = useGardian();
+  const onChangeRef = useRef(onChange);
+  const onZoneDetectRef = useRef(onZoneDetect);
+  const zonasNamesRef = useRef(zonasNames);
+  onChangeRef.current = onChange;
+  onZoneDetectRef.current = onZoneDetect;
+  zonasNamesRef.current = zonasNames;
 
   // Store fetched zone polygons for point-in-polygon detection
   const zonePolygonsRef = useRef<Map<number, GeoJSON.Polygon>>(new Map());
@@ -107,8 +113,8 @@ export function CoordsPickerMap({
         found.push(id);
       }
     });
-    onZoneDetect?.(found);
-  }, [onZoneDetect]);
+    onZoneDetectRef.current?.(found);
+  }, []);
 
   /* ── buscar dados da entidade ── */
   useEffect(() => {
@@ -188,7 +194,7 @@ export function CoordsPickerMap({
       const centroids: GeoJSON.Feature<GeoJSON.Point>[] = [];
 
       zonePolygonsRef.current.forEach((poly, id) => {
-        const nome = zonasNames?.find((z) => z.id === id)?.nome ?? `Zona #${id}`;
+        const nome = zonasNamesRef.current?.find((z) => z.id === id)?.nome ?? `Zona #${id}`;
         const [cx, cy] = polygonCentroid(poly);
         features.push({
           type: "Feature",
@@ -269,7 +275,7 @@ export function CoordsPickerMap({
       marker.on("dragend", () => {
         isDragging.current = false;
         const pos = marker.getLngLat();
-        onChange(pos.lat.toFixed(6), pos.lng.toFixed(6));
+        onChangeRef.current(pos.lat.toFixed(6), pos.lng.toFixed(6));
         detectZones(pos.lng, pos.lat);
       });
 
@@ -287,7 +293,7 @@ export function CoordsPickerMap({
       mapRef.current = null;
       map.remove();
     };
-  }, [loaded, entityCenter, entityArea, zonasNames, onChange, detectZones]);
+  }, [loaded, entityCenter, entityArea]);
 
   // sincronizar marcador quando lat/lng mudarem por input externo
   useEffect(() => {
