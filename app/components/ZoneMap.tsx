@@ -84,7 +84,6 @@ export function ZoneMap({
     setTimeout(() => setToast(null), 3000);
   }, []);
 
-  /* ── renderizar poligono em view mode ── */
   const renderZonePolygon = useCallback(
     (map: maplibregl.Map, data: ZoneData) => {
       if (!data.area) return;
@@ -115,6 +114,14 @@ export function ZoneMap({
     },
     [],
   );
+
+  // refs para valores que o efeito do mapa precisa sem recriar o mapa
+  const zoneDataRef = useRef(zoneData);
+  const modeRef = useRef(mode);
+  const renderZonePolygonRef = useRef(renderZonePolygon);
+  zoneDataRef.current = zoneData;
+  modeRef.current = mode;
+  renderZonePolygonRef.current = renderZonePolygon;
 
   /* ── buscar dados (entidade + zona) em paralelo antes de criar o mapa ── */
   useEffect(() => {
@@ -181,9 +188,9 @@ export function ZoneMap({
       // Add boundary layer
       if (entityArea) addBoundaryLayer(map, entityArea);
 
-      // Render zone polygon if we have data
-      if (zoneData && mode === "view") {
-        renderZonePolygon(map, zoneData);
+      // renderizar polígono se tiver dados (usa refs para evitar stale closure)
+      if (zoneDataRef.current && modeRef.current === "view") {
+        renderZonePolygonRef.current(map, zoneDataRef.current);
       }
     });
 
@@ -198,7 +205,7 @@ export function ZoneMap({
       mapRef.current = null;
       map.remove();
     };
-  }, [dataReady, entityCenter, entityArea, zoneData, mode, renderZonePolygon]);
+  }, [dataReady, entityCenter, entityArea]);
 
   /* ── edit mode ── */
   const enterEditMode = useCallback(() => {
@@ -252,6 +259,25 @@ export function ZoneMap({
     setMode("view");
     // useEffect para quando voltar para view mode, o polígono será renderizado novamente
   }, []);
+
+  /* ── re-renderizar polígono ao voltar para view mode ── */
+  useEffect(() => {
+    const map = mapRef.current;
+    if (!map || mode !== "view" || !zoneData) return;
+
+    const apply = () => {
+      // limpa layers antigas antes de recriar
+      removePolygonLayer(map, "zone");
+      renderZonePolygon(map, zoneData);
+    };
+
+    if (map.isStyleLoaded()) apply();
+    else map.once("style.load", apply);
+
+    return () => {
+      removePolygonLayer(map, "zone");
+    };
+  }, [mode, zoneData, renderZonePolygon]);
 
   /* ── salvar polígono editado ── */
   const handleSave = useCallback(async () => {
