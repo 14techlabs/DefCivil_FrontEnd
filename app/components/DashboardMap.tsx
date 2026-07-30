@@ -76,6 +76,65 @@ function removeLayers(map: maplibregl.Map) {
   }
 }
 
+/** construir layers de zonas, centroids e destaque; remove layers antigas quando chamada */
+function buildZoneLayers(map: maplibregl.Map, zones: DashboardZone[]) {
+  removeLayers(map);
+
+  const features: GeoJSON.Feature<GeoJSON.Polygon>[] = [];
+  const centroids: GeoJSON.Feature<GeoJSON.Point>[] = [];
+
+  for (const z of zones) {
+    if (!z.area) continue;
+    const ring = z.area.coordinates[0];
+    if (isDegenerate(ring)) continue;
+
+    const props = { id: z.id, nome: z.nome, status: z.status, tipo: z.tipo, descricao: z.descricao };
+    features.push({ type: "Feature", properties: props, geometry: z.area });
+
+    const [cx, cy] = polygonCentroid(ring);
+    centroids.push({
+      type: "Feature",
+      properties: { nome: z.nome, status: z.status },
+      geometry: { type: "Point", coordinates: [cx, cy] },
+    });
+  }
+
+  if (features.length === 0) return;
+
+  // polígonos
+  map.addSource(ZONES_SOURCE, { type: "geojson", data: { type: "FeatureCollection", features } });
+  map.addLayer({
+    id: ZONES_FILL, type: "fill", source: ZONES_SOURCE,
+    paint: {
+      "fill-color": ["match", ["get", "status"], "critico", "#BA1A1A", "atencao", "#C2570B", "estavel", "#006A60", "#006A60"],
+      "fill-opacity": ["case", ["boolean", ["feature-state", "hover"], false], 0.55, ["match", ["get", "status"], "critico", 0.3, "atencao", 0.25, "estavel", 0.2, 0.2]],
+    },
+  });
+  map.addLayer({
+    id: ZONES_LINE, type: "line", source: ZONES_SOURCE,
+    paint: {
+      "line-color": ["match", ["get", "status"], "critico", "#BA1A1A", "atencao", "#C2570B", "estavel", "#006A60", "#006A60"],
+      "line-width": ["case", ["boolean", ["feature-state", "hover"], false], 3.5, 2],
+    },
+  });
+
+  // destaque
+  map.addSource(HIGHLIGHT_SOURCE, { type: "geojson", data: { type: "FeatureCollection", features: [] } });
+  map.addLayer({ id: HIGHLIGHT_FILL, type: "fill", source: HIGHLIGHT_SOURCE, paint: { "fill-color": "#006A60", "fill-opacity": 0.18 } });
+  map.addLayer({ id: HIGHLIGHT_LINE, type: "line", source: HIGHLIGHT_SOURCE, paint: { "line-color": "#006A60", "line-width": 4 } });
+
+  // centroids
+  map.addSource(CENTROIDS_SOURCE, { type: "geojson", data: { type: "FeatureCollection", features: centroids } });
+  map.addLayer({
+    id: CENTROIDS_LABEL, type: "symbol", source: CENTROIDS_SOURCE,
+    layout: {
+      "text-field": ["get", "nome"], "text-size": 11, "text-offset": [0, -0.5], "text-anchor": "bottom",
+      "text-font": ["Open Sans Bold", "Arial Unicode MS Bold"],
+    },
+    paint: { "text-color": "#051125", "text-halo-color": "#ffffff", "text-halo-width": 1.5 },
+  });
+}
+
 /* ────────────── component ────────────── */
 
 export function DashboardMap({
@@ -91,6 +150,8 @@ export function DashboardMap({
   const hoveredIdRef = useRef<number | string | null>(null);
   const autoFitDone = useRef(false);
   const cycleRef = useRef({ point: { x: 0, y: 0 }, index: 0, ids: [] as number[] });
+  const onZoneSelectRef = useRef(onZoneSelect);
+  onZoneSelectRef.current = onZoneSelect;
   const { user } = useGardian();
 
   const [entityCenter, setEntityCenter] = useState<[number, number] | null>(null);
@@ -102,9 +163,7 @@ export function DashboardMap({
     if (!user?.entidade) return;
     let cancelled = false;
     api
-      .get<{ area: { id: number; area: GeoJSON.MultiPolygon } }>(
-        "/entidades/areas/",
-      )
+      .get<{ area: { id: number; area: GeoJSON.MultiPolygon } }>("/entidades/areas/")
       .then((res) => {
         if (cancelled) return;
         const area = res.data.area.area;
@@ -112,38 +171,99 @@ export function DashboardMap({
         setEntityCenter(getMultiPolygonCenter(area));
       })
       .catch(() => {
-        // Backend unavailable — fallback to default center
-        if (!cancelled) {
-          setEntityCenter([-39.5, -16.0]);
-        }
+        if (!cancelled) setEntityCenter([-39.5, -16.0]);
       })
-      .finally(() => {
-        if (!cancelled) setLoaded(true);
-      });
+      .finally(() => { if (!cancelled) setLoaded(true); });
     return () => { cancelled = true; };
   }, [user?.entidade]);
 
-  /* ── inicializar o mapa (uma vez, após entityCenter estar disponível) ── */
+  /* ── inicializar o mapa + boundary + zonas (tudo de uma vez) ── */
   useEffect(() => {
     const container = mapContainerRef.current;
-    if (!container || mapRef.current || !entityCenter) return;
+    if (!container || mapRef.current || !entityCenter || !entityArea) return;
 
     const map = createMap(container, entityCenter);
-    map.addControl(
-      new maplibregl.NavigationControl({ showCompass: false }),
-      "top-right",
-    );
+    map.addControl(new maplibregl.NavigationControl({ showCompass: false }), "top-right");
 
     let disposed = false;
-
     const resize = () => { if (!disposed) map.resize(); };
     const ro = new ResizeObserver(() => resize());
     ro.observe(container);
     window.addEventListener("resize", resize);
 
     map.on("load", () => {
+      if (disposed) return;
       resize();
-      if (entityArea) addBoundaryLayer(map, entityArea);
+      addBoundaryLayer(map, entityArea);
+      buildZoneLayers(map, zones);
+      layersInitialized.current = true;
+
+      // click handler (ciclando zonas em sobreposição)
+      const handleClick = (e: maplibregl.MapMouseEvent) => {
+        const features = map.queryRenderedFeatures(e.point, { layers: [ZONES_FILL, ZONES_LINE] });
+        const uniqueIds = features
+          .map((f) => f.properties?.id)
+          .filter((id): id is number => id != null)
+          .filter((id, i, arr) => arr.indexOf(id) === i);
+        if (uniqueIds.length === 0) return;
+
+        const samePoint =
+          Math.abs(e.point.x - cycleRef.current.point.x) < 8 &&
+          Math.abs(e.point.y - cycleRef.current.point.y) < 8;
+
+        if (samePoint && cycleRef.current.ids.length === uniqueIds.length) {
+          cycleRef.current.index = (cycleRef.current.index + 1) % uniqueIds.length;
+        } else {
+          cycleRef.current.index = 0;
+        }
+
+        cycleRef.current.point = { x: e.point.x, y: e.point.y };
+        cycleRef.current.ids = uniqueIds;
+        onZoneSelectRef.current?.(uniqueIds[cycleRef.current.index]);
+      };
+
+      // hover handler
+      const handleHover = (e: maplibregl.MapMouseEvent) => {
+        const features = map.queryRenderedFeatures(e.point, { layers: [ZONES_FILL, ZONES_LINE] });
+        map.getCanvas().style.cursor = features.length > 0 ? "pointer" : "";
+
+        if (hoveredIdRef.current != null) {
+          map.setFeatureState({ source: ZONES_SOURCE, id: hoveredIdRef.current }, { hover: false });
+          hoveredIdRef.current = null;
+        }
+        if (features.length > 0 && features[0].id != null) {
+          const id = features[0].id;
+          map.setFeatureState({ source: ZONES_SOURCE, id }, { hover: true });
+          hoveredIdRef.current = id;
+        }
+      };
+
+      const handleLeave = () => {
+        map.getCanvas().style.cursor = "";
+        if (hoveredIdRef.current != null) {
+          map.setFeatureState({ source: ZONES_SOURCE, id: hoveredIdRef.current }, { hover: false });
+          hoveredIdRef.current = null;
+        }
+      };
+
+      map.on("click", ZONES_FILL, handleClick);
+      map.on("click", ZONES_LINE, handleClick);
+      map.on("mousemove", handleHover);
+      map.on("mouseleave", ZONES_FILL, handleLeave);
+      map.on("mouseleave", ZONES_LINE, handleLeave);
+
+      // "Show All" na primeira vez
+      if (!autoFitDone.current) {
+        autoFitDone.current = true;
+        const validZones = zones.filter((z) => z.area && !isDegenerate(z.area.coordinates[0]));
+        if (validZones.length > 0) {
+          const allBounds = validZones.reduce((bounds, z) => {
+            const b = getPolygonBounds(z.area!);
+            return bounds ? bounds.extend(b) : b;
+          }, null as maplibregl.LngLatBounds | null);
+          if (allBounds) map.fitBounds(allBounds, { padding: 60, maxZoom: 14, duration: 600 });
+        }
+      }
     });
 
     mapRef.current = map;
@@ -153,187 +273,11 @@ export function DashboardMap({
       disposed = true;
       ro.disconnect();
       window.removeEventListener("resize", resize);
+      layersInitialized.current = false;
       mapRef.current = null;
       map.remove();
     };
-  }, [entityCenter, entityArea]);
-
-  /* ── adicionar/atualizar layers quando zonas ou selectedZoneId mudam ── */
-  useEffect(() => {
-    const map = mapRef.current;
-    if (!map) return;
-
-    const apply = () => {
-      // criar GeoJSON válido (skipar áreas nulas ou degeneradas)
-      const features: GeoJSON.Feature<GeoJSON.Polygon>[] = [];
-      const centroids: GeoJSON.Feature<GeoJSON.Point>[] = [];
-
-      for (const z of zones) {
-        if (!z.area) continue;
-        const ring = z.area.coordinates[0];
-        if (isDegenerate(ring)) continue;
-
-        const props = {
-          id: z.id,
-          nome: z.nome,
-          status: z.status,
-          tipo: z.tipo,
-          descricao: z.descricao,
-        };
-
-        features.push({
-          type: "Feature",
-          properties: props,
-          geometry: z.area,
-        });
-
-        const [cx, cy] = polygonCentroid(ring);
-        centroids.push({
-          type: "Feature",
-          properties: { nome: z.nome, status: z.status },
-          geometry: { type: "Point", coordinates: [cx, cy] },
-        });
-      }
-
-      // remover layers antigas primeiro
-      removeLayers(map);
-
-      if (features.length === 0) return;
-
-      /* ── source dos polígonos + layers ── */
-
-      map.addSource(ZONES_SOURCE, {
-        type: "geojson",
-        data: { type: "FeatureCollection", features },
-      });
-
-      map.addLayer({
-        id: ZONES_FILL,
-        type: "fill",
-        source: ZONES_SOURCE,
-        paint: {
-          "fill-color": [
-            "match",
-            ["get", "status"],
-            "critico", "#BA1A1A",
-            "atencao", "#C2570B",
-            "estavel", "#006A60",
-            "#006A60",
-          ],
-          "fill-opacity": [
-            "case",
-            ["boolean", ["feature-state", "hover"], false],
-            0.55,
-            [
-              "match",
-              ["get", "status"],
-              "critico", 0.3,
-              "atencao", 0.25,
-              "estavel", 0.2,
-              0.2,
-            ],
-          ],
-        },
-      });
-
-      map.addLayer({
-        id: ZONES_LINE,
-        type: "line",
-        source: ZONES_SOURCE,
-        paint: {
-          "line-color": [
-            "match",
-            ["get", "status"],
-            "critico", "#BA1A1A",
-            "atencao", "#C2570B",
-            "estavel", "#006A60",
-            "#006A60",
-          ],
-          "line-width": [
-            "case",
-            ["boolean", ["feature-state", "hover"], false],
-            3.5,
-            2,
-          ],
-        },
-      });
-
-      /* ── destacar source + layers da zona ── */
-
-      map.addSource(HIGHLIGHT_SOURCE, {
-        type: "geojson",
-        data: { type: "FeatureCollection", features: [] },
-      });
-
-      map.addLayer({
-        id: HIGHLIGHT_FILL,
-        type: "fill",
-        source: HIGHLIGHT_SOURCE,
-        paint: {
-          "fill-color": "#006A60",
-          "fill-opacity": 0.18,
-        },
-      });
-
-      map.addLayer({
-        id: HIGHLIGHT_LINE,
-        type: "line",
-        source: HIGHLIGHT_SOURCE,
-        paint: {
-          "line-color": "#006A60",
-          "line-width": 4,
-        },
-      });
-
-      /* ── layer da source + label dos centroids ── */
-
-      map.addSource(CENTROIDS_SOURCE, {
-        type: "geojson",
-        data: { type: "FeatureCollection", features: centroids },
-      });
-
-      map.addLayer({
-        id: CENTROIDS_LABEL,
-        type: "symbol",
-        source: CENTROIDS_SOURCE,
-        layout: {
-          "text-field": ["get", "nome"],
-          "text-size": 11,
-          "text-offset": [0, -0.5],
-          "text-anchor": "bottom",
-          "text-font": ["Open Sans Bold", "Arial Unicode MS Bold"],
-        },
-        paint: {
-          "text-color": "#051125",
-          "text-halo-color": "#ffffff",
-          "text-halo-width": 1.5,
-        },
-      });
-
-      layersInitialized.current = true;
-
-      // encaixar todas as zonas da tela na
-      // primeira vez que a página for carregada
-      if (!autoFitDone.current && features.length > 0) {
-        autoFitDone.current = true;
-        const allBounds = features.reduce((bounds, f) => {
-          const b = getPolygonBounds(f.geometry);
-          return bounds ? bounds.extend(b) : b;
-        }, null as maplibregl.LngLatBounds | null);
-        if (allBounds) {
-          map.fitBounds(allBounds, { padding: 60, maxZoom: 14, duration: 600 });
-        }
-      }
-    };
-
-    if (map.isStyleLoaded()) apply();
-    else map.once("style.load", apply);
-
-    return () => {
-      layersInitialized.current = false;
-      removeLayers(map);
-    };
-  }, [zones]);
+  }, [entityCenter, entityArea, zones]);
 
   /* ── atualizar o destaque quando selectedZoneId muda ── */
   useEffect(() => {
@@ -341,32 +285,19 @@ export function DashboardMap({
     if (!map || !layersInitialized.current) return;
 
     const apply = () => {
-      const source = map.getSource(HIGHLIGHT_SOURCE) as
-        | maplibregl.GeoJSONSource
-        | undefined;
+      const source = map.getSource(HIGHLIGHT_SOURCE) as maplibregl.GeoJSONSource | undefined;
       if (!source) return;
 
       if (selectedZoneId == null) {
         source.setData({ type: "FeatureCollection", features: [] });
         return;
       }
-
       const zone = zones.find((z) => z.id === selectedZoneId);
       if (!zone?.area) {
         source.setData({ type: "FeatureCollection", features: [] });
         return;
       }
-
-      source.setData({
-        type: "FeatureCollection",
-        features: [
-          {
-            type: "Feature",
-            properties: {},
-            geometry: zone.area,
-          },
-        ],
-      });
+      source.setData({ type: "FeatureCollection", features: [{ type: "Feature", properties: {}, geometry: zone.area }] });
     };
 
     if (map.isStyleLoaded()) apply();
@@ -385,19 +316,13 @@ export function DashboardMap({
           : null;
 
       for (const id of [ZONES_FILL, ZONES_LINE, CENTROIDS_LABEL]) {
-        try {
-          map.setFilter(id, filter);
-        } catch { /* pode ser que a layer não exista ainda */ }
+        try { map.setFilter(id, filter); } catch { /* ok */ }
       }
 
-      // remover o destaque caso a zona não esteja mais visível devido ao filtro
       if (selectedZoneId != null && statusFilter && statusFilter !== "todas") {
         const selected = zones.find((z) => z.id === selectedZoneId);
         if (!selected || selected.status !== statusFilter) {
-          // removendo o destaque
-          const hlSource = map.getSource(HIGHLIGHT_SOURCE) as
-            | maplibregl.GeoJSONSource
-            | undefined;
+          const hlSource = map.getSource(HIGHLIGHT_SOURCE) as maplibregl.GeoJSONSource | undefined;
           hlSource?.setData({ type: "FeatureCollection", features: [] });
           onZoneSelect?.(null);
         }
@@ -408,112 +333,12 @@ export function DashboardMap({
     else map.once("style.load", apply);
   }, [statusFilter, selectedZoneId, zones, onZoneSelect]);
 
-  /* ── click handler (preenchimento/linha das zonas) ── */
-  useEffect(() => {
-    const map = mapRef.current;
-    if (!map) return;
-
-    const handleClick = (e: maplibregl.MapMouseEvent) => {
-      const features = map.queryRenderedFeatures(e.point, {
-        layers: [ZONES_FILL, ZONES_LINE],
-      });
-
-      // extrair ids únicos (sem duplicatas)
-      const uniqueIds = features
-        .map((f) => f.properties?.id)
-        .filter((id): id is number => id != null)
-        .filter((id, i, arr) => arr.indexOf(id) === i);
-
-      if (uniqueIds.length === 0) return;
-
-      // verificar se é o mesmo ponto (tolerância ~8px para ignorar micro-movimentos)
-      const samePoint =
-        Math.abs(e.point.x - cycleRef.current.point.x) < 8 &&
-        Math.abs(e.point.y - cycleRef.current.point.y) < 8;
-
-      if (samePoint && cycleRef.current.ids.length === uniqueIds.length) {
-        // mesmo local, avançar no cíclico
-        cycleRef.current.index = (cycleRef.current.index + 1) % uniqueIds.length;
-      } else {
-        // local diferente ou lista de ids mudou, começar do primeiro
-        cycleRef.current.index = 0;
-      }
-
-      cycleRef.current.point = { x: e.point.x, y: e.point.y };
-      cycleRef.current.ids = uniqueIds;
-
-      const selectedId = uniqueIds[cycleRef.current.index];
-      onZoneSelect?.(selectedId);
-    };
-
-    map.on("click", ZONES_FILL, handleClick);
-    map.on("click", ZONES_LINE, handleClick);
-
-    return () => {
-      map.off("click", ZONES_FILL, handleClick);
-      map.off("click", ZONES_LINE, handleClick);
-    };
-  }, [onZoneSelect]);
-
-  /* ── hover handler ── */
-  useEffect(() => {
-    const map = mapRef.current;
-    if (!map) return;
-
-    const handleHover = (e: maplibregl.MapMouseEvent) => {
-      const features = map.queryRenderedFeatures(e.point, {
-        layers: [ZONES_FILL, ZONES_LINE],
-      });
-      map.getCanvas().style.cursor = features.length > 0 ? "pointer" : "";
-
-      // resetar o hover anterior
-      if (hoveredIdRef.current != null) {
-        map.setFeatureState(
-          { source: ZONES_SOURCE, id: hoveredIdRef.current },
-          { hover: false },
-        );
-        hoveredIdRef.current = null;
-      }
-
-      if (features.length > 0 && features[0].id != null) {
-        const id = features[0].id;
-        map.setFeatureState({ source: ZONES_SOURCE, id }, { hover: true });
-        hoveredIdRef.current = id;
-      }
-    };
-
-    const handleLeave = () => {
-      map.getCanvas().style.cursor = "";
-      if (hoveredIdRef.current != null) {
-        map.setFeatureState(
-          { source: ZONES_SOURCE, id: hoveredIdRef.current },
-          { hover: false },
-        );
-        hoveredIdRef.current = null;
-      }
-    };
-
-    map.on("mousemove", handleHover);
-    map.on("mouseleave", ZONES_FILL, handleLeave);
-    map.on("mouseleave", ZONES_LINE, handleLeave);
-
-    return () => {
-      map.off("mousemove", handleHover);
-      map.off("mouseleave", ZONES_FILL, handleLeave);
-      map.off("mouseleave", ZONES_LINE, handleLeave);
-    };
-  }, []);
-
   /* ── encaixar todas as zonas ── */
   const handleFitAll = useCallback(() => {
     const map = mapRef.current;
     if (!map) return;
 
-    const valid = zones.filter(
-      (z) =>
-        z.area &&
-        !isDegenerate(z.area.coordinates[0]),
-    );
+    const valid = zones.filter((z) => z.area && !isDegenerate(z.area.coordinates[0]));
     if (valid.length === 0) return;
 
     const allBounds = valid.reduce((bounds, z) => {
@@ -521,9 +346,7 @@ export function DashboardMap({
       return bounds ? bounds.extend(b) : b;
     }, null as maplibregl.LngLatBounds | null);
 
-    if (allBounds) {
-      map.fitBounds(allBounds, { padding: 60, maxZoom: 14, duration: 600 });
-    }
+    if (allBounds) map.fitBounds(allBounds, { padding: 60, maxZoom: 14, duration: 600 });
   }, [zones]);
 
   /* ── opções de filtro do status ── */
@@ -538,20 +361,14 @@ export function DashboardMap({
 
   if (!loaded) {
     return (
-      <div
-        className="relative rounded-xl overflow-hidden bg-surface-container-low w-full flex items-center justify-center"
-        style={{ height }}
-      >
+      <div className="relative rounded-xl overflow-hidden bg-surface-container-low w-full flex items-center justify-center" style={{ height }}>
         <span className="text-xs text-on-surface-variant font-medium">Carregando mapa…</span>
       </div>
     );
   }
 
   return (
-    <div
-      className="relative rounded-xl overflow-hidden bg-surface-container-low w-full"
-      style={{ height }}
-    >
+    <div className="relative rounded-xl overflow-hidden bg-surface-container-low w-full" style={{ height }}>
       <div ref={mapContainerRef} className="h-full w-full" />
 
       {/* botões de filtro de status da zona */}
@@ -559,26 +376,17 @@ export function DashboardMap({
         {filterOptions.map((opt) => {
           const active = statusFilter === opt.id;
           return (
-            <button
-              key={opt.label}
-              type="button"
-              onClick={() => setStatusFilter(opt.id)}
+            <button key={opt.label} type="button" onClick={() => setStatusFilter(opt.id)}
               className={`px-2.5 py-1 rounded text-[10px] font-bold uppercase tracking-mono-tight transition-all border ${
                 active
-                  ? opt.id === "critico"
-                    ? "bg-red-50 text-red-700 border-red-200 shadow-ambient-sm"
-                    : opt.id === "atencao"
-                      ? "bg-orange-50 text-orange-700 border-orange-200 shadow-ambient-sm"
-                      : opt.id === "estavel"
-                        ? "bg-emerald-50 text-emerald-700 border-emerald-200 shadow-ambient-sm"
-                        : "bg-primary text-white border-primary shadow-ambient-sm"
-                  : opt.id === "critico"
-                    ? "bg-white/90 text-red-600 border-transparent hover:bg-white"
-                    : opt.id === "atencao"
-                      ? "bg-white/90 text-orange-600 border-transparent hover:bg-white"
-                      : opt.id === "estavel"
-                        ? "bg-white/90 text-emerald-600 border-transparent hover:bg-white"
-                        : "bg-white/90 text-primary border-transparent hover:bg-white"
+                  ? opt.id === "critico" ? "bg-red-50 text-red-700 border-red-200 shadow-ambient-sm"
+                    : opt.id === "atencao" ? "bg-orange-50 text-orange-700 border-orange-200 shadow-ambient-sm"
+                    : opt.id === "estavel" ? "bg-emerald-50 text-emerald-700 border-emerald-200 shadow-ambient-sm"
+                    : "bg-primary text-white border-primary shadow-ambient-sm"
+                  : opt.id === "critico" ? "bg-white/90 text-red-600 border-transparent hover:bg-white"
+                    : opt.id === "atencao" ? "bg-white/90 text-orange-600 border-transparent hover:bg-white"
+                    : opt.id === "estavel" ? "bg-white/90 text-emerald-600 border-transparent hover:bg-white"
+                    : "bg-white/90 text-primary border-transparent hover:bg-white"
               }`}
             >
               {opt.label}
@@ -588,22 +396,17 @@ export function DashboardMap({
       </div>
 
       {/* botão "Mostrar todas" */}
-      <button
-        type="button"
-        onClick={handleFitAll}
+      <button type="button" onClick={handleFitAll}
         className="absolute top-3 right-14 z-10 flex items-center px-2.5 py-1 rounded bg-white/90 text-primary text-[10px] font-bold uppercase tracking-mono-tight hover:bg-white shadow-ambient-sm transition-all"
       >
         <Icon name="fit_screen" className="text-[14px] mr-1" />
         <span>Mostrar todas</span>
       </button>
 
-
       {/* legenda */}
       <div className="absolute bottom-14 right-4 z-10 pointer-events-none">
         <div className="px-3 py-2 rounded-md bg-white/95 backdrop-blur-md shadow-ambient-sm">
-          <p className="text-[9px] font-black uppercase tracking-mono text-on-surface-variant mb-1.5">
-            Legenda
-          </p>
+          <p className="text-[9px] font-black uppercase tracking-mono text-on-surface-variant mb-1.5">Legenda</p>
           <div className="space-y-1">
             {[
               { color: "#006A60", label: "Limite municipal", dashed: true },
@@ -612,14 +415,8 @@ export function DashboardMap({
               { color: "#006A60", label: "Estável" },
             ].map((item) => (
               <div key={item.label} className="flex items-center gap-2">
-                <span
-                  className={`w-3 h-3 shrink-0 ${
-                    item.dashed ? "border-2 border-dashed rounded-sm" : "rounded-sm"
-                  }`}
-                  style={{
-                    borderColor: item.dashed ? item.color : undefined,
-                    backgroundColor: item.dashed ? "transparent" : `${item.color}55`,
-                  }}
+                <span className={`w-3 h-3 shrink-0 ${item.dashed ? "border-2 border-dashed rounded-sm" : "rounded-sm"}`}
+                  style={{ borderColor: item.dashed ? item.color : undefined, backgroundColor: item.dashed ? "transparent" : `${item.color}55` }}
                 />
                 <span className="text-[10px] font-bold text-on-surface">{item.label}</span>
               </div>
