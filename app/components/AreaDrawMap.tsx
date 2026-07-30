@@ -7,9 +7,12 @@ import { Btn, Icon, MetaTag } from "@/app/components/Primitives";
 import { useGardian } from "@/app/components/GardianContext";
 import { api } from "@/app/services/Api";
 import {
-  PORTO_SEGURO_BBOX,
-  PORTO_SEGURO_BOUNDARY,
-} from "@/app/data/portoSeguroBoundary";
+  createMap,
+  patchDrawForMapLibre,
+  addBoundaryLayer,
+  getMultiPolygonCenter,
+  MAP_STYLE,
+} from "@/app/lib/mapShared";
 import { MAPLIBRE_DRAW_STYLES } from "@/app/lib/maplibreDrawStyles";
 
 import "maplibre-gl/dist/maplibre-gl.css";
@@ -28,95 +31,11 @@ type ZonaAreaRecord = {
   area?: PolygonGeometry | null;
 };
 
-const MAP_STYLE: maplibregl.StyleSpecification = {
-  version: 8,
-  sources: {
-    carto: {
-      type: "raster",
-      tiles: [
-        "https://a.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}@2x.png",
-        "https://b.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}@2x.png",
-        "https://c.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}@2x.png",
-      ],
-      tileSize: 256,
-      maxzoom: 19,
-      attribution:
-        '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> &copy; <a href="https://carto.com/attributions">CARTO</a>',
-    },
-  },
-  layers: [
-    {
-      id: "carto",
-      type: "raster",
-      source: "carto",
-    },
-  ],
-};
-
 const SAVED_SOURCE_ID = "saved-polygon";
 const SAVED_FILL_ID = "saved-polygon-fill";
 const SAVED_LINE_ID = "saved-polygon-line";
-const BOUNDARY_SOURCE_ID = "municipal-boundary";
-const BOUNDARY_LINE_ID = "municipal-boundary-line";
 
-function closeRing(ring: number[][]) {
-  if (ring.length < 3) return ring;
-  const first = ring[0];
-  const last = ring[ring.length - 1];
-  if (first[0] === last[0] && first[1] === last[1]) return ring;
-  return [...ring, first];
-}
-
-function boundaryToPolygon(): PolygonGeometry {
-  const ring = closeRing(PORTO_SEGURO_BOUNDARY.map(([lon, lat]) => [lon, lat]));
-  return { type: "Polygon", coordinates: [ring] };
-}
-
-function addBoundaryLayer(map: maplibregl.Map) {
-  if (map.getSource(BOUNDARY_SOURCE_ID)) return;
-
-  map.addSource(BOUNDARY_SOURCE_ID, {
-    type: "geojson",
-    data: {
-      type: "Feature",
-      properties: {},
-      geometry: boundaryToPolygon(),
-    },
-  });
-
-  map.addLayer({
-    id: BOUNDARY_LINE_ID,
-    type: "line",
-    source: BOUNDARY_SOURCE_ID,
-    paint: {
-      "line-color": "#051125",
-      "line-width": 1.5,
-      "line-dasharray": [2, 2],
-    },
-  });
-}
-
-function createMap(
-  container: HTMLDivElement,
-  center: [number, number],
-) {
-  return new maplibregl.Map({
-    container,
-    style: MAP_STYLE,
-    center,
-    zoom: 11,
-    attributionControl: { compact: true },
-  });
-}
-
-function patchDrawForMapLibre() {
-  const classes = MapboxDraw.constants.classes as Record<string, string>;
-  classes.CANVAS = "maplibregl-canvas";
-  classes.CONTROL_BASE = "maplibregl-ctrl";
-  classes.CONTROL_PREFIX = "maplibregl-ctrl-";
-  classes.CONTROL_GROUP = "maplibregl-ctrl-group";
-  classes.ATTRIBUTION = "maplibregl-ctrl-attrib";
-}
+const DEFAULT_CENTER: [number, number] = [-39.5, -16.0];
 
 function getBounds(geometry: PolygonGeometry) {
   const coords = geometry.coordinates[0];
@@ -194,13 +113,9 @@ export function AreaDrawMap({ height = 420 }: { height?: number }) {
     const container = mapContainerRef.current;
     if (!container || mapRef.current) return;
 
-    patchDrawForMapLibre();
+    patchDrawForMapLibre(MapboxDraw);
 
-    const centerLon = (PORTO_SEGURO_BBOX.west + PORTO_SEGURO_BBOX.east) / 2;
-    const centerLat = (PORTO_SEGURO_BBOX.south + PORTO_SEGURO_BBOX.north) / 2;
-    const center: [number, number] = [centerLon, centerLat];
-
-    const map = createMap(container, center);
+    const map = createMap(container, DEFAULT_CENTER);
     map.addControl(new maplibregl.NavigationControl({ showCompass: false }), "top-right");
     let disposed = false;
 
@@ -231,7 +146,6 @@ export function AreaDrawMap({ height = 420 }: { height?: number }) {
 
     const onMapLoad = () => {
       resizeMap();
-      addBoundaryLayer(map);
       mountDraw();
     };
 
@@ -395,30 +309,18 @@ export function DrawOnlyMap({ height = 420, onPolygonChange, neighborZones }: Dr
   const mapRef = useRef<maplibregl.Map | null>(null);
   const drawRef = useRef<MapboxDraw | null>(null);
   const autoFitDone = useRef(false);
-
-  const patchDrawForMapLibreHere = () => {
-    const classes = MapboxDraw.constants.classes as Record<string, string>;
-    classes.CANVAS = "maplibregl-canvas";
-    classes.CONTROL_BASE = "maplibregl-ctrl";
-    classes.CONTROL_PREFIX = "maplibregl-ctrl-";
-    classes.CONTROL_GROUP = "maplibregl-ctrl-group";
-    classes.ATTRIBUTION = "maplibregl-ctrl-attrib";
-  };
+  const { user } = useGardian();
 
   useEffect(() => {
     const container = mapContainerRef.current;
     if (!container || mapRef.current) return;
 
-    patchDrawForMapLibreHere();
-
-    const centerLon = (PORTO_SEGURO_BBOX.west + PORTO_SEGURO_BBOX.east) / 2;
-    const centerLat = (PORTO_SEGURO_BBOX.south + PORTO_SEGURO_BBOX.north) / 2;
-    const center: [number, number] = [centerLon, centerLat];
+    patchDrawForMapLibre(MapboxDraw);
 
     const map = new maplibregl.Map({
       container,
       style: MAP_STYLE,
-      center,
+      center: DEFAULT_CENTER,
       zoom: 11,
       attributionControl: { compact: true },
     });
@@ -437,7 +339,24 @@ export function DrawOnlyMap({ height = 420, onPolygonChange, neighborZones }: Dr
 
     const onMapLoad = () => {
       resizeMap();
-      addBoundaryLayer(map);
+
+      // area + centro da entidade
+      if (user?.entidade) {
+        api
+          .get<{ area: { id: number; area: GeoJSON.MultiPolygon } }>(
+            "/entidades/areas/",
+          )
+          .then((res) => {
+            if (disposed) return;
+            const area = res.data.area.area;
+            addBoundaryLayer(map, area);
+            const center = getMultiPolygonCenter(area);
+            map.flyTo({ center, zoom: 11, duration: 800 });
+          })
+          .catch(() => {
+            // faz nada
+          });
+      }
 
       const draw = new MapboxDraw({
         displayControlsDefault: false,

@@ -56,6 +56,7 @@ export function CreateOccurrenceModal({ open, onClose, onCreated, zonas }: Props
   const [status, setStatus] = useState<StatusOcorrencia>("em_analise");
   const [descricao, setDescricao] = useState("");
   const [zonaId, setZonaId] = useState<number | null>(null);
+  const [detectedZonaIds, setDetectedZonaIds] = useState<number[]>([]);
   const [lat, setLat] = useState("");
   const [lng, setLng] = useState("");
   const [anexos, setAnexos] = useState<{ nome: string; tamanho: string; tipo: string }[]>([]);
@@ -72,6 +73,7 @@ export function CreateOccurrenceModal({ open, onClose, onCreated, zonas }: Props
       setStatus("em_analise");
       setDescricao("");
       setZonaId(null);
+      setDetectedZonaIds([]);
       setLat("");
       setLng("");
       setAnexos([]);
@@ -234,22 +236,47 @@ export function CreateOccurrenceModal({ open, onClose, onCreated, zonas }: Props
         </div>
 
         {/* mapa de coordenadas */}
-        <CoordsPickerMap lat={lat} lng={lng} onChange={(newLat, newLng) => { setLat(newLat); setLng(newLng); }} />
+        <CoordsPickerMap
+          lat={lat}
+          lng={lng}
+          zonas={zonas}
+          onZoneDetect={(ids) => {
+            setDetectedZonaIds(ids);
+            if (ids.length === 1) setZonaId(ids[0]);
+            else setZonaId(null);
+          }}
+          onChange={(newLat, newLng) => { setLat(newLat); setLng(newLng); }}
+        />
 
-        {/* zona (opcional) */}
-        <div>
-          <MetaTag className="block mb-2">Zona (opcional)</MetaTag>
-          <select
-            value={zonaId ?? ""}
-            onChange={(e) => setZonaId(e.target.value ? Number(e.target.value) : null)}
-            className="w-full bg-surface-container-low border-none rounded-lg px-4 py-3 text-sm font-bold text-primary focus:ring-2 focus:ring-secondary"
-          >
-            <option value="">— sem zona —</option>
-            {zonas.map((z) => (
-              <option key={z.id} value={z.id}>{z.nome}</option>
-            ))}
-          </select>
-        </div>
+        {/* zona; auto-detectada pelo mapa */}
+        {detectedZonaIds.length > 1 && (
+          <div>
+            <MetaTag className="block mb-2">Zonas sobrepostas — selecione uma</MetaTag>
+            <select
+              value={zonaId ?? ""}
+              onChange={(e) => setZonaId(e.target.value ? Number(e.target.value) : null)}
+              className="w-full bg-surface-container-low border-none rounded-lg px-4 py-3 text-sm font-bold text-primary focus:ring-2 focus:ring-secondary"
+            >
+              <option value="">— selecione —</option>
+              {detectedZonaIds.map((id) => {
+                const z = zonas.find((z) => z.id === id);
+                return <option key={id} value={id}>{z?.nome ?? `Zona #${id}`}</option>;
+              })}
+            </select>
+          </div>
+        )}
+        {detectedZonaIds.length === 0 && (
+          <div className="text-[11px] text-on-surface-variant font-medium flex items-center gap-1.5">
+            <span className="material-symbols-outlined text-[14px]">info</span>
+            Nenhuma zona detectada para estas coordenadas.
+          </div>
+        )}
+        {detectedZonaIds.length === 1 && (
+          <div className="text-[11px] text-secondary font-bold flex items-center gap-1.5">
+            <span className="material-symbols-outlined text-[14px]" style={{fontVariationSettings: "'FILL' 1"}}>check_circle</span>
+            Zona detectada: {zonas.find((z) => z.id === detectedZonaIds[0])?.nome ?? `Zona #${detectedZonaIds[0]}`}
+          </div>
+        )}
 
         {/* descrição */}
         <div>

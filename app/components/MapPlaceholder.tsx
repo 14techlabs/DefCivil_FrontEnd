@@ -1,16 +1,14 @@
 "use client";
 
+import { useEffect, useState } from "react";
 import { Icon } from "./Primitives";
 import {
   getMonitoringZoneRing,
   type ZoneRing,
 } from "@/app/data/monitoringZones";
-import {
-  PORTO_SEGURO_BBOX,
-  PORTO_SEGURO_BOUNDARY,
-} from "@/app/data/portoSeguroBoundary";
-
-const CENTER = { lat: -16.4497, lon: -39.0647 };
+import { api } from "@/app/services/Api";
+import { useGardian } from "@/app/components/GardianContext";
+import { getMultiPolygonCenter } from "@/app/lib/mapShared";
 
 type Bbox = {
   west: number;
@@ -18,6 +16,10 @@ type Bbox = {
   east: number;
   north: number;
 };
+
+/** fallback pra quando o backend estiver indisponível */
+const FALLBACK_BBOX: Bbox = { west: -39.6, south: -16.7, east: -39.0, north: -16.2 };
+const CENTER = { lat: -16.4497, lon: -39.0647 };
 
 function lonLatToPercent(lon: number, lat: number, bbox: Bbox) {
   const x = ((lon - bbox.west) / (bbox.east - bbox.west)) * 100;
@@ -109,7 +111,6 @@ export function ZoneFeedMap({
   const bbox = ringBbox(zoneData.ring, 0.03);
   const { lon, lat } = ringCentroid(zoneData.ring);
   const f = fills[status];
-  const boundaryPoints = ringToSvgPoints(PORTO_SEGURO_BOUNDARY, bbox);
   const zonePoints = ringToSvgPoints(zoneData.ring, bbox);
 
   return (
@@ -134,14 +135,6 @@ export function ZoneFeedMap({
         preserveAspectRatio="none"
       >
         <polygon
-          points={boundaryPoints}
-          fill="rgba(0,106,96,0.06)"
-          stroke="#006A60"
-          strokeWidth="0.4"
-          strokeDasharray="1.2 0.8"
-          vectorEffect="non-scaling-stroke"
-        />
-        <polygon
           points={zonePoints}
           fill={f.fill}
           stroke={f.stroke}
@@ -154,7 +147,7 @@ export function ZoneFeedMap({
   );
 }
 
-// Mapa OpenStreetMap com demarcação do município de Porto Seguro-BA.
+// mapa com demarcação do município
 export function MapPlaceholder({
   variant = "topo",
   height = 500,
@@ -170,10 +163,34 @@ export function MapPlaceholder({
   showZones?: boolean;
   alertMode?: boolean;
 }) {
-  const bbox: Bbox = PORTO_SEGURO_BBOX;
+  const { user } = useGardian();
+  const [bbox, setBbox] = useState<Bbox>(FALLBACK_BBOX);
+
+  useEffect(() => {
+    if (!user?.entidade) return;
+
+    api
+      .get<{ area: { id: number; area: GeoJSON.MultiPolygon } }>(
+        "/entidades/areas/",
+      )
+      .then((res) => {
+        const area = res.data.area.area;
+        const center = getMultiPolygonCenter(area);
+        const pad = 0.08;
+        setBbox({
+          west: center[0] - pad,
+          east: center[0] + pad,
+          south: center[1] - pad,
+          north: center[1] + pad,
+        });
+      })
+      .catch(() => {
+        // backend indisponivel, mostrar bbox fallback
+      });
+  }, [user?.entidade]);
+
   const isDark = variant === "dark" || variant === "radar";
-  const boundaryPoints = ringToSvgPoints(PORTO_SEGURO_BOUNDARY, bbox);
-  alertMode = false;
+
   return (
     <div
       className="relative rounded-xl overflow-hidden bg-surface-container-low"
@@ -201,22 +218,6 @@ export function MapPlaceholder({
       {variant === "radar" && (
         <div className="absolute inset-0 radar-bg opacity-40 pointer-events-none" />
       )}
-
-      {/* Demarcação do território municipal */}
-      <svg
-        className="absolute inset-0 w-full h-full pointer-events-none"
-        viewBox="0 0 100 100"
-        preserveAspectRatio="none"
-      >
-        <polygon
-          points={boundaryPoints}
-          fill="rgba(0,106,96,0.08)"
-          stroke="#006A60"
-          strokeWidth="0.35"
-          strokeDasharray="1.2 0.8"
-          vectorEffect="non-scaling-stroke"
-        />
-      </svg>
 
       {/* Zonas de monitoramento */}
       {showZones && (
@@ -321,18 +322,6 @@ export function MapPlaceholder({
           </button>
         ))}
       </div>
-
-      {/* Telemetria */}
-      {/* <div className="absolute top-4 left-4 flex flex-col gap-3 z-10">
-        <div
-          className={`px-3 py-1.5 rounded-full text-[10px] font-black uppercase tracking-mono-tight flex items-center gap-2 ${
-            isDark ? "bg-secondary text-white" : "bg-primary text-white"
-          }`}
-        >
-          <span className="w-1.5 h-1.5 rounded-full bg-secondary-container animate-live-dot" />
-          Telemetria em Tempo Real
-        </div>
-      </div> */}
 
       {/* Coordenadas */}
       <div className="absolute bottom-4 left-4 z-10">
