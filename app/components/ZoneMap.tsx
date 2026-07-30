@@ -73,37 +73,16 @@ export function ZoneMap({
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [toast, setToast] = useState<{ msg: string; tone: "error" | "secondary" } | null>(null);
-  const [mapReady, setMapReady] = useState(false);
   const { user } = useGardian();
+
+  const [entityArea, setEntityArea] = useState<GeoJSON.MultiPolygon | null>(null);
+  const [entityCenter, setEntityCenter] = useState<[number, number] | null>(null);
+  const [dataReady, setDataReady] = useState(false);
 
   const showToast = useCallback((msg: string, tone: "error" | "secondary" = "secondary") => {
     setToast({ msg, tone });
     setTimeout(() => setToast(null), 3000);
   }, []);
-
-  /* ── pegar dados da zona ── */
-  useEffect(() => {
-    let cancelled = false;
-
-    api
-      .get<ZoneDetailResponse>(`/zonas/${zoneId}/`)
-      .then((res) => {
-        if (!cancelled) {
-          setZoneData(res.data.zonas);
-          setMode("view");
-        }
-      })
-      .catch(() => {
-        if (!cancelled) {
-          setError("Não foi possível carregar a zona.");
-          setMode("view");
-        }
-      });
-
-    return () => {
-      cancelled = true;
-    };
-  }, [zoneId]);
 
   /* ── renderizar poligono em view mode ── */
   const renderZonePolygon = useCallback(
@@ -137,15 +116,50 @@ export function ZoneMap({
     [],
   );
 
-  /* ── iniciar o mapa (uma vez só) ── */
+  /* ── buscar dados (entidade + zona) em paralelo antes de criar o mapa ── */
+  useEffect(() => {
+    if (!user?.entidade) return;
+    let cancelled = false;
+
+    Promise.all([
+      api.get<{ area: { id: number; area: GeoJSON.MultiPolygon } }>(
+        "/entidades/areas/",
+      ),
+      api.get<ZoneDetailResponse>(`/zonas/${zoneId}/`),
+    ])
+      .then(([areaRes, zoneRes]) => {
+        if (cancelled) return;
+        const area = areaRes.data.area.area;
+        setEntityArea(area);
+        setEntityCenter(getMultiPolygonCenter(area));
+        setZoneData(zoneRes.data.zonas);
+        setMode("view");
+        setDataReady(true);
+      })
+      .catch((err) => {
+        if (cancelled) return;
+        // If zone fetch failed, show error
+        const isZoneError = err?.response?.config?.url?.includes("/zonas/");
+        if (isZoneError) {
+          setError("Não foi possível carregar a zona.");
+          setMode("view");
+          // Still set a default center so map can render
+          setEntityCenter([-39.5, -16.0]);
+          setDataReady(true);
+        }
+      });
+
+    return () => { cancelled = true; };
+  }, [zoneId, user?.entidade]);
+
+  /* ── iniciar o mapa (uma vez, após dataReady) ── */
   useEffect(() => {
     const container = mapContainerRef.current;
-    if (!container || mapRef.current) return;
+    if (!container || mapRef.current || !dataReady || !entityCenter) return;
 
     patchDrawForMapLibre(MapboxDraw);
 
-    const DEFAULT_CENTER: [number, number] = [-39.5, -16.0];
-    const map = createMap(container, DEFAULT_CENTER);
+    const map = createMap(container, entityCenter);
     map.addControl(
       new maplibregl.NavigationControl({ showCompass: false }),
       "top-right",
@@ -163,7 +177,14 @@ export function ZoneMap({
 
     map.on("load", () => {
       resizeMap();
-      setMapReady(true);
+
+      // Add boundary layer
+      if (entityArea) addBoundaryLayer(map, entityArea);
+
+      // Render zone polygon if we have data
+      if (zoneData && mode === "view") {
+        renderZonePolygon(map, zoneData);
+      }
     });
 
     mapRef.current = map;
@@ -177,46 +198,7 @@ export function ZoneMap({
       mapRef.current = null;
       map.remove();
     };
-  }, []);
-
-  /* ── buscar a área da entidade e desenhar o limite municipal ── */
-  useEffect(() => {
-    const map = mapRef.current;
-    if (!map || !mapReady || !user?.entidade) return;
-
-    const doFetch = () => {
-      api
-        .get<{ area: { id: number; area: GeoJSON.MultiPolygon } }>(
-          "/entidades/areas/",
-        )
-        .then((res) => {
-          addBoundaryLayer(map, res.data.area.area);
-        })
-        .catch(() => {
-          // Backend unavailable — boundary not shown
-        });
-    };
-
-    if (map.isStyleLoaded()) doFetch();
-    else map.once("style.load", doFetch);
-  }, [mapReady, user?.entidade]);
-
-  /* ── reagir a mudanças em zonaData (view mode) ── */
-  useEffect(() => {
-    const map = mapRef.current;
-    if (!map || !zoneData || mode !== "view") return;
-
-    const apply = () => {
-      renderZonePolygon(map, zoneData);
-    };
-
-    if (map.isStyleLoaded()) apply();
-    else map.once("style.load", apply);
-
-    return () => {
-      removePolygonLayer(map, "zone");
-    };
-  }, [zoneData, mode, renderZonePolygon]);
+  }, [dataReady, entityCenter, entityArea, zoneData, mode, renderZonePolygon]);
 
   /* ── edit mode ── */
   const enterEditMode = useCallback(() => {

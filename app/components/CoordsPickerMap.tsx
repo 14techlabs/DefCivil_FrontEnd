@@ -2,7 +2,11 @@
 
 import { useCallback, useEffect, useRef, useState } from "react";
 import maplibregl from "maplibre-gl";
-import { MAP_STYLE, getMultiPolygonCenter } from "@/app/lib/mapShared";
+import {
+  MAP_STYLE,
+  addBoundaryLayer,
+  getMultiPolygonCenter,
+} from "@/app/lib/mapShared";
 import { api } from "@/app/services/Api";
 import { useGardian } from "@/app/components/GardianContext";
 
@@ -15,13 +19,13 @@ interface CoordsPickerMapProps {
   lng: string;
   onChange: (lat: string, lng: string) => void;
   height?: number;
-  /** lista de Zonas pra busca de nome (para detecção automática) */
+  /** Zone list for name lookup when auto-detecting. */
   zonas?: { id: number; nome: string }[];
-  /** trigger quando a posição do marcador mudar e detectar zonas */
+  /** Fired when the marker position changes which zone(s) it overlaps. */
   onZoneDetect?: (ids: number[]) => void;
 }
 
-/* ───────────── marcador dentro de polígono ───────────── */
+/* ───────────── point-in-polygon ───────────── */
 
 function pointInPolygon(
   lng: number,
@@ -89,10 +93,12 @@ export function CoordsPickerMap({
   const isDragging = useRef(false);
   const { user } = useGardian();
 
-  const DEFAULT_CENTER: [number, number] = [-39.5, -16.0];
-
-  // guardar polígonos da zona para detecção de ponto dentro do polígono
+  // Store fetched zone polygons for point-in-polygon detection
   const zonePolygonsRef = useRef<Map<number, GeoJSON.Polygon>>(new Map());
+
+  const [entityCenter, setEntityCenter] = useState<[number, number] | null>(null);
+  const [entityArea, setEntityArea] = useState<GeoJSON.MultiPolygon | null>(null);
+  const [loaded, setLoaded] = useState(false);
 
   const detectZones = useCallback((lngVal: number, latVal: number) => {
     const found: number[] = [];
@@ -104,15 +110,55 @@ export function CoordsPickerMap({
     onZoneDetect?.(found);
   }, [onZoneDetect]);
 
-  // inicializar mapa (uma vez)
+  /* ── buscar dados da entidade ── */
+  useEffect(() => {
+    if (!user?.entidade) return;
+    let cancelled = false;
+
+    api
+      .get<{
+        area: { id: number; area: GeoJSON.MultiPolygon };
+        zonas: { id: number; area: GeoJSON.Polygon | null }[];
+      }>("/entidades/areas/")
+      .then((res) => {
+        if (cancelled) return;
+        const { area, zonas } = res.data;
+        setEntityArea(area.area);
+        setEntityCenter(getMultiPolygonCenter(area.area));
+
+        // Store zone polygons for detection
+        const zonePolys = new Map<number, GeoJSON.Polygon>();
+        for (const z of zonas) {
+          if (!z.area || !z.area.coordinates?.length) continue;
+          const ring = z.area.coordinates[0];
+          const isDeg = ring.every(
+            (c, i) => i === 0 || (c[0] === ring[0][0] && c[1] === ring[0][1]),
+          );
+          if (isDeg) continue;
+          zonePolys.set(z.id, z.area);
+        }
+        zonePolygonsRef.current = zonePolys;
+        setLoaded(true);
+      })
+      .catch(() => {
+        if (!cancelled) {
+          setEntityCenter([-39.5, -16.0]);
+          setLoaded(true);
+        }
+      });
+
+    return () => { cancelled = true; };
+  }, [user?.entidade]);
+
+  /* ── inicializar mapa (após loaded) ── */
   useEffect(() => {
     const container = containerRef.current;
-    if (!container || mapRef.current) return;
+    if (!container || mapRef.current || !loaded || !entityCenter) return;
 
     const map = new maplibregl.Map({
       container,
       style: MAP_STYLE,
-      center: DEFAULT_CENTER,
+      center: entityCenter,
       zoom: 11,
       attributionControl: { compact: true },
     });
@@ -129,122 +175,94 @@ export function CoordsPickerMap({
     map.on("load", () => {
       resize();
 
-      const doFetch = () => {
-        if (!user?.entidade) return;
+      // Add municipal boundary
+      if (entityArea) addBoundaryLayer(map, entityArea);
 
-        api
-          .get<{
-            area: { id: number; area: GeoJSON.MultiPolygon };
-            zonas: { id: number; area: GeoJSON.Polygon | null }[];
-          }>("/entidades/areas/")
-          .then((res) => {
-            if (disposed) return;
-            const { area, zonas } = res.data;
+      // Render zones as grey polygons with centroids
+      const NEIGHBOR_SOURCE = "picker-zone-polys";
+      const NEIGHBOR_FILL = "picker-zone-fill";
+      const NEIGHBOR_LINE = "picker-zone-line";
+      const NEIGHBOR_LABEL = "picker-zone-label";
 
-            // mostrando todas as zonas e a área da entidade
-            const bounds = getMultiPolygonBounds(area.area);
-            const zonePolygons = new Map<number, GeoJSON.Polygon>();
+      const features: GeoJSON.Feature<GeoJSON.Polygon>[] = [];
+      const centroids: GeoJSON.Feature<GeoJSON.Point>[] = [];
 
-            for (const z of zonas) {
-              if (!z.area || !z.area.coordinates?.length) continue;
-              const ring = z.area.coordinates[0];
-              const isDeg = ring.every(
-                (c, i) => i === 0 || (c[0] === ring[0][0] && c[1] === ring[0][1]),
-              );
-              if (isDeg) continue;
+      zonePolygonsRef.current.forEach((poly, id) => {
+        const nome = zonasNames?.find((z) => z.id === id)?.nome ?? `Zona #${id}`;
+        const [cx, cy] = polygonCentroid(poly);
+        features.push({
+          type: "Feature",
+          properties: { nome },
+          geometry: poly,
+        });
+        centroids.push({
+          type: "Feature",
+          properties: { nome },
+          geometry: { type: "Point", coordinates: [cx, cy] },
+        });
+      });
 
-              zonePolygons.set(z.id, z.area);
-              bounds.extend(polygonBounds(z.area));
-            }
+      if (features.length > 0) {
+        map.addSource(NEIGHBOR_SOURCE, {
+          type: "geojson",
+          data: { type: "FeatureCollection", features },
+        });
 
-            zonePolygonsRef.current = zonePolygons;
+        map.addLayer({
+          id: NEIGHBOR_FILL,
+          type: "fill",
+          source: NEIGHBOR_SOURCE,
+          paint: { "fill-color": "#888", "fill-opacity": 0.12 },
+        });
 
-            // renderizar zonas na cor cinza + label
-            const NEIGHBOR_SOURCE = "picker-zone-polys";
-            const NEIGHBOR_FILL = "picker-zone-fill";
-            const NEIGHBOR_LINE = "picker-zone-line";
-            const NEIGHBOR_LABEL = "picker-zone-label";
+        map.addLayer({
+          id: NEIGHBOR_LINE,
+          type: "line",
+          source: NEIGHBOR_SOURCE,
+          paint: { "line-color": "#888", "line-width": 1.2, "line-dasharray": [3, 2] },
+        });
 
-            const features: GeoJSON.Feature<GeoJSON.Polygon>[] = [];
-            const centroids: GeoJSON.Feature<GeoJSON.Point>[] = [];
+        map.addSource("picker-centroids", {
+          type: "geojson",
+          data: { type: "FeatureCollection", features: centroids },
+        });
 
-            zonePolygons.forEach((poly, id) => {
-              const nome = zonasNames?.find((z) => z.id === id)?.nome ?? `Zona #${id}`;
-              const [cx, cy] = polygonCentroid(poly);
-              features.push({
-                type: "Feature",
-                properties: { nome },
-                geometry: poly,
-              });
-              centroids.push({
-                type: "Feature",
-                properties: { nome },
-                geometry: { type: "Point", coordinates: [cx, cy] },
-              });
-            });
+        map.addLayer({
+          id: NEIGHBOR_LABEL,
+          type: "symbol",
+          source: "picker-centroids",
+          layout: {
+            "text-field": ["get", "nome"],
+            "text-size": 9,
+            "text-offset": [0, -0.5],
+            "text-anchor": "bottom",
+            "text-font": ["Open Sans Bold", "Arial Unicode MS Bold"],
+          },
+          paint: {
+            "text-color": "#666",
+            "text-halo-color": "#fff",
+            "text-halo-width": 1.5,
+          },
+        });
+      }
 
-            if (features.length > 0) {
-              map.addSource(NEIGHBOR_SOURCE, {
-                type: "geojson",
-                data: { type: "FeatureCollection", features },
-              });
+      // "Show All" — fit to combined entity + zone bounds
+      if (entityArea) {
+        const bounds = getMultiPolygonBounds(entityArea);
+        zonePolygonsRef.current.forEach((poly) => {
+          bounds.extend(polygonBounds(poly));
+        });
+        map.fitBounds(bounds, { padding: 40, maxZoom: 12, duration: 800 });
+      }
 
-              map.addLayer({
-                id: NEIGHBOR_FILL,
-                type: "fill",
-                source: NEIGHBOR_SOURCE,
-                paint: { "fill-color": "#888", "fill-opacity": 0.12 },
-              });
-
-              map.addLayer({
-                id: NEIGHBOR_LINE,
-                type: "line",
-                source: NEIGHBOR_SOURCE,
-                paint: { "line-color": "#888", "line-width": 1.2, "line-dasharray": [3, 2] },
-              });
-
-              map.addSource("picker-centroids", {
-                type: "geojson",
-                data: { type: "FeatureCollection", features: centroids },
-              });
-
-              map.addLayer({
-                id: NEIGHBOR_LABEL,
-                type: "symbol",
-                source: "picker-centroids",
-                layout: {
-                  "text-field": ["get", "nome"],
-                  "text-size": 9,
-                  "text-offset": [0, -0.5],
-                  "text-anchor": "bottom",
-                  "text-font": ["Open Sans Bold", "Arial Unicode MS Bold"],
-                },
-                paint: {
-                  "text-color": "#666",
-                  "text-halo-color": "#fff",
-                  "text-halo-width": 1.5,
-                },
-              });
-            }
-
-            // ir até os limites da entidade + zonas
-            map.fitBounds(bounds, { padding: 40, maxZoom: 12, duration: 800 });
-          })
-          .catch(() => {
-            // backend indisponivel
-          });
-      };
-
-      doFetch();
-
-      // marcador padrão
+      // Marker at entity center
       const el = document.createElement("div");
       el.innerHTML = `<span class="material-symbols-outlined" style="font-size:28px;color:#BA1A1A;font-variation-settings:'FILL' 1">location_on</span>`;
       el.style.cursor = "grab";
       el.style.transform = "translate(-50%, -100%)";
 
       const marker = new maplibregl.Marker({ element: el, draggable: true })
-        .setLngLat([DEFAULT_CENTER[0], DEFAULT_CENTER[1]])
+        .setLngLat(entityCenter)
         .addTo(map);
 
       marker.on("dragstart", () => { isDragging.current = true; });
@@ -269,8 +287,7 @@ export function CoordsPickerMap({
       mapRef.current = null;
       map.remove();
     };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+  }, [loaded, entityCenter, entityArea, zonasNames, onChange, detectZones]);
 
   // sincronizar marcador quando lat/lng mudarem por input externo
   useEffect(() => {
@@ -292,6 +309,17 @@ export function CoordsPickerMap({
       }
     }
   }, [lat, lng, detectZones]);
+
+  if (!loaded) {
+    return (
+      <div
+        className="relative rounded-xl overflow-hidden border border-outline-variant/30 bg-surface-container-low flex items-center justify-center"
+        style={{ height }}
+      >
+        <span className="text-xs text-on-surface-variant font-medium">Carregando mapa…</span>
+      </div>
+    );
+  }
 
   return (
     <div

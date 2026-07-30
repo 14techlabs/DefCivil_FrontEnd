@@ -91,17 +91,44 @@ export function DashboardMap({
   const hoveredIdRef = useRef<number | string | null>(null);
   const autoFitDone = useRef(false);
   const cycleRef = useRef({ point: { x: 0, y: 0 }, index: 0, ids: [] as number[] });
-  const [mapReady, setMapReady] = useState(false);
   const { user } = useGardian();
 
-  /* ── inicializar o mapa (uma vez apenas) ── */
+  const [entityCenter, setEntityCenter] = useState<[number, number] | null>(null);
+  const [entityArea, setEntityArea] = useState<GeoJSON.MultiPolygon | null>(null);
+  const [loaded, setLoaded] = useState(false);
+
+  /* ── buscar a área da entidade e obter o centro ── */
+  useEffect(() => {
+    if (!user?.entidade) return;
+    let cancelled = false;
+    api
+      .get<{ area: { id: number; area: GeoJSON.MultiPolygon } }>(
+        "/entidades/areas/",
+      )
+      .then((res) => {
+        if (cancelled) return;
+        const area = res.data.area.area;
+        setEntityArea(area);
+        setEntityCenter(getMultiPolygonCenter(area));
+      })
+      .catch(() => {
+        // Backend unavailable — fallback to default center
+        if (!cancelled) {
+          setEntityCenter([-39.5, -16.0]);
+        }
+      })
+      .finally(() => {
+        if (!cancelled) setLoaded(true);
+      });
+    return () => { cancelled = true; };
+  }, [user?.entidade]);
+
+  /* ── inicializar o mapa (uma vez, após entityCenter estar disponível) ── */
   useEffect(() => {
     const container = mapContainerRef.current;
-    if (!container || mapRef.current) return;
+    if (!container || mapRef.current || !entityCenter) return;
 
-    // Use a generic Brazil-ish center until we load the entity area
-    const DEFAULT_CENTER: [number, number] = [-39.5, -16.0];
-    const map = createMap(container, DEFAULT_CENTER);
+    const map = createMap(container, entityCenter);
     map.addControl(
       new maplibregl.NavigationControl({ showCompass: false }),
       "top-right",
@@ -116,7 +143,7 @@ export function DashboardMap({
 
     map.on("load", () => {
       resize();
-      setMapReady(true);
+      if (entityArea) addBoundaryLayer(map, entityArea);
     });
 
     mapRef.current = map;
@@ -129,30 +156,7 @@ export function DashboardMap({
       mapRef.current = null;
       map.remove();
     };
-  }, []);
-
-  /* ── buscar a área da entidade e desenhar o limite municipal ── */
-  useEffect(() => {
-    const map = mapRef.current;
-    if (!map || !mapReady || !user?.entidade) return;
-
-    const doFetch = () => {
-      api
-        .get<{ area: { id: number; area: GeoJSON.MultiPolygon } }>(
-          "/entidades/areas/",
-        )
-        .then((res) => {
-          const area = res.data.area.area;
-          addBoundaryLayer(map, area);
-        })
-        .catch(() => {
-          // Backend unavailable — boundary will not be shown
-        });
-    };
-
-    if (map.isStyleLoaded()) doFetch();
-    else map.once("style.load", doFetch);
-  }, [mapReady, user?.entidade]);
+  }, [entityCenter, entityArea]);
 
   /* ── adicionar/atualizar layers quando zonas ou selectedZoneId mudam ── */
   useEffect(() => {
@@ -531,6 +535,17 @@ export function DashboardMap({
   ] as const;
 
   /* ── render ── */
+
+  if (!loaded) {
+    return (
+      <div
+        className="relative rounded-xl overflow-hidden bg-surface-container-low w-full flex items-center justify-center"
+        style={{ height }}
+      >
+        <span className="text-xs text-on-surface-variant font-medium">Carregando mapa…</span>
+      </div>
+    );
+  }
 
   return (
     <div

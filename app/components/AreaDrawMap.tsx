@@ -311,16 +311,47 @@ export function DrawOnlyMap({ height = 420, onPolygonChange, neighborZones }: Dr
   const autoFitDone = useRef(false);
   const { user } = useGardian();
 
+  const [entityCenter, setEntityCenter] = useState<[number, number] | null>(null);
+  const [entityArea, setEntityArea] = useState<GeoJSON.MultiPolygon | null>(null);
+  const [dataLoaded, setDataLoaded] = useState(false);
+
+  /* ── buscar área da entidade antes de criar o mapa ── */
+  useEffect(() => {
+    if (!user?.entidade) return;
+    let cancelled = false;
+
+    api
+      .get<{ area: { id: number; area: GeoJSON.MultiPolygon } }>(
+        "/entidades/areas/",
+      )
+      .then((res) => {
+        if (cancelled) return;
+        const area = res.data.area.area;
+        setEntityArea(area);
+        setEntityCenter(getMultiPolygonCenter(area));
+        setDataLoaded(true);
+      })
+      .catch(() => {
+        if (!cancelled) {
+          setEntityCenter([-39.5, -16.0]);
+          setDataLoaded(true);
+        }
+      });
+
+    return () => { cancelled = true; };
+  }, [user?.entidade]);
+
+  /* ── iniciar o mapa (após dataLoaded) ── */
   useEffect(() => {
     const container = mapContainerRef.current;
-    if (!container || mapRef.current) return;
+    if (!container || mapRef.current || !dataLoaded || !entityCenter) return;
 
     patchDrawForMapLibre(MapboxDraw);
 
     const map = new maplibregl.Map({
       container,
       style: MAP_STYLE,
-      center: DEFAULT_CENTER,
+      center: entityCenter,
       zoom: 11,
       attributionControl: { compact: true },
     });
@@ -340,23 +371,8 @@ export function DrawOnlyMap({ height = 420, onPolygonChange, neighborZones }: Dr
     const onMapLoad = () => {
       resizeMap();
 
-      // area + centro da entidade
-      if (user?.entidade) {
-        api
-          .get<{ area: { id: number; area: GeoJSON.MultiPolygon } }>(
-            "/entidades/areas/",
-          )
-          .then((res) => {
-            if (disposed) return;
-            const area = res.data.area.area;
-            addBoundaryLayer(map, area);
-            const center = getMultiPolygonCenter(area);
-            map.flyTo({ center, zoom: 11, duration: 800 });
-          })
-          .catch(() => {
-            // faz nada
-          });
-      }
+      // Add municipal boundary (no flyTo — let neighborZones handle Show All)
+      if (entityArea) addBoundaryLayer(map, entityArea);
 
       const draw = new MapboxDraw({
         displayControlsDefault: false,
@@ -413,8 +429,7 @@ export function DrawOnlyMap({ height = 420, onPolygonChange, neighborZones }: Dr
       mapRef.current = null;
       map.remove();
     };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+  }, [dataLoaded, entityCenter, entityArea, onPolygonChange]);
 
   /* renderizar zonas vizinhas (cinza) quando neighborZones mudar */
   useEffect(() => {
