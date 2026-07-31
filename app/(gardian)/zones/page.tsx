@@ -87,8 +87,6 @@ export default function ZonesPage() {
     <div className="p-8 space-y-8 max-w-[1600px] mx-auto">
       <header>
         <div className="flex items-center gap-2 mb-3">
-          <MetaTag className="text-secondary">GEO-DATA PROTOCOL · v2.4</MetaTag>
-          <span className="w-1 h-1 rounded-full bg-outline-variant" />
           <MetaTag>
             {zonas.length} ZONAS ·{" "}
             {zonas.filter((z) => z.status === "critico").length} EM ALERTA
@@ -138,55 +136,66 @@ export default function ZonesPage() {
           <button
             key={z.id}
             onClick={() => openZone(String(z.id))}
-            className="card-tonal p-6 shadow-ambient-sm hover:shadow-ambient hover:-translate-y-0.5 transition-all text-left relative overflow-hidden group"
+            className="card-tonal min-h-[280px] p-7 shadow-ambient-sm hover:shadow-ambient hover:-translate-y-1 transition-all duration-300 text-left relative overflow-hidden group focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-secondary focus-visible:ring-offset-2"
           >
             <span className={`absolute top-0 left-0 right-0 h-1 ${accentFor(z.status)}`} />
-            <div className="flex items-start justify-between mb-4 mt-1">
+            <div className="flex items-start justify-between mb-7 mt-1">
               <Chip tone={toneFor(z.status)}>{STATUS_LABEL[z.status]}</Chip>
-              <Icon
-                name={
+              <span
+                className={`flex h-9 w-9 items-center justify-center rounded-full transition-transform duration-300 group-hover:scale-110 ${
                   z.status === "critico"
-                    ? "warning"
+                    ? "bg-error/10 text-error"
                     : z.status === "atencao"
-                      ? "trending_up"
-                      : "check_circle"
-                }
-                filled
-                className={`text-[20px] ${z.status === "critico" ? "text-error" : z.status === "atencao" ? "text-orange-500" : "text-secondary"}`}
-              />
+                      ? "bg-orange-500/10 text-orange-500"
+                      : "bg-secondary/10 text-secondary"
+                }`}
+              >
+                <Icon
+                  name={
+                    z.status === "critico"
+                      ? "warning"
+                      : z.status === "atencao"
+                        ? "trending_up"
+                        : "check_circle"
+                  }
+                  filled
+                  className="text-[20px]"
+                />
+              </span>
             </div>
 
-            <h3 className="font-headline font-black text-xl text-primary tracking-tight">
+            <h3 className="font-headline font-black text-2xl text-primary tracking-tight transition-colors group-hover:text-secondary">
               {z.nome}
             </h3>
 
             {z.descricao && (
-              <p className="text-[11px] text-on-surface-variant mt-2 leading-relaxed line-clamp-2">
+              <p className="text-sm text-on-surface-variant mt-2 leading-relaxed line-clamp-2">
                 {z.descricao}
               </p>
             )}
 
-            <div className="grid grid-cols-2 gap-4 mt-5">
-              <div className="bg-surface-container-low rounded-lg p-3">
-                <MetaTag className="block mb-1">Tipo</MetaTag>
-                <p className="font-headline font-black text-xl text-primary tracking-tighter">
-                  {TIPO_LABEL[z.tipo] ?? z.tipo}
-                </p>
+            <div className="mt-7 flex items-center justify-between gap-4 border-t border-outline-variant/25 pt-5">
+              <div className="flex min-w-0 items-center gap-3">
+                <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-surface-container-low text-on-surface-variant">
+                  <Icon
+                    name={z.tipo === "urbana" ? "location_city" : "landscape"}
+                    className="text-[20px]"
+                  />
+                </span>
+                <div className="min-w-0">
+                  <MetaTag className="block mb-0.5">Tipo</MetaTag>
+                  <p className="truncate text-sm font-bold text-primary">
+                    {TIPO_LABEL[z.tipo] ?? z.tipo}
+                  </p>
+                </div>
               </div>
-              <div className="bg-surface-container-low rounded-lg p-3">
-                <MetaTag className="block mb-1">Código</MetaTag>
-                <p className="font-headline font-black text-xl text-primary tracking-tighter">
-                  #{z.id}
-                </p>
-              </div>
-            </div>
 
-            <div className="mt-5 pt-4 border-t border-outline-variant/20 flex items-center justify-between">
-              <span className="text-[10px] font-mono font-bold text-on-surface-variant">
-                {TIPO_LABEL[z.tipo] ?? z.tipo} · {STATUS_LABEL[z.status]}
-              </span>
-              <span className="text-[10px] font-bold uppercase tracking-mono-tight text-primary group-hover:text-secondary transition-colors flex items-center gap-1">
-                Detalhes <Icon name="arrow_forward" className="text-[14px]" />
+              <span className="flex shrink-0 items-center gap-2 rounded-full bg-primary px-4 py-2.5 text-[10px] font-bold uppercase tracking-mono-tight text-white shadow-sm transition-all duration-300 group-hover:bg-secondary group-hover:pr-3">
+                Detalhes
+                <Icon
+                  name="arrow_forward"
+                  className="text-[16px] transition-transform duration-300 group-hover:translate-x-1"
+                />
               </span>
             </div>
           </button>
