@@ -1,6 +1,7 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { Suspense, useCallback, useEffect, useMemo, useState } from "react";
+import { useSearchParams } from "next/navigation";
 import { Btn, Chip, Icon, KPI, MetaTag, Tab } from "@/app/components/Primitives";
 import { api } from "@/app/services/Api";
 import { CreateOccurrenceModal } from "@/app/components/CreateOccurrenceModal";
@@ -112,8 +113,9 @@ function formatCoords(
 
 // --- componente ---
 
-export default function OccurrencesPage() {
+function OccurrencesContent() {
   const { showToast } = useGardian();
+  const searchParams = useSearchParams();
 
   // estado dos dados
   const [ocorrencias, setOcorrencias] = useState<Ocorrencia[]>([]);
@@ -177,6 +179,16 @@ export default function OccurrencesPage() {
   useEffect(() => {
     fetchData();
   }, [fetchData]);
+
+  // seleciona ocorrência vinda do mapa da zona (?id=X)
+  useEffect(() => {
+    const idParam = searchParams.get("id");
+    if (!idParam) return;
+    const id = Number(idParam);
+    if (!Number.isFinite(id) || !ocorrencias.some((o) => o.id === id)) return;
+    const timer = setTimeout(() => setSelected(id), 0);
+    return () => clearTimeout(timer);
+  }, [searchParams, ocorrencias]);
 
   // agrupa categorias disponiveis a partir dos dados reais
   const categoriasDisponiveis = useMemo(() => {
@@ -781,5 +793,19 @@ export default function OccurrencesPage() {
         zonas={Array.from(zonaLookup.entries()).map(([id, nome]) => ({ id, nome }))}
       />
     </div>
+  );
+}
+
+export default function OccurrencesPage() {
+  return (
+    <Suspense
+      fallback={
+        <div className="p-8 text-sm text-on-surface-variant">
+          Carregando ocorrências…
+        </div>
+      }
+    >
+      <OccurrencesContent />
+    </Suspense>
   );
 }
