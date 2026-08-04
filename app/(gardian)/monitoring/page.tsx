@@ -10,13 +10,11 @@ import {
   MOCK_POSSIVEIS_EVENTOS,
   MOCK_OCORRENCIAS,
   MOCK_ZONAS,
-  tecnicoNome,
   zonaNome as zonaNomeMock,
 } from "@/app/data/mock";
-import type { MapPoint } from "@/app/components/PointsMap";
 
-const PointsMap = dynamic(
-  () => import("@/app/components/PointsMap").then((m) => m.PointsMap),
+const MonitoringMap = dynamic(
+  () => import("@/app/components/MonitoringMap").then((m) => m.MonitoringMap),
   {
     ssr: false,
     loading: () => (
@@ -189,33 +187,6 @@ export default function MonitoringPage() {
     [entidadeList, zonaList],
   );
 
-  // --- pontos do mapa: ocorrências em aberto e em andamento ---
-
-  const pontosMapa: MapPoint[] = useMemo(
-    () =>
-      MOCK_OCORRENCIAS.filter(
-        (o) => o.status !== "concluido" && o.coordenadas != null,
-      ).map((o) => {
-        const emAndamento =
-          o.status === "em_andamento" || o.status === "alta_prioridade";
-        return {
-          id: o.id,
-          lat: o.coordenadas!.lat,
-          lng: o.coordenadas!.lng,
-          titulo: `#${o.id} · ${o.titulo}`,
-          subtitulo: `${zonaNomeMock(o.zona)} — ${o.endereco}`,
-          kind: emAndamento
-            ? ("ocorrencia_andamento" as const)
-            : ("ocorrencia_aberta" as const),
-          tecnicoNoLocal:
-            emAndamento && o.tecnico_responsavel
-              ? tecnicoNome(o.tecnico_responsavel)
-              : null,
-        };
-      }),
-    [],
-  );
-
   // --- renderização ---
 
   if (loading) {
@@ -361,7 +332,7 @@ export default function MonitoringPage() {
       <div className="grid grid-cols-12 gap-5">
         {/* mapa */}
         <div className="col-span-12 lg:col-span-7 card-tonal p-2 shadow-ambient-sm">
-          <PointsMap points={pontosMapa} height={520} />
+          <MonitoringMap height={520} />
         </div>
 
         {/* feed */}
