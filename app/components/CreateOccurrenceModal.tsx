@@ -129,15 +129,15 @@ export function CreateOccurrenceModal({ open, onClose, onCreated, zonas }: Props
       if (anexos.length > 0) body.anexos = anexos;
 
       await api.post("/ocorrencias/", body);
-      showToast("ocorrência registrada com sucesso.");
+      showToast("Ocorrência registrada com sucesso.");
       onCreated();
       onClose();
     } catch (err: unknown) {
       const axiosErr = err as { response?: { status?: number } };
       if (axiosErr?.response?.status === 400) {
-        setError("dados inválidos. verifique os campos obrigatórios.");
+        setError("Dados inválidos, verifique os campos obrigatórios.");
       } else {
-        setError("erro ao registrar ocorrência. tente novamente.");
+        setError("Erro ao registrar ocorrência. Tente novamente.");
       }
     } finally {
       setSaving(false);
@@ -285,7 +285,7 @@ export function CreateOccurrenceModal({ open, onClose, onCreated, zonas }: Props
             rows={4}
             value={descricao}
             onChange={(e) => setDescricao(e.target.value)}
-            placeholder="descreva o que foi observado, dimensões aproximadas, número de pessoas afetadas…"
+            placeholder="Descreva o que foi observado, dimensões aproximadas, número de pessoas afetadas…"
             className="w-full bg-surface-container-low border-none rounded-lg px-4 py-3 text-sm font-medium text-primary focus:ring-2 focus:ring-secondary placeholder:text-on-surface-variant/60 resize-none"
           />
         </div>
