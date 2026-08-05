@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
-import { Btn, Chip, Icon, MetaTag, Tab } from "@/app/components/Primitives";
+import { Btn, Chip, Icon, MetaTag } from "@/app/components/Primitives";
 import { api } from "@/app/services/Api";
 import { useAppNavigation } from "@/app/lib/useAppNavigation";
 import { CreateZoneModal } from "@/app/components/CreateZoneModal";
@@ -31,7 +31,8 @@ export default function ZonesPage() {
   const router = useRouter();
   const [zonas, setZonas] = useState<Zona[]>([]);
   const [loading, setLoading] = useState(true);
-  const [filter, setFilter] = useState("todas");
+  const [statusFilter, setStatusFilter] = useState("todos");
+  const [typeFilter, setTypeFilter] = useState("todos");
   const [showCreateModal, setShowCreateModal] = useState(false);
 
   const fetchZonas = useCallback(() => {
@@ -58,13 +59,9 @@ export default function ZonesPage() {
   }, [fetchZonas]);
 
   const filtered = zonas.filter((z) => {
-    if (filter === "todas") return true;
-    if (filter === "criticas") return z.status === "critico";
-    if (filter === "atencao") return z.status === "atencao";
-    if (filter === "estaveis") return z.status === "estavel";
-    if (filter === "urbanas") return z.tipo === "urbana";
-    if (filter === "rurais") return z.tipo === "rural";
-    return true;
+    const matchesStatus = statusFilter === "todos" || z.status === statusFilter;
+    const matchesType = typeFilter === "todos" || z.tipo === typeFilter;
+    return matchesStatus && matchesType;
   });
 
   const toneFor = (s: string) =>
@@ -72,6 +69,19 @@ export default function ZonesPage() {
 
   const accentFor = (s: string) =>
     s === "critico" ? "bg-error" : s === "atencao" ? "bg-orange-500" : "bg-secondary";
+
+  const statusOptions = [
+    { id: "todos", label: "Todos", count: zonas.length },
+    { id: "critico", label: "Críticas", count: zonas.filter((z) => z.status === "critico").length },
+    { id: "atencao", label: "Atenção", count: zonas.filter((z) => z.status === "atencao").length },
+    { id: "estavel", label: "Estáveis", count: zonas.filter((z) => z.status === "estavel").length },
+  ];
+
+  const typeOptions = [
+    { id: "todos", label: "Todos", count: zonas.length },
+    { id: "urbana", label: "Urbanas", count: zonas.filter((z) => z.tipo === "urbana").length },
+    { id: "rural", label: "Rurais", count: zonas.filter((z) => z.tipo === "rural").length },
+  ];
 
   if (loading) {
     return (
@@ -104,9 +114,6 @@ export default function ZonesPage() {
              */ }
           </div>
           <div className="flex gap-3">
-            <Btn variant="secondary" icon="filter_list">
-              Filtros Avançados
-            </Btn>
             <Btn variant="primary" icon="add" onClick={() => setShowCreateModal(true)}>
               Nova Zona
             </Btn>
@@ -114,21 +121,62 @@ export default function ZonesPage() {
         </div>
       </header>
 
-      {/* Filter tabs */}
-      <div className="flex flex-wrap gap-2">
-        {[
-          { id: "todas", l: "Todas", c: zonas.length },
-          { id: "criticas", l: "Críticas", c: zonas.filter((z) => z.status === "critico").length },
-          { id: "atencao", l: "Atenção", c: zonas.filter((z) => z.status === "atencao").length },
-          { id: "estaveis", l: "Estáveis", c: zonas.filter((z) => z.status === "estavel").length },
-          { id: "urbanas", l: "Urbanas", c: zonas.filter((z) => z.tipo === "urbana").length },
-          { id: "rurais", l: "Rurais", c: zonas.filter((z) => z.tipo === "rural").length },
-        ].map((t) => (
-          <Tab key={t.id} active={filter === t.id} onClick={() => setFilter(t.id)}>
-            {t.l} <span className="opacity-60">({t.c})</span>
-          </Tab>
-        ))}
-      </div>
+      {/* Filtros de zona */}
+      <section className="flex flex-col gap-4 rounded-xl bg-surface-container-low p-4 lg:flex-row lg:items-end lg:justify-between">
+        <div className="flex min-w-0 flex-col gap-4 sm:flex-row sm:items-end sm:gap-8">
+          <div className="min-w-0">
+            <p className="mb-2 text-[10px] font-bold uppercase tracking-mono text-slate-400">Status</p>
+            <div className="flex max-w-full gap-1.5 overflow-x-auto" role="group" aria-label="Filtrar por status">
+              {statusOptions.map((option) => {
+                const active = statusFilter === option.id;
+                return (
+                  <button
+                    key={option.id}
+                    type="button"
+                    aria-pressed={active}
+                    onClick={() => setStatusFilter(option.id)}
+                    className={`inline-flex shrink-0 items-center gap-1.5 rounded-lg px-3 py-2 text-[11px] font-bold transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-secondary ${active
+                      ? "bg-primary text-white"
+                      : "bg-white text-on-surface-variant hover:text-primary"
+                      }`}
+                  >
+                    {option.label}
+                    <span className={active ? "text-white/60" : "text-slate-400"}>{option.count}</span>
+                  </button>
+                );
+              })}
+            </div>
+          </div>
+
+          <div className="min-w-0">
+            <p className="mb-2 text-[10px] font-bold uppercase tracking-mono text-slate-400">Tipo</p>
+            <div className="flex max-w-full gap-1.5 overflow-x-auto" role="group" aria-label="Filtrar por tipo">
+              {typeOptions.map((option) => {
+                const active = typeFilter === option.id;
+                return (
+                  <button
+                    key={option.id}
+                    type="button"
+                    aria-pressed={active}
+                    onClick={() => setTypeFilter(option.id)}
+                    className={`inline-flex shrink-0 items-center gap-1.5 rounded-lg px-3 py-2 text-[11px] font-bold transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-secondary ${active
+                      ? "bg-primary text-white"
+                      : "bg-white text-on-surface-variant hover:text-primary"
+                      }`}
+                  >
+                    {option.label}
+                    <span className={active ? "text-white/60" : "text-slate-400"}>{option.count}</span>
+                  </button>
+                );
+              })}
+            </div>
+          </div>
+        </div>
+
+        <span className="shrink-0 text-[10px] font-bold uppercase tracking-mono-tight text-on-surface-variant">
+          {filtered.length} {filtered.length === 1 ? "resultado" : "resultados"}
+        </span>
+      </section>
 
       {/* Zone cards grid */}
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-5">
@@ -142,13 +190,12 @@ export default function ZonesPage() {
             <div className="flex items-start justify-between mb-7 mt-1">
               <Chip tone={toneFor(z.status)}>{STATUS_LABEL[z.status]}</Chip>
               <span
-                className={`flex h-9 w-9 items-center justify-center rounded-full transition-transform duration-300 group-hover:scale-110 ${
-                  z.status === "critico"
-                    ? "bg-error/10 text-error"
-                    : z.status === "atencao"
-                      ? "bg-orange-500/10 text-orange-500"
-                      : "bg-secondary/10 text-secondary"
-                }`}
+                className={`flex h-9 w-9 items-center justify-center rounded-full transition-transform duration-300 group-hover:scale-110 ${z.status === "critico"
+                  ? "bg-error/10 text-error"
+                  : z.status === "atencao"
+                    ? "bg-orange-500/10 text-orange-500"
+                    : "bg-secondary/10 text-secondary"
+                  }`}
               >
                 <Icon
                   name={
