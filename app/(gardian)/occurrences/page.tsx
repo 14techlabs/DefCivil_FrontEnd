@@ -2,14 +2,11 @@
 
 import { Suspense, useCallback, useEffect, useMemo, useState } from "react";
 import { useSearchParams } from "next/navigation";
-import { Btn, Chip, Icon, KPI, MetaTag, Tab } from "@/app/components/Primitives";
+import { Btn, Chip, Icon, KPI, MetaTag } from "@/app/components/Primitives";
 import { api } from "@/app/services/Api";
 import { CreateOccurrenceModal } from "@/app/components/CreateOccurrenceModal";
 import { useGardian } from "@/app/components/GardianContext";
 import {
-  MOCK_OCORRENCIAS,
-  MOCK_ZONAS,
-  MOCK_TECNICOS,
   STATUS_OCORRENCIA_LABEL,
   googleMapsUrl,
 } from "@/app/data/mock";
@@ -135,6 +132,7 @@ function OccurrencesContent() {
   const [zonaLookup, setZonaLookup] = useState<Map<number, string>>(new Map());
   const [usuarioLookup, setUsuarioLookup] = useState<Map<number, string>>(new Map());
   const [loading, setLoading] = useState(true);
+  const [loadError, setLoadError] = useState("");
 
   // estado da ui
   const [filter, setFilter] = useState("todas");
@@ -149,48 +147,59 @@ function OccurrencesContent() {
 
   const fetchData = useCallback(async () => {
     setLoading(true);
+    setLoadError("");
     try {
-      const [occRes, zonRes, usuRes] = await Promise.all([
-        api.get<OcorrenciaListResponse>("/ocorrencias/"),
+      const occRes = await api.get<OcorrenciaListResponse>("/ocorrencias/");
+      const lista = occRes.data.ocorrencias ?? [];
+
+      setOcorrencias(lista);
+      setSelected((current) =>
+        current != null && lista.some((o) => o.id === current)
+          ? current
+          : lista[0]?.id ?? null,
+      );
+
+      const [zonRes, usuRes] = await Promise.allSettled([
         api.get<ZonaListResponse>("/zonas/"),
         api.get<UsuarioInfo[]>("/usuarios/"),
       ]);
 
-      const lista = occRes.data.ocorrencias;
-      setOcorrencias(lista);
-      if (lista.length > 0) setSelected(lista[0].id);
-
       // lookup de zonas
       const zLookup = new Map<number, string>();
-      for (const z of zonRes.data.zonas) {
-        zLookup.set(z.id, z.nome);
+      if (zonRes.status === "fulfilled") {
+        for (const z of zonRes.value.data.zonas ?? []) {
+          zLookup.set(z.id, z.nome);
+        }
       }
       setZonaLookup(zLookup);
 
       // lookup de usuarios
       const uLookup = new Map<number, string>();
-      for (const u of usuRes.data) {
-        const nome =
-          u.user_sys?.username ??
-          u.nome_anonimo ??
-          u.telefone ??
-          `Usuário #${u.id}`;
-        uLookup.set(u.id, nome);
+      if (usuRes.status === "fulfilled") {
+        for (const u of usuRes.value.data ?? []) {
+          const nome =
+            u.user_sys?.username ??
+            u.nome_anonimo ??
+            u.telefone ??
+            `Usuário #${u.id}`;
+          uLookup.set(u.id, nome);
+        }
       }
       setUsuarioLookup(uLookup);
     } catch {
-      // api indisponível — usa base mockada enquanto não está integrado
-      setOcorrencias(MOCK_OCORRENCIAS as unknown as Ocorrencia[]);
-      setSelected(MOCK_OCORRENCIAS[0]?.id ?? null);
-      setZonaLookup(new Map(MOCK_ZONAS.map((z) => [z.id, z.nome])));
-      setUsuarioLookup(new Map(MOCK_TECNICOS.map((t) => [t.id, t.nome])));
+      setOcorrencias([]);
+      setSelected(null);
+      setZonaLookup(new Map());
+      setUsuarioLookup(new Map());
+      setLoadError("Não foi possível carregar as ocorrências.");
     } finally {
       setLoading(false);
     }
   }, []);
 
   useEffect(() => {
-    fetchData();
+    const timer = window.setTimeout(() => void fetchData(), 0);
+    return () => window.clearTimeout(timer);
   }, [fetchData]);
 
   // seleciona ocorrência vinda do mapa da zona (?id=X)
@@ -341,6 +350,17 @@ function OccurrencesContent() {
           </div>
         </div>
       </header>
+
+      {loadError && (
+        <div className="mb-6 rounded-xl border border-error/20 bg-error-container p-5">
+          <div className="flex items-center gap-3">
+            <Icon name="error" filled className="text-[22px] text-error" />
+            <p className="text-sm font-medium text-on-error-container">
+              {loadError}
+            </p>
+          </div>
+        </div>
+      )}
 
       {/* indicadores */}
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-5 mb-6">
