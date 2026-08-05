@@ -4,12 +4,15 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import { Btn, Chip, Icon, KPI, MetaTag } from "@/app/components/Primitives";
 import { useGardian } from "@/app/components/GardianContext";
 import { api } from "@/app/services/Api";
+import { CreateFamilyModal } from "@/app/components/CreateFamilyModal";
 
 /* ── tipos vindos da API (GET /familias/) ── */
 
-type Membro = {
+type Cidadao = {
   id: number;
   nome: string;
+  cpf: string | null;
+  cpf_formatado: string;
   data_nascimento: string | null;
   idade: number | null; // calculada no backend a partir da data
   parentesco: string;
@@ -47,9 +50,9 @@ type Familia = {
   zona_status: string | null;
   area_de_risco: boolean;
   observacoes: string;
-  membros: Membro[];
+  cidadaos: Cidadao[];
   animais: Animal[];
-  total_membros: number;
+  total_cidadaos: number;
   total_animais: number;
   ocorrencias: OcorrenciaResumo[];
 };
@@ -82,13 +85,26 @@ export default function FamiliesPage() {
   const [filtroZona, setFiltroZona] = useState<number | "todas" | "sem_zona">("todas");
   const [selectedId, setSelectedId] = useState<number | null>(null);
 
-  const [novoMembro, setNovoMembro] = useState({ nome: "", nascimento: "", parentesco: "" });
+  const [novoCidadao, setNovoCidadao] = useState({ nome: "", cpf: "", nascimento: "", parentesco: "" });
   const [novoAnimal, setNovoAnimal] = useState({ nome: "", especie: "", porte: "medio", quantidade: "1" });
   const [salvando, setSalvando] = useState(false);
+  const [modalAberto, setModalAberto] = useState(false);
 
   const msgErro = useCallback(
     (e: unknown, padrao: string) =>
       (e as { response?: { data?: { error?: string } } })?.response?.data?.error ?? padrao,
+    [],
+  );
+
+  /** Erro de validação de um campo específico (ex.: cpf), com fallback. */
+  const campoOuErro = useCallback(
+    (e: unknown, campo: string, padrao: string) => {
+      const data = (e as { response?: { data?: Record<string, unknown> } })?.response?.data;
+      const doCampo = data?.[campo];
+      if (Array.isArray(doCampo) && doCampo.length) return String(doCampo[0]);
+      if (typeof data?.error === "string") return data.error;
+      return padrao;
+    },
     [],
   );
 
@@ -144,36 +160,39 @@ export default function FamiliesPage() {
   const semZona = familias.filter((f) => f.zona == null).length;
 
   /* ── ações ── */
-  const vincularMembro = async () => {
+  const vincularCidadao = async () => {
     if (!familia) return;
-    if (!novoMembro.nome.trim() || !novoMembro.parentesco.trim()) {
-      showToast("Informe nome e parentesco.", "error");
+    if (!novoCidadao.nome.trim()) {
+      showToast("Informe o nome do cidadão.", "error");
       return;
     }
     setSalvando(true);
     try {
-      await api.post(`/familias/${familia.id}/membros/`, {
-        nome: novoMembro.nome.trim(),
-        data_nascimento: novoMembro.nascimento || null,
-        parentesco: novoMembro.parentesco.trim(),
+      await api.post(`/familias/${familia.id}/cidadaos/`, {
+        nome: novoCidadao.nome.trim(),
+        cpf: novoCidadao.cpf.trim() || null,
+        data_nascimento: novoCidadao.nascimento || null,
+        parentesco: novoCidadao.parentesco.trim(),
       });
-      setNovoMembro({ nome: "", nascimento: "", parentesco: "" });
+      setNovoCidadao({ nome: "", cpf: "", nascimento: "", parentesco: "" });
       setRecarga((n) => n + 1);
-      showToast("Membro vinculado.");
+      showToast("Cidadão vinculado.");
     } catch (e) {
-      showToast(msgErro(e, "Não foi possível vincular o membro."), "error");
+      // O backend explica CPF inválido/duplicado citando a família — repassamos
+      // a mensagem dele em vez de um texto genérico.
+      showToast(campoOuErro(e, "cpf", "Não foi possível vincular o cidadão."), "error");
     } finally {
       setSalvando(false);
     }
   };
 
-  const removerMembro = async (id: number) => {
+  const removerCidadao = async (id: number) => {
     if (!familia) return;
     try {
-      await api.delete(`/familias/${familia.id}/membros/${id}/`);
+      await api.delete(`/familias/${familia.id}/cidadaos/${id}/`);
       setRecarga((n) => n + 1);
     } catch (e) {
-      showToast(msgErro(e, "Não foi possível remover o membro."), "error");
+      showToast(msgErro(e, "Não foi possível remover o cidadão."), "error");
     }
   };
 
@@ -252,9 +271,14 @@ export default function FamiliesPage() {
           <span className="w-1 h-1 rounded-full bg-outline-variant" />
           <MetaTag>{dados.total_familias} FAMÍLIAS</MetaTag>
         </div>
-        <h1 className="font-headline font-black text-5xl tracking-tighter text-primary">
-          Gerenciamento das Famílias
-        </h1>
+        <div className="flex items-end justify-between gap-6 flex-wrap">
+          <h1 className="font-headline font-black text-5xl tracking-tighter text-primary">
+            Gerenciamento das Famílias
+          </h1>
+          <Btn variant="primary" icon="add" onClick={() => setModalAberto(true)}>
+            Nova família
+          </Btn>
+        </div>
       </header>
 
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-5">
@@ -263,7 +287,7 @@ export default function FamiliesPage() {
           value={dados.total_familias}
           icon="family_restroom"
           tone="secondary"
-          sub={`${dados.total_pessoas} pessoas cadastradas`}
+          sub={`${dados.total_pessoas} cidadãos cadastrados`}
         />
         <KPI
           label="Em Área de Risco"
@@ -363,7 +387,7 @@ export default function FamiliesPage() {
                 <div className="flex items-center gap-3 mt-3 text-[10px] font-mono font-bold uppercase tracking-mono text-slate-400">
                   <span>{f.zona_nome ?? "SEM ZONA"}</span>
                   <span>·</span>
-                  <span>{f.total_membros} MEMBROS</span>
+                  <span>{f.total_cidadaos} {f.total_cidadaos === 1 ? "CIDADÃO" : "CIDADÃOS"}</span>
                   <span>·</span>
                   <span>{f.ocorrencias.length} OCORRÊNCIAS</span>
                 </div>
@@ -379,6 +403,11 @@ export default function FamiliesPage() {
               <p className="text-sm text-on-surface-variant">
                 Nenhuma família cadastrada para esta entidade.
               </p>
+              <div className="mt-5">
+                <Btn variant="primary" icon="add" onClick={() => setModalAberto(true)}>
+                  Cadastrar a primeira
+                </Btn>
+              </div>
             </div>
           ) : (
             <div className="card-tonal shadow-ambient-sm overflow-hidden">
@@ -455,16 +484,16 @@ export default function FamiliesPage() {
                   )}
                 </div>
 
-                {/* Membros */}
+                {/* Cidadãos */}
                 <div>
-                  <MetaTag className="block mb-3">MEMBROS ({familia.membros.length})</MetaTag>
+                  <MetaTag className="block mb-3">CIDADÃOS ({familia.cidadaos.length})</MetaTag>
                   <div className="space-y-2 mb-3">
-                    {familia.membros.length === 0 && (
+                    {familia.cidadaos.length === 0 && (
                       <p className="text-[12px] text-on-surface-variant italic">
-                        Nenhum membro cadastrado.
+                        Nenhum cidadão cadastrado.
                       </p>
                     )}
-                    {familia.membros.map((m) => (
+                    {familia.cidadaos.map((m) => (
                       <div
                         key={m.id}
                         className="flex items-center gap-3 p-3 rounded-lg bg-surface-container-low text-[12px]"
@@ -472,14 +501,23 @@ export default function FamiliesPage() {
                         <div className="w-8 h-8 rounded-md bg-primary-container/20 flex items-center justify-center">
                           <Icon name="person" className="text-primary text-[16px]" />
                         </div>
-                        <span className="font-bold text-primary flex-1 truncate">{m.nome}</span>
+                        <div className="flex-1 min-w-0">
+                          <p className="font-bold text-primary truncate">{m.nome}</p>
+                          <p
+                            className={`text-[10px] font-mono tracking-mono ${
+                              m.cpf_formatado ? "text-slate-400" : "text-error font-bold"
+                            }`}
+                          >
+                            {m.cpf_formatado || "CPF PENDENTE"}
+                          </p>
+                        </div>
                         <span className="text-on-surface-variant">
                           {m.idade != null ? `${m.idade} anos` : "idade —"}
                         </span>
                         <Chip tone={m.responsavel ? "secondary" : "neutral"}>{m.parentesco}</Chip>
                         <button
                           type="button"
-                          onClick={() => removerMembro(m.id)}
+                          onClick={() => removerCidadao(m.id)}
                           className="text-on-surface-variant hover:text-error"
                           aria-label={`Remover ${m.nome}`}
                         >
@@ -488,33 +526,57 @@ export default function FamiliesPage() {
                       </div>
                     ))}
                   </div>
-                  <div className="grid grid-cols-1 sm:grid-cols-[1fr_140px_1fr_auto] gap-2">
-                    <input
-                      value={novoMembro.nome}
-                      onChange={(e) => setNovoMembro((v) => ({ ...v, nome: e.target.value }))}
-                      placeholder="Nome"
-                      className="bg-surface-container-low rounded-lg px-3.5 py-2.5 text-xs font-medium focus:ring-2 focus:ring-secondary outline-none"
-                    />
-                    <input
-                      type="date"
-                      value={novoMembro.nascimento}
-                      onChange={(e) => setNovoMembro((v) => ({ ...v, nascimento: e.target.value }))}
-                      title="Data de nascimento — a idade é calculada automaticamente"
-                      className="bg-surface-container-low rounded-lg px-3.5 py-2.5 text-xs font-medium focus:ring-2 focus:ring-secondary outline-none"
-                    />
-                    <input
-                      value={novoMembro.parentesco}
-                      onChange={(e) => setNovoMembro((v) => ({ ...v, parentesco: e.target.value }))}
-                      placeholder="Parentesco"
-                      className="bg-surface-container-low rounded-lg px-3.5 py-2.5 text-xs font-medium focus:ring-2 focus:ring-secondary outline-none"
-                    />
+                  {/* Grid de 2 colunas: 5 campos em linha estouravam a
+                      largura da coluna lateral. O botão vai em linha própria. */}
+                  <div className="card-recessed p-4 space-y-2">
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                      <div>
+                        <MetaTag className="block mb-1.5">NOME *</MetaTag>
+                        <input
+                          value={novoCidadao.nome}
+                          onChange={(e) => setNovoCidadao((v) => ({ ...v, nome: e.target.value }))}
+                          placeholder="Nome completo"
+                          className="w-full min-w-0 bg-surface-container-low rounded-lg px-3.5 py-2.5 text-xs font-medium focus:ring-2 focus:ring-secondary outline-none"
+                        />
+                      </div>
+                      <div>
+                        <MetaTag className="block mb-1.5">CPF *</MetaTag>
+                        <input
+                          value={novoCidadao.cpf}
+                          onChange={(e) => setNovoCidadao((v) => ({ ...v, cpf: e.target.value }))}
+                          placeholder="000.000.000-00"
+                          inputMode="numeric"
+                          className="w-full min-w-0 bg-surface-container-low rounded-lg px-3.5 py-2.5 text-xs font-medium focus:ring-2 focus:ring-secondary outline-none"
+                        />
+                      </div>
+                      <div>
+                        <MetaTag className="block mb-1.5">NASCIMENTO</MetaTag>
+                        <input
+                          type="date"
+                          value={novoCidadao.nascimento}
+                          onChange={(e) => setNovoCidadao((v) => ({ ...v, nascimento: e.target.value }))}
+                          title="A idade é calculada automaticamente a partir da data"
+                          className="w-full min-w-0 bg-surface-container-low rounded-lg px-3.5 py-2.5 text-xs font-medium focus:ring-2 focus:ring-secondary outline-none"
+                        />
+                      </div>
+                      <div>
+                        <MetaTag className="block mb-1.5">PARENTESCO</MetaTag>
+                        <input
+                          value={novoCidadao.parentesco}
+                          onChange={(e) => setNovoCidadao((v) => ({ ...v, parentesco: e.target.value }))}
+                          placeholder="Filho(a), Cônjuge…"
+                          className="w-full min-w-0 bg-surface-container-low rounded-lg px-3.5 py-2.5 text-xs font-medium focus:ring-2 focus:ring-secondary outline-none"
+                        />
+                      </div>
+                    </div>
                     <Btn
                       variant="secondary"
                       icon="person_add"
-                      onClick={vincularMembro}
+                      onClick={vincularCidadao}
                       disabled={salvando}
+                      className="w-full justify-center"
                     >
-                      Vincular
+                      {salvando ? "Salvando…" : "Vincular cidadão"}
                     </Btn>
                   </div>
                 </div>
@@ -557,41 +619,60 @@ export default function FamiliesPage() {
                       </div>
                     ))}
                   </div>
-                  <div className="grid grid-cols-1 sm:grid-cols-[1fr_1fr_120px_90px_auto] gap-2">
-                    <input
-                      value={novoAnimal.nome}
-                      onChange={(e) => setNovoAnimal((v) => ({ ...v, nome: e.target.value }))}
-                      placeholder="Nome (opcional)"
-                      className="bg-surface-container-low rounded-lg px-3.5 py-2.5 text-xs font-medium focus:ring-2 focus:ring-secondary outline-none"
-                    />
-                    <input
-                      value={novoAnimal.especie}
-                      onChange={(e) => setNovoAnimal((v) => ({ ...v, especie: e.target.value }))}
-                      placeholder="Espécie"
-                      className="bg-surface-container-low rounded-lg px-3.5 py-2.5 text-xs font-medium focus:ring-2 focus:ring-secondary outline-none"
-                    />
-                    <select
-                      value={novoAnimal.porte}
-                      onChange={(e) => setNovoAnimal((v) => ({ ...v, porte: e.target.value }))}
-                      title="Porte — usado para dimensionar abrigo e transporte"
-                      className="bg-surface-container-low rounded-lg px-3.5 py-2.5 text-xs font-medium focus:ring-2 focus:ring-secondary outline-none"
+                  <div className="card-recessed p-4 space-y-2">
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                      <div>
+                        <MetaTag className="block mb-1.5">NOME</MetaTag>
+                        <input
+                          value={novoAnimal.nome}
+                          onChange={(e) => setNovoAnimal((v) => ({ ...v, nome: e.target.value }))}
+                          placeholder="Opcional em animal de criação"
+                          className="w-full min-w-0 bg-surface-container-low rounded-lg px-3.5 py-2.5 text-xs font-medium focus:ring-2 focus:ring-secondary outline-none"
+                        />
+                      </div>
+                      <div>
+                        <MetaTag className="block mb-1.5">ESPÉCIE *</MetaTag>
+                        <input
+                          value={novoAnimal.especie}
+                          onChange={(e) => setNovoAnimal((v) => ({ ...v, especie: e.target.value }))}
+                          placeholder="Cão, Gato, Ave…"
+                          className="w-full min-w-0 bg-surface-container-low rounded-lg px-3.5 py-2.5 text-xs font-medium focus:ring-2 focus:ring-secondary outline-none"
+                        />
+                      </div>
+                      <div>
+                        <MetaTag className="block mb-1.5">PORTE</MetaTag>
+                        <select
+                          value={novoAnimal.porte}
+                          onChange={(e) => setNovoAnimal((v) => ({ ...v, porte: e.target.value }))}
+                          title="Usado para dimensionar abrigo e transporte na evacuação"
+                          className="w-full min-w-0 bg-surface-container-low rounded-lg px-3.5 py-2.5 text-xs font-medium focus:ring-2 focus:ring-secondary outline-none"
+                        >
+                          {PORTES.map((p) => (
+                            <option key={p} value={p}>
+                              {p === "medio" ? "Médio" : p.charAt(0).toUpperCase() + p.slice(1)}
+                            </option>
+                          ))}
+                        </select>
+                      </div>
+                      <div>
+                        <MetaTag className="block mb-1.5">QUANTIDADE</MetaTag>
+                        <input
+                          type="number"
+                          min={1}
+                          value={novoAnimal.quantidade}
+                          onChange={(e) => setNovoAnimal((v) => ({ ...v, quantidade: e.target.value }))}
+                          className="w-full min-w-0 bg-surface-container-low rounded-lg px-3.5 py-2.5 text-xs font-medium focus:ring-2 focus:ring-secondary outline-none"
+                        />
+                      </div>
+                    </div>
+                    <Btn
+                      variant="secondary"
+                      icon="add"
+                      onClick={vincularAnimal}
+                      disabled={salvando}
+                      className="w-full justify-center"
                     >
-                      {PORTES.map((p) => (
-                        <option key={p} value={p}>
-                          {p === "medio" ? "Médio" : p.charAt(0).toUpperCase() + p.slice(1)}
-                        </option>
-                      ))}
-                    </select>
-                    <input
-                      type="number"
-                      min={1}
-                      value={novoAnimal.quantidade}
-                      onChange={(e) => setNovoAnimal((v) => ({ ...v, quantidade: e.target.value }))}
-                      title="Quantidade — para animais de criação"
-                      className="bg-surface-container-low rounded-lg px-3.5 py-2.5 text-xs font-medium focus:ring-2 focus:ring-secondary outline-none"
-                    />
-                    <Btn variant="secondary" icon="add" onClick={vincularAnimal} disabled={salvando}>
-                      Vincular
+                      {salvando ? "Salvando…" : "Vincular animal"}
                     </Btn>
                   </div>
                 </div>
@@ -600,6 +681,15 @@ export default function FamiliesPage() {
           )}
         </aside>
       </div>
+
+      <CreateFamilyModal
+        open={modalAberto}
+        onClose={() => setModalAberto(false)}
+        onCreated={(id) => {
+          setSelectedId(id);
+          setRecarga((n) => n + 1);
+        }}
+      />
     </div>
   );
 }
