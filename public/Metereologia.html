@@ -1,0 +1,378 @@
+<!DOCTYPE html>
+
+<html lang="pt-BR"><head>
+<meta charset="utf-8"/>
+<meta content="width=device-width, initial-scale=1.0" name="viewport"/>
+<title>Meteorologia | GARDIAN Sentinel Protocol</title>
+<script src="https://cdn.tailwindcss.com?plugins=forms,container-queries"></script>
+<link href="https://fonts.googleapis.com/css2?family=Public+Sans:wght@400;700;800;900&amp;family=Inter:wght@300;400;500;600;700&amp;display=swap" rel="stylesheet"/>
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap" rel="stylesheet"/>
+<script id="tailwind-config">
+        tailwind.config = {
+            darkMode: "class",
+            theme: {
+                extend: {
+                    "colors": {
+                        "on-surface-variant": "#45474d",
+                        "inverse-on-surface": "#eff1f3",
+                        "secondary": "#006a60",
+                        "on-background": "#191c1e",
+                        "surface-container-low": "#f2f4f6",
+                        "on-secondary-container": "#007166",
+                        "secondary-fixed-dim": "#6fd8c8",
+                        "outline": "#75777d",
+                        "tertiary-fixed": "#ffdad8",
+                        "primary-fixed": "#d7e2ff",
+                        "on-primary-fixed": "#101b30",
+                        "surface-tint": "#545e76",
+                        "inverse-primary": "#bbc6e2",
+                        "surface-dim": "#d8dadc",
+                        "on-primary-fixed-variant": "#3c475d",
+                        "error-container": "#ffdad6",
+                        "tertiary-container": "#55000c",
+                        "surface": "#f8f9fb",
+                        "on-secondary": "#ffffff",
+                        "surface-container-highest": "#e0e3e5",
+                        "on-error": "#ffffff",
+                        "on-secondary-fixed-variant": "#005048",
+                        "on-secondary-fixed": "#00201c",
+                        "surface-container-high": "#e6e8ea",
+                        "primary-container": "#1b263b",
+                        "on-surface": "#191c1e",
+                        "on-tertiary-container": "#fe4b55",
+                        "background": "#f8f9fb",
+                        "on-tertiary-fixed": "#410007",
+                        "error": "#ba1a1a",
+                        "tertiary-fixed-dim": "#ffb3b1",
+                        "surface-container-lowest": "#ffffff",
+                        "primary": "#051125",
+                        "on-tertiary": "#ffffff",
+                        "inverse-surface": "#2d3133",
+                        "on-error-container": "#93000a",
+                        "primary-fixed-dim": "#bbc6e2",
+                        "on-primary-container": "#828da7",
+                        "tertiary": "#2e0004",
+                        "secondary-container": "#8cf5e4",
+                        "surface-container": "#eceef0",
+                        "secondary-fixed": "#8cf5e4",
+                        "outline-variant": "#c5c6cd",
+                        "on-primary": "#ffffff",
+                        "surface-bright": "#f8f9fb",
+                        "on-tertiary-fixed-variant": "#92001c",
+                        "surface-variant": "#e0e3e5"
+                    },
+                    "borderRadius": {
+                        "DEFAULT": "0.125rem",
+                        "lg": "0.25rem",
+                        "xl": "0.5rem",
+                        "full": "0.75rem"
+                    },
+                    "fontFamily": {
+                        "headline": ["Public Sans"],
+                        "body": ["Inter"],
+                        "label": ["Inter"]
+                    }
+                }
+            }
+        }
+    </script>
+<style>
+        .material-symbols-outlined {
+            font-variation-settings: 'FILL' 0, 'wght' 400, 'GRAD' 0, 'opsz' 24;
+        }
+        body { font-family: 'Inter', sans-serif; }
+        h1, h2, h3 { font-family: 'Public Sans', sans-serif; }
+    </style>
+</head>
+<body class="bg-surface text-on-surface antialiased overflow-hidden flex">
+<!-- Side Navigation Bar (Gardian) - Standardized to Screen 6 -->
+<aside class="h-screen w-64 fixed left-0 top-0 z-40 bg-slate-100 flex flex-col py-8 pl-4 pr-0 gap-y-2 h-full">
+<div class="px-4 mb-8">
+<h1 class="font-['Public_Sans'] font-black text-xl text-[#1B263B] leading-tight">GARDIAN</h1>
+<p class="font-['Inter'] text-[10px] font-bold tracking-[0.2em] text-slate-500 uppercase">CIVIL DEFENSE</p>
+</div>
+<nav class="flex-1 flex flex-col gap-y-1">
+<a class="flex items-center gap-3 px-4 py-3 text-slate-600 hover:text-[#1B263B] hover:translate-x-1 transition-transform duration-200 font-['Inter'] text-sm font-semibold tracking-tight" href="#">
+<span class="material-symbols-outlined">dashboard</span>
+                Painel Geral
+            </a>
+<a class="flex items-center gap-3 px-4 py-3 text-slate-600 hover:text-[#1B263B] hover:translate-x-1 transition-transform duration-200 font-['Inter'] text-sm font-semibold tracking-tight" href="#">
+<span class="material-symbols-outlined">stat_2</span>
+                Monitoramento
+            </a>
+<a class="flex items-center gap-3 px-4 py-3 text-slate-600 hover:text-[#1B263B] hover:translate-x-1 transition-transform duration-200 font-['Inter'] text-sm font-semibold tracking-tight" href="#">
+<span class="material-symbols-outlined">terrain</span>
+                Geologia
+            </a>
+<!-- Active Tab: Meteorologia -->
+<a class="flex items-center gap-3 px-4 py-3 bg-white text-[#006A60] rounded-l-lg shadow-sm font-bold active ring-1 ring-inset ring-[#006A60] transition-transform duration-200 font-['Inter'] text-sm font-semibold tracking-tight" href="#">
+<span class="material-symbols-outlined" style="font-variation-settings: 'FILL' 1;">cloudy_snowing</span>
+                Meteorologia
+            </a>
+<a class="flex items-center gap-3 px-4 py-3 text-slate-600 hover:text-[#1B263B] hover:translate-x-1 transition-transform duration-200 font-['Inter'] text-sm font-semibold tracking-tight" href="#">
+<span class="material-symbols-outlined">emergency</span>
+                Ocorrências
+            </a>
+<a class="flex items-center gap-3 px-4 py-3 text-slate-600 hover:text-[#1B263B] hover:translate-x-1 transition-transform duration-200 font-['Inter'] text-sm font-semibold tracking-tight" href="#">
+<span class="material-symbols-outlined">hub</span>
+                Zonas
+            </a>
+</nav>
+<div class="mt-auto px-4 pr-8">
+<div class="p-4 rounded-xl bg-surface-container-highest flex items-center gap-3">
+<div class="w-8 h-8 rounded bg-primary-container flex items-center justify-center">
+<span class="material-symbols-outlined text-on-primary-container text-sm">person</span>
+</div>
+<div class="overflow-hidden">
+<p class="text-xs font-bold truncate">Operador Delta</p>
+<p class="text-[10px] text-on-surface-variant opacity-70">Sessão: 04:22</p>
+</div>
+</div>
+</div>
+</aside>
+<!-- Main Content Canvas -->
+<main class="ml-64 flex-1 h-screen flex flex-col bg-surface overflow-y-auto">
+<!-- Top Navigation Bar -->
+<header class="sticky top-0 right-0 z-50 bg-slate-50/80 backdrop-blur-md shadow-[0_4px_20px_-5px_rgba(5,17,37,0.1)] flex items-center justify-between px-6 h-16 border-none">
+<div class="flex items-center gap-4 flex-1">
+<div class="relative w-full max-w-md">
+<span class="material-symbols-outlined absolute left-3 top-1/2 -translate-y-1/2 text-on-surface-variant text-lg">search</span>
+<input class="w-full bg-surface-container-low border-none rounded-lg pl-10 pr-4 py-2 text-xs font-medium focus:ring-2 focus:ring-secondary transition-all" placeholder="Pesquisar Localidade..." type="text"/>
+</div>
+</div>
+<div class="flex items-center gap-2">
+<div class="flex items-center gap-1 px-4 py-2">
+<span class="w-2 h-2 rounded-full bg-secondary"></span>
+<span class="font-['Public_Sans'] uppercase tracking-widest text-[10px] font-bold text-[#1B263B]">Sistema Online</span>
+</div>
+<div class="flex items-center gap-1">
+<button class="p-2 text-slate-500 hover:bg-slate-200/50 rounded-lg transition-colors">
+<span class="material-symbols-outlined">notifications</span>
+</button>
+<button class="p-2 text-slate-500 hover:bg-slate-200/50 rounded-lg transition-colors">
+<span class="material-symbols-outlined">settings</span>
+</button>
+<div class="h-8 w-8 rounded-full bg-primary-container flex items-center justify-center text-on-primary ml-2">
+<span class="material-symbols-outlined text-sm">person</span>
+</div>
+</div>
+</div>
+</header>
+<div class="p-8 grid grid-cols-12 gap-6 flex-grow">
+<!-- Left Panel: Current Conditions -->
+<div class="col-span-12 lg:col-span-5 flex flex-col gap-6">
+<!-- Location Hero - Light aesthetic -->
+<div class="bg-white rounded-xl p-8 shadow-sm relative overflow-hidden ring-1 ring-slate-200/50">
+<div class="absolute top-0 right-0 p-6 opacity-5">
+<span class="material-symbols-outlined text-8xl" style="font-variation-settings: 'FILL' 1;">cloudy_snowing</span>
+</div>
+<div class="relative z-10">
+<div class="flex items-center gap-2 mb-2 text-secondary font-semibold text-xs tracking-widest uppercase">
+<span class="material-symbols-outlined text-sm">location_on</span>
+                            Cachoeira Paulista, SP
+                        </div>
+<h2 class="text-5xl font-black text-primary tracking-tighter mb-1">Nublado</h2>
+<p class="text-sm text-slate-400 font-medium font-body mb-8">Atualizado às 14:45 • Satélite GOES-16</p>
+<div class="flex items-baseline gap-2">
+<span class="text-8xl font-black text-primary tracking-tighter">24°</span>
+<div class="flex flex-col">
+<span class="text-lg font-bold text-slate-300">C</span>
+<span class="text-[10px] font-bold text-secondary-container bg-secondary px-2 py-0.5 rounded uppercase tracking-tighter">Estável</span>
+</div>
+</div>
+</div>
+</div>
+<!-- Technical Telemetry Bento - Light mode aesthetic -->
+<div class="grid grid-cols-2 gap-4">
+<div class="bg-surface-container-low p-5 rounded-xl border border-white">
+<div class="flex items-center justify-between mb-4">
+<span class="text-[10px] font-bold text-slate-500 tracking-widest uppercase">Sensação</span>
+<span class="material-symbols-outlined text-secondary text-lg">thermometer</span>
+</div>
+<div class="text-2xl font-black text-primary">26°C</div>
+<div class="w-full bg-slate-200 h-1 mt-3 rounded-full overflow-hidden">
+<div class="bg-secondary h-full w-[65%]"></div>
+</div>
+</div>
+<div class="bg-surface-container-low p-5 rounded-xl border border-white">
+<div class="flex items-center justify-between mb-4">
+<span class="text-[10px] font-bold text-slate-500 tracking-widest uppercase">Precíp.</span>
+<span class="material-symbols-outlined text-blue-500 text-lg">rainy</span>
+</div>
+<div class="text-2xl font-black text-primary">12%</div>
+<div class="w-full bg-slate-200 h-1 mt-3 rounded-full overflow-hidden">
+<div class="bg-blue-500 h-full w-[12%]"></div>
+</div>
+</div>
+<div class="bg-surface-container-low p-5 rounded-xl border border-white">
+<div class="flex items-center justify-between mb-4">
+<span class="text-[10px] font-bold text-slate-500 tracking-widest uppercase">Vento</span>
+<span class="material-symbols-outlined text-slate-400 text-lg">air</span>
+</div>
+<div class="text-2xl font-black text-primary">18 <span class="text-sm font-bold text-slate-400">km/h</span></div>
+<div class="text-[10px] font-semibold text-secondary mt-1 uppercase tracking-wider">Sudoeste (SO)</div>
+</div>
+<div class="bg-surface-container-low p-5 rounded-xl border border-white">
+<div class="flex items-center justify-between mb-4">
+<span class="text-[10px] font-bold text-slate-500 tracking-widest uppercase">Umidade</span>
+<span class="material-symbols-outlined text-cyan-600 text-lg">humidity_mid</span>
+</div>
+<div class="text-2xl font-black text-primary">74%</div>
+<div class="w-full bg-slate-200 h-1 mt-3 rounded-full overflow-hidden">
+<div class="bg-cyan-600 h-full w-[74%]"></div>
+</div>
+</div>
+<div class="bg-surface-container-low p-5 rounded-xl border border-white">
+<div class="flex items-center justify-between mb-4">
+<span class="text-[10px] font-bold text-slate-500 tracking-widest uppercase">Índice UV</span>
+<span class="material-symbols-outlined text-orange-500 text-lg">light_mode</span>
+</div>
+<div class="text-2xl font-black text-primary">3 <span class="text-xs font-bold text-slate-400 tracking-widest">MODERADO</span></div>
+<div class="text-[10px] font-semibold text-slate-400 mt-1 uppercase">Máx: 7 (Alto)</div>
+</div>
+<div class="bg-surface-container-low p-5 rounded-xl border border-white">
+<div class="flex items-center justify-between mb-4">
+<span class="text-[10px] font-bold text-slate-500 tracking-widest uppercase">Pressão</span>
+<span class="material-symbols-outlined text-slate-400 text-lg">compress</span>
+</div>
+<div class="text-2xl font-black text-primary">1014 <span class="text-sm font-bold text-slate-400">hPa</span></div>
+<div class="text-[10px] font-semibold text-secondary mt-1 uppercase tracking-wider">Estável</div>
+</div>
+</div>
+</div>
+<!-- Right Panel: Weather Map & Radar -->
+<div class="col-span-12 lg:col-span-7 flex flex-col gap-6">
+<div class="bg-primary-container rounded-xl overflow-hidden shadow-xl flex-grow min-h-[500px] relative border border-white/10">
+<!-- Map Canvas -->
+<div class="absolute inset-0 z-0">
+<img alt="Weather Map Radar" class="w-full h-full object-cover opacity-60 grayscale" data-alt="Dark satellite meteorological radar map showing terrain of Sao Paulo state with colored precipitation overlays in cyan and magenta" data-location="Cachoeira Paulista" src="https://lh3.googleusercontent.com/aida-public/AB6AXuCfv0A6w6cxssg5AwERTrgcPPpsIAJJ-Uel6SRxutlmZZBeMoih3UgD3wFAfjA7_q1hWL6RRVz_M67YErI3bvIwhNc0dUi2i77r3tBiyrwwGvYbLQoF46El06AIKjhfqnHns0_CD0Mc2mVhE_ota7uxkW9RClTwUgdCgmqUWklnjOEYYD4apATHwiehpc9nZothP1v-qx0ReMyI6GDkjoCrijhWfiu3AVVRBmlrsIQNN7jFpjL2GNmu3gS_kq9mGDuB0Gu0FLfk4AI"/>
+</div>
+<!-- Map HUD Overlays -->
+<div class="absolute inset-0 pointer-events-none p-6 flex flex-col justify-between">
+<div class="flex justify-between items-start">
+<div class="bg-primary/80 backdrop-blur-md px-4 py-2 rounded-lg border border-white/10 pointer-events-auto shadow-lg">
+<p class="text-[10px] font-bold text-slate-400 tracking-widest uppercase mb-1">Camada de Radar</p>
+<div class="flex items-center gap-4">
+<div class="flex items-center gap-2">
+<span class="h-2 w-2 rounded-full bg-cyan-400"></span>
+<span class="text-xs font-bold text-white">Chuva Leve</span>
+</div>
+<div class="flex items-center gap-2">
+<span class="h-2 w-2 rounded-full bg-orange-400"></span>
+<span class="text-xs font-bold text-white">Chuva Forte</span>
+</div>
+</div>
+</div>
+<div class="flex flex-col gap-2 pointer-events-auto">
+<button class="h-10 w-10 bg-white/10 backdrop-blur-md rounded-lg flex items-center justify-center text-white border border-white/20 hover:bg-white/20 transition-all">
+<span class="material-symbols-outlined">layers</span>
+</button>
+<button class="h-10 w-10 bg-white/10 backdrop-blur-md rounded-lg flex items-center justify-center text-white border border-white/20 hover:bg-white/20 transition-all">
+<span class="material-symbols-outlined">add</span>
+</button>
+<button class="h-10 w-10 bg-white/10 backdrop-blur-md rounded-lg flex items-center justify-center text-white border border-white/20 hover:bg-white/20 transition-all">
+<span class="material-symbols-outlined">remove</span>
+</button>
+</div>
+</div>
+<div class="flex justify-between items-end">
+<div class="bg-white/5 backdrop-blur-sm border border-white/10 p-3 rounded-lg flex items-center gap-4 pointer-events-auto">
+<div class="text-center">
+<p class="text-[8px] font-bold text-white/50 uppercase">Escala</p>
+<p class="text-[10px] font-bold text-white">1:50,000</p>
+</div>
+<div class="h-8 w-px bg-white/20"></div>
+<div class="text-center">
+<p class="text-[8px] font-bold text-white/50 uppercase">Coord</p>
+<p class="text-[10px] font-bold text-white">22.66° S, 45.01° W</p>
+</div>
+</div>
+<div class="bg-secondary px-6 py-3 rounded-lg shadow-lg pointer-events-auto border border-white/10">
+<p class="text-[10px] font-black text-white/80 uppercase tracking-[0.2em] mb-1">Alertas Ativos</p>
+<p class="text-sm font-bold text-white">Sem avisos críticos para a zona</p>
+</div>
+</div>
+</div>
+</div>
+</div>
+<!-- Bottom Section: 5-Day Forecast -->
+<div class="col-span-12">
+<div class="bg-surface-container-low rounded-xl p-8 border border-white shadow-sm">
+<div class="flex items-center justify-between mb-8">
+<h3 class="text-xl font-black text-primary tracking-tighter">PREVISÃO 5 DIAS</h3>
+<div class="flex gap-2">
+<span class="bg-surface-container-highest px-3 py-1 rounded text-[10px] font-bold text-slate-500 uppercase tracking-widest">Estendido</span>
+<span class="bg-primary-container px-3 py-1 rounded text-[10px] font-bold text-on-primary-fixed-variant uppercase tracking-widest">Modelagem ECMWF</span>
+</div>
+</div>
+<div class="grid grid-cols-1 md:grid-cols-5 gap-4">
+<!-- Day 1 -->
+<div class="bg-white p-6 rounded-xl shadow-sm ring-1 ring-slate-100 border-b-4 border-secondary/40">
+<p class="text-[10px] font-bold text-slate-400 mb-4 tracking-[0.2em] uppercase">Amanhã</p>
+<span class="material-symbols-outlined text-orange-400 text-4xl mb-4" style="font-variation-settings: 'FILL' 1;">sunny</span>
+<div class="flex flex-col mb-4">
+<span class="text-3xl font-black text-primary">29°</span>
+<span class="text-sm font-bold text-slate-400">18°</span>
+</div>
+<p class="text-[10px] font-bold text-secondary uppercase tracking-widest">Ensolarado</p>
+</div>
+<!-- Day 2 -->
+<div class="bg-white p-6 rounded-xl shadow-sm ring-1 ring-slate-100">
+<p class="text-[10px] font-bold text-slate-400 mb-4 tracking-[0.2em] uppercase">Quarta</p>
+<span class="material-symbols-outlined text-slate-400 text-4xl mb-4" style="font-variation-settings: 'FILL' 1;">partly_cloudy_day</span>
+<div class="flex flex-col mb-4">
+<span class="text-3xl font-black text-primary">27°</span>
+<span class="text-sm font-bold text-slate-400">19°</span>
+</div>
+<p class="text-[10px] font-bold text-slate-500 uppercase tracking-widest">Parc. Nublado</p>
+</div>
+<!-- Day 3 -->
+<div class="bg-white p-6 rounded-xl shadow-sm ring-1 ring-slate-100">
+<p class="text-[10px] font-bold text-slate-400 mb-4 tracking-[0.2em] uppercase">Quinta</p>
+<span class="material-symbols-outlined text-blue-400 text-4xl mb-4" style="font-variation-settings: 'FILL' 1;">rainy</span>
+<div class="flex flex-col mb-4">
+<span class="text-3xl font-black text-primary">24°</span>
+<span class="text-sm font-bold text-slate-400">20°</span>
+</div>
+<p class="text-[10px] font-bold text-blue-500 uppercase tracking-widest">Chuva Isolada</p>
+</div>
+<!-- Day 4 -->
+<div class="bg-white p-6 rounded-xl shadow-sm ring-1 ring-slate-100">
+<p class="text-[10px] font-bold text-slate-400 mb-4 tracking-[0.2em] uppercase">Sexta</p>
+<span class="material-symbols-outlined text-slate-600 text-4xl mb-4" style="font-variation-settings: 'FILL' 1;">thunderstorm</span>
+<div class="flex flex-col mb-4">
+<span class="text-3xl font-black text-primary">22°</span>
+<span class="text-sm font-bold text-slate-400">19°</span>
+</div>
+<p class="text-[10px] font-bold text-error uppercase tracking-widest">Tempestade</p>
+</div>
+<!-- Day 5 -->
+<div class="bg-white p-6 rounded-xl shadow-sm ring-1 ring-slate-100">
+<p class="text-[10px] font-bold text-slate-400 mb-4 tracking-[0.2em] uppercase">Sábado</p>
+<span class="material-symbols-outlined text-slate-400 text-4xl mb-4" style="font-variation-settings: 'FILL' 1;">cloudy</span>
+<div class="flex flex-col mb-4">
+<span class="text-3xl font-black text-primary">23°</span>
+<span class="text-sm font-bold text-slate-400">17°</span>
+</div>
+<p class="text-[10px] font-bold text-slate-500 uppercase tracking-widest">Nublado</p>
+</div>
+</div>
+</div>
+</div>
+</div>
+<!-- Technical Footer Strip -->
+<footer class="mt-auto bg-primary-container py-3 px-8 flex items-center justify-between text-on-primary-container text-[10px] font-bold tracking-[0.2em] uppercase">
+<div class="flex items-center gap-6">
+<span>ESTAÇÃO: CP-RD-04</span>
+<span class="flex items-center gap-1">
+<span class="h-1 w-1 bg-secondary rounded-full animate-pulse"></span> TRANSMITINDO
+                </span>
+<span class="hidden md:inline">LAT: -22.66 / LONG: -45.01</span>
+</div>
+<div class="flex items-center gap-4">
+<span>SINAL: EXCELENTE</span>
+<span class="opacity-50">FONTE: INPE/CPTEC</span>
+</div>
+</footer>
+</main>
+</body></html>
