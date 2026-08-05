@@ -5,6 +5,7 @@ import { useSearchParams } from "next/navigation";
 import { Btn, Chip, Icon, KPI, MetaTag } from "@/app/components/Primitives";
 import { api } from "@/app/services/Api";
 import { CreateOccurrenceModal } from "@/app/components/CreateOccurrenceModal";
+import { EditOccurrenceModal } from "@/app/components/EditOccurrenceModal";
 import { useGardian } from "@/app/components/GardianContext";
 import {
   STATUS_OCORRENCIA_LABEL,
@@ -138,6 +139,7 @@ function OccurrencesContent() {
   const [filter, setFilter] = useState("todas");
   const [selected, setSelected] = useState<number | null>(null);
   const [showCreateModal, setShowCreateModal] = useState(false);
+  const [showEditModal, setShowEditModal] = useState(false);
 
   // busca, filtro por status e agrupamento em evento
   const [busca, setBusca] = useState("");
@@ -714,9 +716,14 @@ function OccurrencesContent() {
               <div className="card-tonal shadow-ambient-sm overflow-hidden lg:sticky lg:top-36 lg:max-h-[calc(100vh-10rem)] lg:overflow-y-auto">
                 {/* cabeçalho do detalhe */}
                 <div className="bg-gradient-to-br from-primary to-primary-container text-white p-6">
-                  <Chip tone="primarySoft" className="!bg-white/15 !text-white">
-                    {categoriaLabel(selecionada.categoria).toUpperCase()}
-                  </Chip>
+                  <div className="flex items-start justify-between gap-3">
+                    <Chip tone="primarySoft" className="!bg-white/15 !text-white">
+                      {categoriaLabel(selecionada.categoria).toUpperCase()}
+                    </Chip>
+                    <Btn variant="ghostDark" icon="edit" onClick={() => setShowEditModal(true)}>
+                      Editar
+                    </Btn>
+                  </div>
                   <h2 className="font-headline font-black text-2xl tracking-tighter mt-3">
                     {selecionada.titulo}
                   </h2>
@@ -964,6 +971,19 @@ function OccurrencesContent() {
         }}
         zonas={Array.from(zonaLookup.entries()).map(([id, nome]) => ({ id, nome }))}
       />
+
+      {selecionada && (
+        <EditOccurrenceModal
+          open={showEditModal}
+          onClose={() => setShowEditModal(false)}
+          onSaved={() => {
+            setShowEditModal(false);
+            fetchData();
+          }}
+          zonas={Array.from(zonaLookup.entries()).map(([id, nome]) => ({ id, nome }))}
+          ocorrencia={selecionada}
+        />
+      )}
     </div>
   );
 }
