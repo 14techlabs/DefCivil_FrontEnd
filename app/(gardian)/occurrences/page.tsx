@@ -335,21 +335,6 @@ function OccurrencesContent() {
              */ }
           </div>
           <div className="flex gap-3">
-            {modoAgrupar && (
-              <Btn variant="success" icon="cyclone" onClick={agruparEmEvento}>
-                Agrupar em evento ({marcadas.length})
-              </Btn>
-            )}
-            <Btn
-              variant={modoAgrupar ? "ghost" : "secondary"}
-              icon={modoAgrupar ? "close" : "checklist"}
-              onClick={() => {
-                setModoAgrupar((v) => !v);
-                setMarcadas([]);
-              }}
-            >
-              {modoAgrupar ? "Cancelar seleção" : "Selecionar p/ evento"}
-            </Btn>
             <Btn variant="primary" icon="add" onClick={() => setShowCreateModal(true)}>
               Nova Ocorrência
             </Btn>
@@ -420,8 +405,8 @@ function OccurrencesContent() {
                   <div className="mb-4 flex items-center justify-between">
                     <span
                       className={`flex h-8 w-8 items-center justify-center rounded-full text-xs font-black ${index === 0
-                          ? "bg-secondary text-white"
-                          : "bg-surface-container-high text-on-surface-variant"
+                        ? "bg-secondary text-white"
+                        : "bg-surface-container-high text-on-surface-variant"
                         }`}
                     >
                       {index + 1}º
@@ -557,9 +542,20 @@ function OccurrencesContent() {
             </button>
           )}
         </div>
+
       </section>
 
-      {/* lista + detalhe */}
+      {/* Cabeçalho da Lista */}
+      <div className="mb-4">
+        <h2 className="font-headline text-lg font-black tracking-tight text-primary">
+          Lista de Ocorrências
+        </h2>
+        <p className="text-[11px] text-on-surface-variant">
+          {ocorrenciasFiltradas.length} ocorrência{ocorrenciasFiltradas.length !== 1 ? "s" : ""} encontrada{ocorrenciasFiltradas.length !== 1 ? "s" : ""}
+        </p>
+      </div>
+
+      {/* Lista + detalhe */}
       {ocorrenciasFiltradas.length === 0 ? (
         <div className="flex flex-col items-center justify-center py-20 text-center">
           <Icon name="search_off" className="text-on-surface-variant text-[48px] mb-4" />
@@ -569,8 +565,45 @@ function OccurrencesContent() {
         </div>
       ) : (
         <div className="grid grid-cols-12 gap-5">
-          {/* lista */}
+          {/* Lista */}
           <div className="col-span-12 lg:col-span-7 space-y-3">
+            <div className="z-10 flex flex-col gap-3 rounded-xl border border-outline-variant/25 bg-surface/95 p-3 shadow-ambient-sm backdrop-blur-xl lg:sticky lg:top-36 sm:flex-row sm:items-center sm:justify-between">
+              <div className="flex min-w-0 items-center gap-2">
+                <Icon
+                  name={modoAgrupar ? "checklist" : "event"}
+                  className={`shrink-0 text-[18px] ${modoAgrupar ? "text-secondary" : "text-on-surface-variant"}`}
+                />
+                <p className="truncate text-[11px] font-medium text-on-surface-variant">
+                  {modoAgrupar
+                    ? `${marcadas.length} ocorrência${marcadas.length !== 1 ? "s" : ""} selecionada${marcadas.length !== 1 ? "s" : ""}`
+                    : "Selecione ocorrências para vincular a um evento"}
+                </p>
+              </div>
+
+              <div className="flex shrink-0 flex-wrap gap-2">
+                {modoAgrupar && (
+                  <Btn
+                    variant="success"
+                    icon="cyclone"
+                    onClick={agruparEmEvento}
+                    disabled={marcadas.length < 2}
+                  >
+                    Agrupar ({marcadas.length})
+                  </Btn>
+                )}
+                <Btn
+                  variant={modoAgrupar ? "ghost" : "secondary"}
+                  icon={modoAgrupar ? "close" : "checklist"}
+                  onClick={() => {
+                    setModoAgrupar((v) => !v);
+                    setMarcadas([]);
+                  }}
+                >
+                  {modoAgrupar ? "Cancelar" : "Selecionar p/ evento"}
+                </Btn>
+              </div>
+            </div>
+
             {ocorrenciasFiltradas.map((o) => {
               const zonaNome =
                 o.zona != null ? zonaLookup.get(o.zona) ?? `#${o.zona}` : null;
@@ -584,10 +617,10 @@ function OccurrencesContent() {
                   key={o.id}
                   onClick={() => (modoAgrupar ? toggleMarcada(o.id) : setSelected(o.id))}
                   className={`w-full card-tonal p-6 shadow-ambient-sm text-left relative overflow-hidden hover:shadow-ambient transition-all ${modoAgrupar && marcadas.includes(o.id)
+                    ? "ring-2 ring-secondary"
+                    : !modoAgrupar && selected === o.id
                       ? "ring-2 ring-secondary"
-                      : !modoAgrupar && selected === o.id
-                        ? "ring-2 ring-secondary"
-                        : ""
+                      : ""
                     }`}
                 >
                   <span
@@ -860,20 +893,20 @@ function OccurrencesContent() {
                             >
                               <div
                                 className={`w-10 h-10 rounded-md flex items-center justify-center shrink-0 ${tipo === "video"
-                                    ? "bg-orange-100"
-                                    : tipo === "documento"
-                                      ? "bg-primary/8"
-                                      : "bg-secondary/10"
+                                  ? "bg-orange-100"
+                                  : tipo === "documento"
+                                    ? "bg-primary/8"
+                                    : "bg-secondary/10"
                                   }`}
                               >
                                 <Icon
                                   name={icone}
                                   filled
                                   className={`text-[20px] ${tipo === "video"
-                                      ? "text-orange-700"
-                                      : tipo === "documento"
-                                        ? "text-primary"
-                                        : "text-secondary"
+                                    ? "text-orange-700"
+                                    : tipo === "documento"
+                                      ? "text-primary"
+                                      : "text-secondary"
                                     }`}
                                 />
                               </div>
