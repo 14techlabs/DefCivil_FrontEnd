@@ -75,13 +75,13 @@ export function EditOccurrenceModal({ open, onClose, onSaved, zonas, ocorrencia 
   /* ── submit ── */
   const handleSubmit = async () => {
     // validação
-    if (!titulo.trim()) { setError("preencha o título."); return; }
-    if (!descricao.trim()) { setError("preencha o relato."); return; }
-    if (!lat.trim() || !lng.trim()) { setError("preencha as coordenadas (lat / lng)."); return; }
+    if (!titulo.trim()) { setError("Preencha o título."); return; }
+    if (!descricao.trim()) { setError("Preencha o relato."); return; }
+    if (!lat.trim() || !lng.trim()) { setError("Preencha as coordenadas (lat / lng)."); return; }
 
     const parsedLat = parseFloat(lat);
     const parsedLng = parseFloat(lng);
-    if (isNaN(parsedLat) || isNaN(parsedLng)) { setError("coordenadas inválidas."); return; }
+    if (isNaN(parsedLat) || isNaN(parsedLng)) { setError("Coordenadas inválidas."); return; }
 
     setSaving(true);
     setError("");
@@ -97,15 +97,15 @@ export function EditOccurrenceModal({ open, onClose, onSaved, zonas, ocorrencia 
       if (zonaId !== null) body.zona = zonaId;
 
       await api.patch(`/ocorrencias/${ocorrencia.id}/`, body);
-      showToast("ocorrência atualizada com sucesso.");
+      showToast("Ocorrência atualizada com sucesso.");
       onSaved();
       onClose();
     } catch (err: unknown) {
       const axiosErr = err as { response?: { status?: number } };
       if (axiosErr?.response?.status === 400) {
-        setError("dados inválidos. verifique os campos obrigatórios.");
+        setError("Dados inválidos. Verifique os campos obrigatórios.");
       } else {
-        setError("erro ao atualizar ocorrência. tente novamente.");
+        setError("Erro ao atualizar ocorrência. Tente novamente.");
       }
     } finally {
       setSaving(false);

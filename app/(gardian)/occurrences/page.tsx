@@ -6,6 +6,7 @@ import { Btn, Chip, Icon, KPI, MetaTag } from "@/app/components/Primitives";
 import { api } from "@/app/services/Api";
 import { CreateOccurrenceModal } from "@/app/components/CreateOccurrenceModal";
 import { EditOccurrenceModal } from "@/app/components/EditOccurrenceModal";
+import { DeleteOccurrenceModal } from "@/app/components/DeleteOccurrenceModal";
 import { useGardian } from "@/app/components/GardianContext";
 import {
   STATUS_OCORRENCIA_LABEL,
@@ -140,6 +141,7 @@ function OccurrencesContent() {
   const [selected, setSelected] = useState<number | null>(null);
   const [showCreateModal, setShowCreateModal] = useState(false);
   const [showEditModal, setShowEditModal] = useState(false);
+  const [showDeleteModal, setShowDeleteModal] = useState(false);
 
   // busca, filtro por status e agrupamento em evento
   const [busca, setBusca] = useState("");
@@ -720,9 +722,18 @@ function OccurrencesContent() {
                     <Chip tone="primarySoft" className="!bg-white/15 !text-white">
                       {categoriaLabel(selecionada.categoria).toUpperCase()}
                     </Chip>
-                    <Btn variant="ghostDark" icon="edit" onClick={() => setShowEditModal(true)}>
-                      Editar
-                    </Btn>
+                    <div className="flex items-center gap-2">
+                      <Btn
+                        variant="ghostDark"
+                        icon="delete"
+                        onClick={() => setShowDeleteModal(true)}
+                      >
+                        Excluir
+                      </Btn>
+                      <Btn variant="ghostDark" icon="edit" onClick={() => setShowEditModal(true)}>
+                        Editar
+                      </Btn>
+                    </div>
                   </div>
                   <h2 className="font-headline font-black text-2xl tracking-tighter mt-3">
                     {selecionada.titulo}
@@ -973,16 +984,27 @@ function OccurrencesContent() {
       />
 
       {selecionada && (
-        <EditOccurrenceModal
-          open={showEditModal}
-          onClose={() => setShowEditModal(false)}
-          onSaved={() => {
-            setShowEditModal(false);
-            fetchData();
-          }}
-          zonas={Array.from(zonaLookup.entries()).map(([id, nome]) => ({ id, nome }))}
-          ocorrencia={selecionada}
-        />
+        <>
+          <EditOccurrenceModal
+            open={showEditModal}
+            onClose={() => setShowEditModal(false)}
+            onSaved={() => {
+              setShowEditModal(false);
+              fetchData();
+            }}
+            zonas={Array.from(zonaLookup.entries()).map(([id, nome]) => ({ id, nome }))}
+            ocorrencia={selecionada}
+          />
+          <DeleteOccurrenceModal
+            open={showDeleteModal}
+            onClose={() => setShowDeleteModal(false)}
+            onDeleted={() => {
+              setShowDeleteModal(false);
+              fetchData();
+            }}
+            ocorrencia={selecionada}
+          />
+        </>
       )}
     </div>
   );
