@@ -3,9 +3,11 @@
 import dynamic from "next/dynamic";
 import { Suspense, useEffect, useMemo, useState } from "react";
 import { useSearchParams } from "next/navigation";
-import { Chip, Icon, MetaTag, SectionHeader } from "@/app/components/Primitives";
+import { Btn, Chip, Icon, MetaTag, SectionHeader } from "@/app/components/Primitives";
 import { useAppNavigation } from "@/app/lib/useAppNavigation";
 import { api } from "@/app/services/Api";
+import { EditZoneModal } from "@/app/components/EditZoneModal";
+import { DeleteZoneModal } from "@/app/components/DeleteZoneModal";
 import {
   MOCK_OCORRENCIAS,
   MOCK_EVENTOS,
@@ -96,6 +98,9 @@ function ZoneDetailContent() {
 
   const [data, setData] = useState<ZoneDetailResponse | null>(null);
   const [loading, setLoading] = useState(true);
+  const [loadError, setLoadError] = useState("");
+  const [showEditModal, setShowEditModal] = useState(false);
+  const [showDeleteModal, setShowDeleteModal] = useState(false);
 
   useEffect(() => {
     if (!zoneId) return;
@@ -104,10 +109,22 @@ function ZoneDetailContent() {
     api
       .get<ZoneDetailResponse>(`/zonas/${zoneId}/`)
       .then((res) => {
-        if (!cancelled) setData(res.data);
+        if (!cancelled) {
+          setData(res.data);
+          setLoadError("");
+        }
       })
-      .catch(() => {
-        if (!cancelled) setData(null);
+      .catch((err: unknown) => {
+        if (cancelled) return;
+        const requestError = err as { response?: { status?: number } };
+        setData(null);
+        setLoadError(
+          requestError.response?.status === 403
+            ? "Você não tem permissão para visualizar esta zona."
+            : requestError.response?.status === 404
+              ? "Zona não encontrada."
+              : "Não foi possível carregar os detalhes da zona.",
+        );
       })
       .finally(() => {
         if (!cancelled) setLoading(false);
@@ -239,7 +256,7 @@ function ZoneDetailContent() {
             className="text-on-surface-variant text-[48px] mb-4"
           />
           <p className="text-sm text-on-surface-variant">
-            Zona não encontrada.
+            {loadError || "Zona não encontrada."}
           </p>
         </div>
       </div>
@@ -282,6 +299,14 @@ function ZoneDetailContent() {
               </p>
             )}
           </div>
+          <div className="flex gap-3">
+            <Btn variant="secondary" icon="delete" onClick={() => setShowDeleteModal(true)}>
+              Excluir
+            </Btn>
+            <Btn variant="primary" icon="edit" onClick={() => setShowEditModal(true)}>
+              Editar informações
+            </Btn>
+          </div>
         </div>
       </header>
 
@@ -299,13 +324,6 @@ function ZoneDetailContent() {
         {/* Zone Info Card — replaces removed sensor cards */}
         <section className="col-span-12 lg:col-span-5 flex flex-col gap-5">
           <div className="card-tonal p-7 shadow-ambient-sm">
-            <div className="flex items-center justify-between mb-6">
-              <MetaTag>Informações da Zona</MetaTag>
-              <Icon
-                name="info"
-                className="text-secondary text-[20px]"
-              />
-            </div>
             <div className="space-y-5">
               <div>
                 <MetaTag className="block mb-1">Nome</MetaTag>
@@ -526,6 +544,30 @@ function ZoneDetailContent() {
           <PointsMap points={pontosZona} height={440} />
         </section>
       </div>
+
+      {showEditModal && (
+        <EditZoneModal
+          open
+          onClose={() => setShowEditModal(false)}
+          onSaved={(zonaAtualizada) => {
+            setData((current) =>
+              current ? { ...current, zonas: { ...current.zonas, ...zonaAtualizada } } : current,
+            );
+            setShowEditModal(false);
+          }}
+          zona={z}
+        />
+      )}
+
+      <DeleteZoneModal
+        open={showDeleteModal}
+        onClose={() => setShowDeleteModal(false)}
+        onDeleted={() => {
+          setShowDeleteModal(false);
+          router.push("/zones");
+        }}
+        zona={z}
+      />
     </div>
   );
 }

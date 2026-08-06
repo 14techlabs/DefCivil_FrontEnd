@@ -31,6 +31,8 @@ export default function ZonesPage() {
   const router = useRouter();
   const [zonas, setZonas] = useState<Zona[]>([]);
   const [loading, setLoading] = useState(true);
+  const [loadError, setLoadError] = useState("");
+  const [search, setSearch] = useState("");
   const [statusFilter, setStatusFilter] = useState("todos");
   const [typeFilter, setTypeFilter] = useState("todos");
   const [showCreateModal, setShowCreateModal] = useState(false);
@@ -38,13 +40,17 @@ export default function ZonesPage() {
   const fetchZonas = useCallback(() => {
     let cancelled = false;
     setLoading(true);
+    setLoadError("");
     api
       .get<{ zonas: Zona[] }>("/zonas/")
       .then((res) => {
         if (!cancelled) setZonas(res.data.zonas);
       })
       .catch(() => {
-        if (!cancelled) setZonas([]);
+        if (!cancelled) {
+          setZonas([]);
+          setLoadError("Não foi possível carregar as zonas.");
+        }
       })
       .finally(() => {
         if (!cancelled) setLoading(false);
@@ -55,14 +61,27 @@ export default function ZonesPage() {
   }, []);
 
   useEffect(() => {
-    fetchZonas();
+    const timer = window.setTimeout(() => fetchZonas(), 0);
+    return () => window.clearTimeout(timer);
   }, [fetchZonas]);
 
-  const filtered = zonas.filter((z) => {
-    const matchesStatus = statusFilter === "todos" || z.status === statusFilter;
-    const matchesType = typeFilter === "todos" || z.tipo === typeFilter;
-    return matchesStatus && matchesType;
-  });
+  const filtered = zonas
+    .filter((z) => {
+      const searchTerm = search.trim().toLocaleLowerCase("pt-BR");
+      const matchesStatus = statusFilter === "todos" || z.status === statusFilter;
+      const matchesType = typeFilter === "todos" || z.tipo === typeFilter;
+      const matchesSearch =
+        !searchTerm ||
+        [
+          String(z.id),
+          z.nome,
+          z.descricao,
+          STATUS_LABEL[z.status] ?? z.status,
+          TIPO_LABEL[z.tipo] ?? z.tipo,
+        ].some((value) => value.toLocaleLowerCase("pt-BR").includes(searchTerm));
+      return matchesStatus && matchesType && matchesSearch;
+    })
+    .sort((a, b) => a.id - b.id);
 
   const toneFor = (s: string) =>
     s === "critico" ? "error" : s === "atencao" ? "warning" : "secondary";
@@ -121,61 +140,87 @@ export default function ZonesPage() {
         </div>
       </header>
 
-      {/* Filtros de zona */}
-      <section className="flex flex-col gap-4 rounded-xl bg-surface-container-low p-4 lg:flex-row lg:items-end lg:justify-between">
-        <div className="flex min-w-0 flex-col gap-4 sm:flex-row sm:items-end sm:gap-8">
-          <div className="min-w-0">
-            <p className="mb-2 text-[10px] font-bold uppercase tracking-mono text-slate-400">Status</p>
-            <div className="flex max-w-full gap-1.5 overflow-x-auto" role="group" aria-label="Filtrar por status">
-              {statusOptions.map((option) => {
-                const active = statusFilter === option.id;
-                return (
-                  <button
-                    key={option.id}
-                    type="button"
-                    aria-pressed={active}
-                    onClick={() => setStatusFilter(option.id)}
-                    className={`inline-flex shrink-0 items-center gap-1.5 rounded-lg px-3 py-2 text-[11px] font-bold transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-secondary ${active
-                      ? "bg-primary text-white"
-                      : "bg-white text-on-surface-variant hover:text-primary"
-                      }`}
-                  >
-                    {option.label}
-                    <span className={active ? "text-white/60" : "text-slate-400"}>{option.count}</span>
-                  </button>
-                );
-              })}
-            </div>
-          </div>
-
-          <div className="min-w-0">
-            <p className="mb-2 text-[10px] font-bold uppercase tracking-mono text-slate-400">Tipo</p>
-            <div className="flex max-w-full gap-1.5 overflow-x-auto" role="group" aria-label="Filtrar por tipo">
-              {typeOptions.map((option) => {
-                const active = typeFilter === option.id;
-                return (
-                  <button
-                    key={option.id}
-                    type="button"
-                    aria-pressed={active}
-                    onClick={() => setTypeFilter(option.id)}
-                    className={`inline-flex shrink-0 items-center gap-1.5 rounded-lg px-3 py-2 text-[11px] font-bold transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-secondary ${active
-                      ? "bg-primary text-white"
-                      : "bg-white text-on-surface-variant hover:text-primary"
-                      }`}
-                  >
-                    {option.label}
-                    <span className={active ? "text-white/60" : "text-slate-400"}>{option.count}</span>
-                  </button>
-                );
-              })}
-            </div>
+      {loadError && (
+        <div className="rounded-xl border border-error/20 bg-error-container p-5">
+          <div className="flex items-center gap-3">
+            <Icon name="error" filled className="text-[22px] text-error" />
+            <p className="text-sm font-medium text-on-error-container">{loadError}</p>
           </div>
         </div>
+      )}
 
-        <span className="shrink-0 text-[10px] font-bold uppercase tracking-mono-tight text-on-surface-variant">
-          {filtered.length} {filtered.length === 1 ? "resultado" : "resultados"}
-        </span>
+      {/* Filtros de zona */}
+      <section className="flex flex-col gap-4 rounded-xl bg-surface-container-low p-4">
+        <div className="relative">
+          <Icon
+            name="search"
+            className="pointer-events-none absolute left-4 top-1/2 -translate-y-1/2 text-[22px] text-on-surface-variant"
+          />
+          <input
+            type="search"
+            value={search}
+            onChange={(event) => setSearch(event.target.value)}
+            placeholder="Pesquisar por nome, descrição, tipo, status ou número da zona..."
+            aria-label="Pesquisar zonas"
+            className="w-full rounded-lg border-none bg-white py-3.5 pl-12 pr-4 text-sm font-medium text-primary placeholder:text-on-surface-variant/60 focus:ring-2 focus:ring-secondary"
+          />
+        </div>
+
+        <div className="flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between">
+          <div className="flex min-w-0 flex-col gap-4 sm:flex-row sm:items-end sm:gap-8">
+            <div className="min-w-0">
+              <p className="mb-2 text-[10px] font-bold uppercase tracking-mono text-slate-400">Status</p>
+              <div className="flex max-w-full gap-1.5 overflow-x-auto" role="group" aria-label="Filtrar por status">
+                {statusOptions.map((option) => {
+                  const active = statusFilter === option.id;
+                  return (
+                    <button
+                      key={option.id}
+                      type="button"
+                      aria-pressed={active}
+                      onClick={() => setStatusFilter(option.id)}
+                      className={`inline-flex shrink-0 items-center gap-1.5 rounded-lg px-3 py-2 text-[11px] font-bold transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-secondary ${active
+                        ? "bg-primary text-white"
+                        : "bg-white text-on-surface-variant hover:text-primary"
+                        }`}
+                    >
+                      {option.label}
+                      <span className={active ? "text-white/60" : "text-slate-400"}>{option.count}</span>
+                    </button>
+                  );
+                })}
+              </div>
+            </div>
+
+            <div className="min-w-0">
+              <p className="mb-2 text-[10px] font-bold uppercase tracking-mono text-slate-400">Tipo</p>
+              <div className="flex max-w-full gap-1.5 overflow-x-auto" role="group" aria-label="Filtrar por tipo">
+                {typeOptions.map((option) => {
+                  const active = typeFilter === option.id;
+                  return (
+                    <button
+                      key={option.id}
+                      type="button"
+                      aria-pressed={active}
+                      onClick={() => setTypeFilter(option.id)}
+                      className={`inline-flex shrink-0 items-center gap-1.5 rounded-lg px-3 py-2 text-[11px] font-bold transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-secondary ${active
+                        ? "bg-primary text-white"
+                        : "bg-white text-on-surface-variant hover:text-primary"
+                        }`}
+                    >
+                      {option.label}
+                      <span className={active ? "text-white/60" : "text-slate-400"}>{option.count}</span>
+                    </button>
+                  );
+                })}
+              </div>
+            </div>
+          </div>
+
+          <span className="shrink-0 text-[10px] font-bold uppercase tracking-mono-tight text-on-surface-variant">
+            {filtered.length} {filtered.length === 1 ? "resultado" : "resultados"}
+          </span>
+        </div>
       </section>
 
       {/* Zone cards grid */}
@@ -249,7 +294,7 @@ export default function ZonesPage() {
         ))}
       </div>
 
-      {filtered.length === 0 && !loading && (
+      {filtered.length === 0 && !loading && !loadError && (
         <div className="text-center py-20">
           <Icon name="search_off" className="text-on-surface-variant text-[48px] mb-4" />
           <p className="text-sm text-on-surface-variant">Nenhuma zona encontrada para este filtro.</p>
