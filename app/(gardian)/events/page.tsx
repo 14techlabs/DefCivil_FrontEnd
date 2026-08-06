@@ -1,28 +1,95 @@
 "use client";
 
-import { useMemo, useState } from "react";
 import dynamic from "next/dynamic";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { Btn, Chip, Icon, MetaTag, SectionHeader, StatusDot, Tab } from "@/app/components/Primitives";
 import { useGardian } from "@/app/components/GardianContext";
-import {
-  MOCK_EVENTOS,
-  MOCK_OCORRENCIAS,
-  zonaNome,
-  type MockEvento,
-} from "@/app/data/mock";
+import { api } from "@/app/services/Api";
+import { EventFormModal } from "@/app/components/EventFormModal";
 import { PRIORIDADE_META, type RouteStop } from "@/app/components/RouteMap";
 
 const RouteMap = dynamic(
-  () => import("@/app/components/RouteMap").then((m) => m.RouteMap),
+  () => import("@/app/components/RouteMap").then((module) => module.RouteMap),
   {
     ssr: false,
     loading: () => (
-      <div className="flex items-center justify-center rounded-xl bg-surface-container-low min-h-[460px]">
-        <p className="text-sm text-on-surface-variant font-medium">Carregando rota…</p>
+      <div className="flex min-h-[460px] items-center justify-center rounded-xl bg-surface-container-low">
+        <p className="text-sm font-medium text-on-surface-variant">Carregando rota...</p>
       </div>
     ),
   },
 );
+
+interface TimelineItem {
+  hora: string;
+  titulo: string;
+  detalhe: string;
+  nivel: string;
+}
+
+interface TempoRealItem {
+  hora: string;
+  origem: string;
+  autor: string;
+  msg: string;
+}
+
+interface RotaEvento {
+  prioridade: string;
+  paradas: RouteStop[];
+  distanciaTotal: string;
+  tempoEstimado: string;
+}
+
+interface Evento {
+  id: number;
+  entidade: number;
+  tipo: "desastre" | "mitigacao";
+  nome: string;
+  descricao: string;
+  data_ocorrido: string;
+  status: string | null;
+  data_inicio: string | null;
+  data_fim: string | null;
+  vinculacao_ativa: boolean;
+  resumo_publico: string;
+  recomendacoes: string[];
+  timeline: TimelineItem[];
+  zonas: number[];
+  ocorrencias_count: number;
+  rota_ia?: RotaEvento | null;
+  tempo_real?: TempoRealItem[];
+}
+
+interface Ocorrencia {
+  id: number;
+  titulo: string;
+  evento: number | null;
+}
+
+interface Zona {
+  id: number;
+  nome: string;
+}
+
+interface EventoListResponse {
+  eventos: Evento[];
+}
+
+interface EventoDetailResponse {
+  eventos: Evento;
+}
+
+interface OcorrenciaListResponse {
+  ocorrencias: Ocorrencia[];
+}
+
+const EMPTY_ROUTE: RotaEvento = {
+  prioridade: "—",
+  paradas: [],
+  distanciaTotal: "—",
+  tempoEstimado: "—",
+};
 
 const NIVEL_DOT: Record<string, string> = {
   info: "bg-secondary",
@@ -36,477 +103,415 @@ const ORIGEM_META: Record<string, { icon: string; label: string; cls: string }> 
   cidadao: { icon: "person", label: "Cidadão", cls: "text-orange-700 bg-orange-100" },
 };
 
+const normalize = (value: string | null | undefined) =>
+  (value ?? "").trim().toLocaleLowerCase("pt-BR");
+
+const TYPE_LABEL: Record<Evento["tipo"], string> = {
+  desastre: "Desastre",
+  mitigacao: "Mitigação",
+};
+
+const STATUS_LABEL: Record<string, string> = {
+  ativo: "Ativo",
+  monitorando: "Monitorando",
+  encerrado: "Encerrado",
+  concluido: "Concluído",
+  concluído: "Concluído",
+  em_andamento: "Em Andamento",
+  em_analise: "Em Análise",
+  atencao: "Atenção",
+  atenção: "Atenção",
+  planejado: "Planejado",
+};
+
+const statusLabel = (status: string | null) => {
+  if (!status) return "SEM STATUS";
+  const value = normalize(status);
+  return (STATUS_LABEL[value] ?? status.replaceAll("_", " ")).toLocaleUpperCase("pt-BR");
+};
+
+const statusTone = (status: string | null) => {
+  const value = normalize(status);
+  if (value === "ativo") return "error" as const;
+  if (value === "monitorando") return "warning" as const;
+  if (value === "encerrado" || value === "concluido" || value === "concluído") {
+    return "neutral" as const;
+  }
+  return "primarySoft" as const;
+};
+
+const isClosed = (status: string | null) =>
+  ["encerrado", "concluido", "concluído"].includes(normalize(status));
+
 export default function EventsPage() {
   const { showToast } = useGardian();
-
-  const [eventos, setEventos] = useState<MockEvento[]>(MOCK_EVENTOS);
-  const [selectedId, setSelectedId] = useState<number>(MOCK_EVENTOS[0]?.id ?? 0);
+  const [eventos, setEventos] = useState<Evento[]>([]);
+  const [ocorrencias, setOcorrencias] = useState<Ocorrencia[]>([]);
+  const [zonaLookup, setZonaLookup] = useState<Map<number, string>>(new Map());
+  const [selectedId, setSelectedId] = useState<number | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [loadError, setLoadError] = useState("");
+  const [detailError, setDetailError] = useState("");
+  const [search, setSearch] = useState("");
+  const [statusFilter, setStatusFilter] = useState("todos");
+  const [typeFilter, setTypeFilter] = useState("todos");
   const [tab, setTab] = useState<"tempo_real" | "rota" | "timeline" | "publico">("tempo_real");
   const [paradaAtiva, setParadaAtiva] = useState<number | null>(null);
-
-  // edição do resumo público
+  const [showCreateModal, setShowCreateModal] = useState(false);
+  const [showEditModal, setShowEditModal] = useState(false);
+  const [savingAction, setSavingAction] = useState(false);
   const [editandoPublico, setEditandoPublico] = useState(false);
   const [rascunhoResumo, setRascunhoResumo] = useState("");
   const [rascunhoRecs, setRascunhoRecs] = useState<string[]>([]);
 
+  const fetchData = useCallback(async () => {
+    setLoading(true);
+    setLoadError("");
+    try {
+      const eventResponse = await api.get<EventoListResponse>("/eventos/");
+      const eventList = eventResponse.data.eventos ?? [];
+      setEventos(eventList);
+      setSelectedId((current) =>
+        current != null && eventList.some((event) => event.id === current)
+          ? current
+          : eventList[0]?.id ?? null,
+      );
+
+      const [occurrenceResult, zoneResult] = await Promise.allSettled([
+        api.get<OcorrenciaListResponse>("/ocorrencias/"),
+        api.get<{ zonas: Zona[] }>("/zonas/"),
+      ]);
+
+      setOcorrencias(
+        occurrenceResult.status === "fulfilled"
+          ? occurrenceResult.value.data.ocorrencias ?? []
+          : [],
+      );
+      setZonaLookup(
+        new Map(
+          zoneResult.status === "fulfilled"
+            ? (zoneResult.value.data.zonas ?? []).map((zone) => [zone.id, zone.nome])
+            : [],
+        ),
+      );
+    } catch {
+      setEventos([]);
+      setOcorrencias([]);
+      setZonaLookup(new Map());
+      setSelectedId(null);
+      setLoadError("Não foi possível carregar os eventos.");
+    } finally {
+      setLoading(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    const timer = window.setTimeout(() => void fetchData(), 0);
+    return () => window.clearTimeout(timer);
+  }, [fetchData]);
+
+  useEffect(() => {
+    if (selectedId == null) return;
+    let cancelled = false;
+    const timer = window.setTimeout(() => {
+      setDetailError("");
+      api
+        .get<EventoDetailResponse>(`/eventos/${selectedId}/`)
+        .then((response) => {
+          if (cancelled) return;
+          const detail = response.data.eventos;
+          setEventos((current) =>
+            current.map((event) => (event.id === detail.id ? detail : event)),
+          );
+        })
+        .catch(() => {
+          if (!cancelled) setDetailError("Não foi possível atualizar os detalhes do evento.");
+        });
+    }, 0);
+    return () => {
+      cancelled = true;
+      window.clearTimeout(timer);
+    };
+  }, [selectedId]);
+
+  const filteredEvents = useMemo(() => {
+    const term = normalize(search);
+    return eventos.filter((event) => {
+      const matchesType = typeFilter === "todos" || event.tipo === typeFilter;
+      const matchesStatus = statusFilter === "todos" || normalize(event.status) === statusFilter;
+      const matchesSearch =
+        !term ||
+        [
+          String(event.id),
+          event.nome,
+          event.descricao,
+          event.tipo,
+          TYPE_LABEL[event.tipo],
+          event.status ?? "",
+          statusLabel(event.status),
+        ].some((value) => normalize(value).includes(term));
+      return matchesType && matchesStatus && matchesSearch;
+    });
+  }, [eventos, search, statusFilter, typeFilter]);
+
+  const statusOptions = useMemo(
+    () => [...new Set(eventos.map((event) => normalize(event.status)).filter(Boolean))],
+    [eventos],
+  );
+
   const evento = useMemo(
-    () => eventos.find((e) => e.id === selectedId) ?? eventos[0],
+    () => eventos.find((event) => event.id === selectedId) ?? null,
     [eventos, selectedId],
   );
 
   const ocorrenciasVinculadas = useMemo(
-    () => MOCK_OCORRENCIAS.filter((o) => o.evento === evento?.id),
-    [evento],
+    () => ocorrencias.filter((occurrence) => occurrence.evento === evento?.id),
+    [evento?.id, ocorrencias],
   );
 
-  const toggleVinculacao = () => {
-    setEventos((prev) =>
-      prev.map((e) =>
-        e.id === evento.id ? { ...e, vinculacaoAtiva: !e.vinculacaoAtiva } : e,
-      ),
-    );
-    showToast(
-      evento.vinculacaoAtiva
-        ? "Vinculação automática desligada."
-        : "Vinculação ligada — toda ocorrência enviada será vinculada a este evento.",
-    );
+  const toggleVinculacao = async () => {
+    if (!evento) return;
+    setSavingAction(true);
+    try {
+      const response = await api.patch<Evento>(`/eventos/${evento.id}/`, {
+        vinculacao_ativa: !evento.vinculacao_ativa,
+      });
+      setEventos((current) =>
+        current.map((item) => (item.id === evento.id ? { ...item, ...response.data } : item)),
+      );
+      showToast("Configuração de vinculação atualizada.");
+    } catch {
+      showToast("Não foi possível atualizar a vinculação.", "error");
+    } finally {
+      setSavingAction(false);
+    }
   };
 
   const abrirEdicaoPublico = () => {
-    setRascunhoResumo(evento.resumoPublico);
-    setRascunhoRecs([...evento.recomendacoes]);
+    if (!evento) return;
+    setRascunhoResumo(evento.resumo_publico ?? "");
+    setRascunhoRecs([...(evento.recomendacoes ?? [])]);
     setEditandoPublico(true);
   };
 
-  const salvarPublico = () => {
+  const salvarPublico = async () => {
+    if (!evento) return;
     if (!rascunhoResumo.trim()) {
       showToast("O resumo público não pode ficar vazio.", "error");
       return;
     }
-    setEventos((prev) =>
-      prev.map((e) =>
-        e.id === evento.id
-          ? {
-              ...e,
-              resumoPublico: rascunhoResumo.trim(),
-              recomendacoes: rascunhoRecs.map((r) => r.trim()).filter(Boolean),
-            }
-          : e,
-      ),
-    );
-    setEditandoPublico(false);
-    showToast("Resumo público atualizado — já visível na página pública.");
+    setSavingAction(true);
+    try {
+      const response = await api.patch<Evento>(`/eventos/${evento.id}/`, {
+        resumo_publico: rascunhoResumo.trim(),
+        recomendacoes: rascunhoRecs.map((item) => item.trim()).filter(Boolean),
+      });
+      setEventos((current) =>
+        current.map((item) => (item.id === evento.id ? { ...item, ...response.data } : item)),
+      );
+      setEditandoPublico(false);
+      showToast("Resumo público atualizado com sucesso.");
+    } catch {
+      showToast("Não foi possível atualizar o resumo público.", "error");
+    } finally {
+      setSavingAction(false);
+    }
   };
 
-  if (!evento) return null;
+  if (loading) {
+    return (
+      <div className="mx-auto flex min-h-[60vh] max-w-[1600px] items-center justify-center p-8">
+        <p className="text-sm font-medium text-on-surface-variant">Carregando eventos...</p>
+      </div>
+    );
+  }
+
+  const route = evento?.rota_ia ?? EMPTY_ROUTE;
+  const realTime = evento?.tempo_real ?? [];
 
   return (
-    <div className="p-8 space-y-8 max-w-[1600px] mx-auto">
+    <div className="mx-auto max-w-[1600px] space-y-8 p-8">
       <header>
-        <div className="flex items-center gap-2 mb-3">
+        <div className="mb-3 flex items-center gap-2">
           <MetaTag className="text-secondary">GERENCIAMENTO DE EVENTOS</MetaTag>
-          <span className="w-1 h-1 rounded-full bg-outline-variant" />
-          <MetaTag>{eventos.filter((e) => e.status !== "encerrado").length} ATIVO(S)</MetaTag>
+          <span className="h-1 w-1 rounded-full bg-outline-variant" />
+          <MetaTag>{eventos.filter((item) => !isClosed(item.status)).length} ATIVO(S)</MetaTag>
         </div>
-        <h1 className="font-headline font-black text-5xl tracking-tighter text-primary">
-          Eventos
-        </h1>
+        <div className="flex flex-wrap items-end justify-between gap-5">
+          <h1 className="font-headline text-5xl font-black tracking-tighter text-primary">Eventos</h1>
+          <Btn variant="primary" icon="add" onClick={() => setShowCreateModal(true)}>
+            Novo evento
+          </Btn>
+        </div>
       </header>
 
-      <div className="grid grid-cols-12 gap-5">
-        {/* Seleção de evento */}
-        <aside className="col-span-12 lg:col-span-4 space-y-3">
-          {eventos.map((e) => {
-            const active = e.id === evento.id;
-            const nOc = MOCK_OCORRENCIAS.filter((o) => o.evento === e.id).length;
-            return (
-              <button
-                key={e.id}
-                type="button"
-                onClick={() => setSelectedId(e.id)}
-                className={`w-full card-tonal p-5 shadow-ambient-sm text-left relative overflow-hidden transition-all hover:shadow-ambient ${
-                  active ? "ring-2 ring-secondary" : ""
-                }`}
-              >
-                <span
-                  className={`absolute top-0 left-0 bottom-0 w-1 ${
-                    e.status === "ativo" ? "bg-error" : e.status === "monitorando" ? "bg-orange-500" : "bg-slate-300"
-                  }`}
-                />
-                <div className="pl-3">
-                  <div className="flex items-center justify-between mb-2">
-                    <Chip tone={e.status === "ativo" ? "error" : e.status === "monitorando" ? "warning" : "neutral"}>
-                      {e.status === "ativo" ? "ATIVO" : e.status === "monitorando" ? "MONITORANDO" : "ENCERRADO"}
-                    </Chip>
-                    {e.vinculacaoAtiva && (
-                      <span className="flex items-center gap-1.5">
-                        <StatusDot tone="secondary" />
-                        <MetaTag className="text-secondary">VINCULANDO</MetaTag>
-                      </span>
-                    )}
-                  </div>
-                  <p className="font-headline font-bold text-[15px] text-primary leading-snug">{e.nome}</p>
-                  <p className="text-[11px] text-on-surface-variant mt-1">{e.tipo}</p>
-                  <div className="flex items-center gap-3 mt-3 text-[10px] font-mono font-bold uppercase tracking-mono text-slate-400">
-                    <span>{nOc} OCORRÊNCIAS</span>
-                    <span>·</span>
-                    <span>{e.zonas.length} ZONAS</span>
-                  </div>
-                </div>
-              </button>
-            );
-          })}
-        </aside>
+      {loadError && (
+        <div className="rounded-xl border border-error/20 bg-error-container p-5">
+          <div className="flex items-center gap-3">
+            <Icon name="error" filled className="text-[22px] text-error" />
+            <p className="text-sm font-medium text-on-error-container">{loadError}</p>
+          </div>
+        </div>
+      )}
 
-        {/* Painel do evento selecionado */}
-        <div className="col-span-12 lg:col-span-8 space-y-5">
-          {/* Cabeçalho do evento + vinculação */}
-          <div className="card-tonal p-7 shadow-ambient-sm">
-            <div className="flex items-start justify-between gap-4 flex-wrap">
-              <div>
-                <MetaTag className="text-secondary block mb-2">EVENTO #{evento.id}</MetaTag>
-                <h2 className="font-headline font-black text-3xl tracking-tighter text-primary">{evento.nome}</h2>
-                <div className="flex flex-wrap gap-2 mt-3">
-                  {evento.zonas.map((z) => (
-                    <Chip key={z} tone="neutral" icon="hub">{zonaNome(z)}</Chip>
-                  ))}
-                </div>
-              </div>
+      <section className="grid items-end gap-4 rounded-xl bg-surface-container-low p-4 md:grid-cols-2 xl:grid-cols-[minmax(320px,1fr)_220px_220px_auto]">
+        <label className="min-w-0 md:col-span-2 xl:col-span-1">
+          <MetaTag className="mb-2 block">Pesquisa</MetaTag>
+          <div className="relative">
+            <Icon name="search" className="pointer-events-none absolute left-4 top-1/2 -translate-y-1/2 text-[22px] text-on-surface-variant" />
+            <input
+              type="search"
+              value={search}
+              onChange={(event) => setSearch(event.target.value)}
+              placeholder="Pesquisar por nome, descrição, tipo, status ou número do evento..."
+              className="w-full rounded-lg border-none bg-white py-3.5 pl-12 pr-4 text-sm font-medium text-primary placeholder:text-on-surface-variant/60 focus:ring-2 focus:ring-secondary"
+            />
+          </div>
+        </label>
 
-              <div className="card-recessed p-4 min-w-[240px]">
-                <div className="flex items-center justify-between gap-4">
-                  <div>
-                    <p className="text-[11px] font-black uppercase tracking-mono-tight text-primary">
-                      Vinculação automática
-                    </p>
-                    <p className="text-[10px] text-on-surface-variant mt-0.5 max-w-[180px]">
-                      Enquanto ligada, toda ocorrência enviada é vinculada a este evento.
-                    </p>
-                  </div>
-                  <button
-                    type="button"
-                    onClick={toggleVinculacao}
-                    disabled={evento.status === "encerrado"}
-                    aria-label="Alternar vinculação automática"
-                    className={`relative w-12 h-7 rounded-full transition-colors shrink-0 disabled:opacity-40 ${
-                      evento.vinculacaoAtiva ? "bg-secondary" : "bg-slate-300"
-                    }`}
-                  >
-                    <span
-                      className={`absolute top-1 w-5 h-5 rounded-full bg-white shadow transition-all ${
-                        evento.vinculacaoAtiva ? "left-6" : "left-1"
-                      }`}
-                    />
-                  </button>
-                </div>
-              </div>
+          <label className="min-w-0">
+            <MetaTag className="mb-2 block">Status</MetaTag>
+            <div className="relative">
+              <select value={statusFilter} onChange={(event) => setStatusFilter(event.target.value)} className="w-full appearance-none rounded-lg border-none bg-white py-3.5 pl-4 pr-12 text-sm font-bold text-primary focus:ring-2 focus:ring-secondary">
+                <option value="todos">Todos os status</option>
+                {statusOptions.map((status) => <option key={status} value={status}>{statusLabel(status)}</option>)}
+              </select>
+              <Icon name="keyboard_arrow_down" className="pointer-events-none absolute right-4 top-1/2 -translate-y-1/2 text-[20px] text-primary" />
             </div>
-          </div>
+          </label>
+          <label className="min-w-0">
+            <MetaTag className="mb-2 block">Tipo</MetaTag>
+            <div className="relative">
+              <select value={typeFilter} onChange={(event) => setTypeFilter(event.target.value)} className="w-full appearance-none rounded-lg border-none bg-white py-3.5 pl-4 pr-12 text-sm font-bold text-primary focus:ring-2 focus:ring-secondary">
+                <option value="todos">Todos os tipos</option>
+                <option value="desastre">Desastre</option>
+                <option value="mitigacao">Mitigação</option>
+              </select>
+              <Icon name="keyboard_arrow_down" className="pointer-events-none absolute right-4 top-1/2 -translate-y-1/2 text-[20px] text-primary" />
+            </div>
+          </label>
+        <div className="flex min-h-12 items-center md:justify-end">
+          <MetaTag>{filteredEvents.length} RESULTADO(S)</MetaTag>
+        </div>
+      </section>
 
-          {/* Abas */}
-          <div className="flex flex-wrap gap-2">
-            <Tab active={tab === "tempo_real"} onClick={() => setTab("tempo_real")} icon="podcasts">
-              Tempo Real
-            </Tab>
-            <Tab active={tab === "rota"} onClick={() => setTab("rota")} icon="route">
-              Rota IA
-            </Tab>
-            <Tab active={tab === "timeline"} onClick={() => setTab("timeline")} icon="timeline">
-              Timeline
-            </Tab>
-            <Tab active={tab === "publico"} onClick={() => setTab("publico")} icon="campaign">
-              Resumo Público
-            </Tab>
-          </div>
+      {!loadError && eventos.length === 0 && (
+        <div className="py-20 text-center">
+          <Icon name="event_busy" className="mb-4 text-[48px] text-on-surface-variant" />
+          <p className="text-sm text-on-surface-variant">Nenhum evento cadastrado.</p>
+        </div>
+      )}
 
-          {/* ── Tempo real ── */}
-          {tab === "tempo_real" && (
-            <div className="card-tonal p-7 shadow-ambient-sm">
-              <SectionHeader
-                overline="RELATÓRIO EM TEMPO REAL"
-                title="Dados que chegam do campo"
-                action={
-                  <span className="flex items-center gap-1.5">
-                    <StatusDot tone="error" />
-                    <MetaTag className="text-error">AO VIVO</MetaTag>
-                  </span>
-                }
-              />
-              {evento.tempoReal.length === 0 ? (
-                <p className="text-[12px] text-on-surface-variant italic">
-                  Sem transmissões — evento encerrado.
-                </p>
-              ) : (
-                <div className="space-y-3">
-                  {evento.tempoReal.map((t, i) => {
-                    const meta = ORIGEM_META[t.origem];
-                    return (
-                      <div key={i} className="flex gap-3 p-4 rounded-lg bg-surface-container-low">
-                        <div className={`w-9 h-9 rounded-md flex items-center justify-center shrink-0 ${meta.cls}`}>
-                          <Icon name={meta.icon} filled className="text-[18px]" />
-                        </div>
-                        <div className="min-w-0">
-                          <div className="flex items-center gap-2 flex-wrap">
-                            <span className="text-[12px] font-bold text-primary">{t.autor}</span>
-                            <MetaTag>{meta.label}</MetaTag>
-                            <MetaTag className="text-secondary">{t.hora}</MetaTag>
-                          </div>
-                          <p className="text-[12px] text-on-surface mt-1 leading-relaxed">{t.msg}</p>
-                        </div>
+      {eventos.length > 0 && (
+        <div className="grid grid-cols-12 gap-5">
+          <aside className="col-span-12 space-y-3 lg:col-span-4">
+            {filteredEvents.map((item) => {
+              const active = item.id === evento?.id;
+              return (
+                <button key={item.id} type="button" onClick={() => setSelectedId(item.id)} className={`card-tonal relative w-full overflow-hidden p-5 text-left shadow-ambient-sm transition-all hover:shadow-ambient ${active ? "ring-2 ring-secondary" : ""}`}>
+                  <span className={`absolute bottom-0 left-0 top-0 w-1 ${normalize(item.status) === "ativo" ? "bg-error" : normalize(item.status) === "monitorando" ? "bg-orange-500" : "bg-slate-300"}`} />
+                  <div className="pl-3">
+                    <div className="mb-2 flex items-center justify-between gap-2">
+                      <Chip tone={statusTone(item.status)}>{statusLabel(item.status)}</Chip>
+                      {item.vinculacao_ativa && <span className="flex items-center gap-1.5"><StatusDot tone="secondary" /><MetaTag className="text-secondary">VINCULAÇÃO ATIVA</MetaTag></span>}
+                    </div>
+                    <p className="font-headline text-[15px] font-bold leading-snug text-primary">{item.nome}</p>
+                    <p className="mt-1 text-[11px] text-on-surface-variant">{TYPE_LABEL[item.tipo]}</p>
+                    <div className="mt-3 flex items-center gap-3 text-[10px] font-bold uppercase tracking-mono text-slate-400">
+                      <span>{item.ocorrencias_count ?? 0} OCORRÊNCIAS</span><span>·</span><span>{item.zonas?.length ?? 0} ZONAS</span>
+                    </div>
+                  </div>
+                </button>
+              );
+            })}
+            {filteredEvents.length === 0 && <p className="card-tonal p-6 text-sm text-on-surface-variant">Nenhum evento encontrado para estes filtros.</p>}
+          </aside>
+
+          {evento && (
+            <div className="col-span-12 space-y-5 lg:col-span-8">
+              {detailError && <p className="rounded-xl bg-error-container p-4 text-sm font-medium text-on-error-container">{detailError}</p>}
+              <div className="card-tonal p-7 shadow-ambient-sm">
+                <div className="grid items-start gap-6 md:grid-cols-[minmax(0,1fr)_280px]">
+                  <div className="min-w-0">
+                    <MetaTag className="mb-2 block text-secondary">EVENTO #{evento.id}</MetaTag>
+                    <h2 className="font-headline text-3xl font-black tracking-tighter text-primary">{evento.nome}</h2>
+                    <p className="mt-2 text-sm leading-relaxed text-on-surface-variant">{evento.descricao}</p>
+                    <div className="mt-3 flex flex-wrap gap-2">
+                      {(evento.zonas ?? []).map((zoneId) => <Chip key={zoneId} tone="neutral" icon="hub">{zonaLookup.get(zoneId) ?? `Zona #${zoneId}`}</Chip>)}
+                    </div>
+                  </div>
+                  <div className="flex min-w-0 flex-col gap-3">
+                    <Btn variant="secondary" icon="edit" onClick={() => setShowEditModal(true)} full>Editar</Btn>
+                    <div className="card-recessed p-4">
+                      <div className="flex items-center justify-between gap-4">
+                        <div><p className="text-[11px] font-black uppercase tracking-mono-tight text-primary">Vinculação automática</p><p className="mt-0.5 max-w-[180px] text-[10px] text-on-surface-variant">Configura este evento para receber novas ocorrências.</p></div>
+                        <button type="button" onClick={toggleVinculacao} disabled={savingAction || isClosed(evento.status)} aria-label="Alternar vinculação automática" className={`relative h-7 w-12 shrink-0 rounded-full transition-colors disabled:opacity-40 ${evento.vinculacao_ativa ? "bg-secondary" : "bg-slate-300"}`}><span className={`absolute top-1 h-5 w-5 rounded-full bg-white shadow transition-all ${evento.vinculacao_ativa ? "left-6" : "left-1"}`} /></button>
                       </div>
-                    );
-                  })}
+                    </div>
+                  </div>
+                </div>
+              </div>
+
+              <div className="flex flex-wrap gap-2">
+                <Tab active={tab === "tempo_real"} onClick={() => setTab("tempo_real")} icon="podcasts">Tempo Real</Tab>
+                <Tab active={tab === "rota"} onClick={() => setTab("rota")} icon="route">Rota IA</Tab>
+                <Tab active={tab === "timeline"} onClick={() => setTab("timeline")} icon="timeline">Timeline</Tab>
+                <Tab active={tab === "publico"} onClick={() => setTab("publico")} icon="campaign">Resumo Público</Tab>
+              </div>
+
+              {tab === "tempo_real" && (
+                <div className="card-tonal p-7 shadow-ambient-sm">
+                  <SectionHeader overline="RELATÓRIO EM TEMPO REAL" title="Dados que chegam do campo" />
+                  {realTime.length === 0 ? <p className="text-[12px] italic text-on-surface-variant">Nenhuma transmissão registrada para este evento.</p> : <div className="space-y-3">{realTime.map((item, index) => { const meta = ORIGEM_META[item.origem] ?? ORIGEM_META.sistema; return <div key={index} className="flex gap-3 rounded-lg bg-surface-container-low p-4"><div className={`flex h-9 w-9 shrink-0 items-center justify-center rounded-md ${meta.cls}`}><Icon name={meta.icon} filled className="text-[18px]" /></div><div><div className="flex flex-wrap items-center gap-2"><span className="text-[12px] font-bold text-primary">{item.autor}</span><MetaTag>{meta.label}</MetaTag><MetaTag className="text-secondary">{item.hora}</MetaTag></div><p className="mt-1 text-[12px] leading-relaxed text-on-surface">{item.msg}</p></div></div>; })}</div>}
+                  <div className="mt-6 border-t border-outline-variant/20 pt-5">
+                    <MetaTag className="mb-3 block">OCORRÊNCIAS VINCULADAS ({ocorrenciasVinculadas.length})</MetaTag>
+                    {ocorrenciasVinculadas.length === 0 ? <p className="text-[12px] italic text-on-surface-variant">Nenhuma ocorrência vinculada.</p> : <div className="grid grid-cols-1 gap-2 md:grid-cols-2">{ocorrenciasVinculadas.map((occurrence) => <div key={occurrence.id} className="flex items-center gap-2 rounded-lg bg-surface-container-low p-2.5 text-[12px]"><Icon name="emergency" className="shrink-0 text-[16px] text-error" /><span className="font-bold text-primary">#{occurrence.id}</span><span className="truncate">{occurrence.titulo}</span></div>)}</div>}
+                  </div>
                 </div>
               )}
 
-              {/* Ocorrências vinculadas */}
-              <div className="mt-6 pt-5 border-t border-outline-variant/20">
-                <MetaTag className="block mb-3">OCORRÊNCIAS VINCULADAS ({ocorrenciasVinculadas.length})</MetaTag>
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-2">
-                  {ocorrenciasVinculadas.map((o) => (
-                    <div key={o.id} className="flex items-center gap-2 text-[12px] text-on-surface p-2.5 rounded-lg bg-surface-container-low">
-                      <Icon name="emergency" className="text-error text-[16px] shrink-0" />
-                      <span className="font-bold text-primary">#{o.id}</span>
-                      <span className="truncate">{o.titulo}</span>
-                    </div>
-                  ))}
+              {tab === "rota" && (
+                <div className="card-tonal p-7 shadow-ambient-sm">
+                  <SectionHeader overline="BACKTRACKING VEICULAR" title="Rota otimizada para os agentes" action={<Chip tone="primarySoft" icon="psychology">GERADA PELA IA</Chip>} />
+                  {route.paradas.length === 0 ? <p className="text-[12px] italic text-on-surface-variant">Sem rota ativa para este evento.</p> : <><div className="card-recessed mb-5 flex flex-wrap items-center gap-x-8 gap-y-2 p-4"><div><MetaTag>PRIORIDADE</MetaTag><p className="text-[12px] font-bold text-primary">{route.prioridade}</p></div><div><MetaTag>PARADAS</MetaTag><p className="text-[12px] font-bold text-primary">{route.paradas.length}</p></div><div><MetaTag>DISTÂNCIA</MetaTag><p className="text-[12px] font-bold text-primary">{route.distanciaTotal}</p></div><div><MetaTag>TEMPO ESTIMADO</MetaTag><p className="text-[12px] font-bold text-primary">{route.tempoEstimado}</p></div></div><div className="mb-5"><RouteMap stops={route.paradas} height={460} activeStop={paradaAtiva} onSelectStop={(order) => setParadaAtiva(order === paradaAtiva ? null : order)} /></div><div className="space-y-2">{route.paradas.map((stop) => { const meta = PRIORIDADE_META[stop.prioridade]; return <div key={stop.ordem} className="flex gap-4 rounded-lg bg-surface-container-low p-4"><span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full text-white" style={{ background: meta.color }}>{stop.ordem}</span><div><p className="font-bold text-primary">{stop.local}</p><p className="text-[11px] text-on-surface-variant">{stop.motivo}</p></div></div>; })}</div></>}
                 </div>
-              </div>
-            </div>
-          )}
-
-          {/* ── Rota IA ── */}
-          {tab === "rota" && (
-            <div className="card-tonal p-7 shadow-ambient-sm">
-              <SectionHeader
-                overline="BACKTRACKING VEICULAR"
-                title="Rota otimizada para os agentes"
-                action={<Chip tone="primarySoft" icon="psychology">GERADA PELA IA</Chip>}
-              />
-
-              {evento.rotaIA.paradas.length === 0 ? (
-                <p className="text-[12px] text-on-surface-variant italic">Sem rota ativa para este evento.</p>
-              ) : (
-                <>
-                  <div className="card-recessed p-4 mb-5 flex flex-wrap items-center gap-x-8 gap-y-2">
-                    <div>
-                      <MetaTag className="block">PRIORIDADE</MetaTag>
-                      <p className="text-[12px] font-bold text-primary mt-0.5">{evento.rotaIA.prioridade}</p>
-                    </div>
-                    <div>
-                      <MetaTag className="block">PARADAS</MetaTag>
-                      <p className="text-[12px] font-bold text-primary mt-0.5">{evento.rotaIA.paradas.length}</p>
-                    </div>
-                    <div>
-                      <MetaTag className="block">DISTÂNCIA</MetaTag>
-                      <p className="text-[12px] font-bold text-primary mt-0.5">{evento.rotaIA.distanciaTotal}</p>
-                    </div>
-                    <div>
-                      <MetaTag className="block">TEMPO ESTIMADO</MetaTag>
-                      <p className="text-[12px] font-bold text-primary mt-0.5">{evento.rotaIA.tempoEstimado}</p>
-                    </div>
-                  </div>
-
-                  {/* mapa da rota */}
-                  <div className="mb-5">
-                    <RouteMap
-                      stops={evento.rotaIA.paradas as RouteStop[]}
-                      height={460}
-                      activeStop={paradaAtiva}
-                      onSelectStop={(o) => setParadaAtiva(o === paradaAtiva ? null : o)}
-                    />
-                  </div>
-
-                  {/* sequência de paradas */}
-                  <MetaTag className="block mb-3">SEQUÊNCIA DE ATENDIMENTO</MetaTag>
-                  <div className="space-y-2">
-                    {evento.rotaIA.paradas.map((p) => {
-                      const meta = PRIORIDADE_META[p.prioridade];
-                      const ativo = paradaAtiva === p.ordem;
-                      return (
-                        <button
-                          key={p.ordem}
-                          type="button"
-                          onClick={() => setParadaAtiva(ativo ? null : p.ordem)}
-                          className={`w-full flex items-start gap-4 p-4 rounded-lg text-left transition-all ${
-                            ativo ? "bg-surface-container ring-2 ring-secondary" : "bg-surface-container-low hover:bg-surface-container"
-                          }`}
-                        >
-                          <span
-                            className="w-8 h-8 rounded-full text-white text-[13px] font-black flex items-center justify-center shrink-0"
-                            style={{ background: meta.color }}
-                          >
-                            {p.ordem}
-                          </span>
-                          <div className="min-w-0 flex-1">
-                            <div className="flex items-center justify-between gap-3 flex-wrap">
-                              <p className="text-[13px] font-bold text-primary">{p.local}</p>
-                              <Chip tone="secondary" icon="schedule">ETA {p.eta}</Chip>
-                            </div>
-                            <p className="text-[11px] text-on-surface-variant mt-1">{p.motivo}</p>
-                            <div className="flex items-center gap-2 mt-2 flex-wrap">
-                              <span
-                                className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded text-[10px] font-bold uppercase tracking-mono-tight text-white"
-                                style={{ background: meta.color }}
-                              >
-                                <Icon name={meta.icon} className="text-[12px]" />
-                                {meta.label}
-                              </span>
-                              {p.ocorrenciaId && <MetaTag>OCORRÊNCIA #{p.ocorrenciaId}</MetaTag>}
-                            </div>
-                          </div>
-                        </button>
-                      );
-                    })}
-                  </div>
-                </>
               )}
-            </div>
-          )}
 
-          {/* ── Timeline ── */}
-          {tab === "timeline" && (
-            <div className="card-tonal p-7 shadow-ambient-sm">
-              <SectionHeader overline="CRESCIMENTO E DIMENSÃO" title="Timeline do Evento" />
-              <div className="relative pl-6">
-                <span className="absolute left-[7px] top-2 bottom-2 w-px bg-outline-variant/50" />
-                <div className="space-y-5">
-                  {evento.timeline.map((t, i) => (
-                    <div key={i} className="relative">
-                      <span
-                        className={`absolute -left-6 top-1 w-3.5 h-3.5 rounded-full border-2 border-white shadow ${NIVEL_DOT[t.nivel]}`}
-                      />
-                      <MetaTag className="text-secondary">{t.hora}</MetaTag>
-                      <p className="text-[13px] font-bold text-primary mt-0.5">{t.titulo}</p>
-                      <p className="text-[12px] text-on-surface-variant mt-0.5 leading-relaxed">{t.detalhe}</p>
-                    </div>
-                  ))}
+              {tab === "timeline" && (
+                <div className="card-tonal p-7 shadow-ambient-sm">
+                  <SectionHeader overline="CRESCIMENTO E DIMENSÃO" title="Timeline do Evento" />
+                  {(evento.timeline ?? []).length === 0 ? <p className="text-[12px] italic text-on-surface-variant">Nenhum registro na timeline.</p> : <div className="relative pl-6"><span className="absolute bottom-2 left-[7px] top-2 w-px bg-outline-variant/50" /><div className="relative space-y-5">{evento.timeline.map((item, index) => <div key={index} className="relative"><span className={`absolute -left-6 top-1 h-3.5 w-3.5 rounded-full border-2 border-white shadow ${NIVEL_DOT[item.nivel] ?? "bg-slate-400"}`} /><MetaTag className="text-secondary">{item.hora}</MetaTag><p className="mt-0.5 text-[13px] font-bold text-primary">{item.titulo}</p><p className="mt-0.5 text-[12px] leading-relaxed text-on-surface-variant">{item.detalhe}</p></div>)}</div></div>}
                 </div>
-              </div>
-            </div>
-          )}
+              )}
 
-          {/* ── Resumo público ── */}
-          {tab === "publico" && (
-            <div className="card-tonal p-7 shadow-ambient-sm">
-              <SectionHeader
-                overline="EXIBIDO NA PARTE PÚBLICA DURANTE O EVENTO"
-                title="Resumo e Recomendações"
-                action={
-                  <div className="flex gap-2">
-                    <Btn variant="ghost" icon="visibility" onClick={() => window.open("/report", "_blank")}>
-                      Ver página pública
-                    </Btn>
-                    {!editandoPublico ? (
-                      <Btn variant="secondary" icon="edit" onClick={abrirEdicaoPublico}>
-                        Editar
-                      </Btn>
-                    ) : (
-                      <Btn variant="ghost" icon="close" onClick={() => setEditandoPublico(false)}>
-                        Cancelar
-                      </Btn>
-                    )}
-                  </div>
-                }
-              />
-
-              {!editandoPublico ? (
-                <>
-                  <div className="bg-gradient-to-br from-primary to-primary-container rounded-xl p-7 text-white mb-5">
-                    <Chip tone="secondary" className="!bg-white/15 !text-white">AVISO À POPULAÇÃO</Chip>
-                    <p className="text-white/85 text-[14px] mt-4 leading-relaxed">{evento.resumoPublico}</p>
-                  </div>
-                  {evento.recomendacoes.length > 0 ? (
-                    <div className="space-y-2">
-                      {evento.recomendacoes.map((r, i) => (
-                        <div key={i} className="flex items-start gap-3 p-3.5 rounded-lg bg-surface-container-low">
-                          <Icon name="verified_user" filled className="text-secondary text-[18px] mt-0.5 shrink-0" />
-                          <p className="text-[13px] text-on-surface leading-relaxed">{r}</p>
-                        </div>
-                      ))}
-                    </div>
-                  ) : (
-                    <p className="text-[12px] text-on-surface-variant italic">
-                      Nenhuma recomendação cadastrada. Use &quot;Editar&quot; para adicionar orientações à população.
-                    </p>
-                  )}
-                </>
-              ) : (
-                <div className="space-y-5">
-                  <div>
-                    <MetaTag className="block mb-2">RESUMO EXIBIDO À POPULAÇÃO</MetaTag>
-                    <textarea
-                      value={rascunhoResumo}
-                      onChange={(e) => setRascunhoResumo(e.target.value)}
-                      rows={4}
-                      className="w-full bg-surface-container-low rounded-lg px-4 py-3 text-sm font-medium focus:ring-2 focus:ring-secondary outline-none resize-none"
-                    />
-                    <p className="text-[10px] text-on-surface-variant mt-1.5">
-                      {rascunhoResumo.length} caracteres
-                    </p>
-                  </div>
-
-                  <div>
-                    <div className="flex items-center justify-between mb-2">
-                      <MetaTag>RECOMENDAÇÕES</MetaTag>
-                      <Btn
-                        variant="ghost"
-                        icon="add"
-                        onClick={() => setRascunhoRecs((prev) => [...prev, ""])}
-                      >
-                        Adicionar
-                      </Btn>
-                    </div>
-
-                    <div className="space-y-2">
-                      {rascunhoRecs.length === 0 && (
-                        <p className="text-[12px] text-on-surface-variant italic">
-                          Nenhuma recomendação. Clique em &quot;Adicionar&quot; para criar a primeira.
-                        </p>
-                      )}
-                      {rascunhoRecs.map((r, i) => (
-                        <div key={i} className="flex items-start gap-2">
-                          <Icon name="verified_user" filled className="text-secondary text-[18px] mt-3 shrink-0" />
-                          <textarea
-                            value={r}
-                            onChange={(e) =>
-                              setRascunhoRecs((prev) =>
-                                prev.map((x, idx) => (idx === i ? e.target.value : x)),
-                              )
-                            }
-                            rows={2}
-                            placeholder="Ex.: evite trafegar por vias alagadas…"
-                            className="flex-1 bg-surface-container-low rounded-lg px-4 py-2.5 text-[13px] font-medium focus:ring-2 focus:ring-secondary outline-none resize-none"
-                          />
-                          <button
-                            type="button"
-                            onClick={() =>
-                              setRascunhoRecs((prev) => prev.filter((_, idx) => idx !== i))
-                            }
-                            className="p-2 mt-1.5 rounded-lg hover:bg-surface-container transition-all shrink-0"
-                            aria-label="Remover recomendação"
-                          >
-                            <Icon name="delete" className="text-on-surface-variant text-[18px]" />
-                          </button>
-                        </div>
-                      ))}
-                    </div>
-                  </div>
-
-                  <div className="flex gap-3 pt-2 border-t border-outline-variant/20">
-                    <Btn variant="success" icon="check" onClick={salvarPublico}>
-                      Publicar alterações
-                    </Btn>
-                    <Btn variant="ghost" icon="close" onClick={() => setEditandoPublico(false)}>
-                      Cancelar
-                    </Btn>
-                  </div>
+              {tab === "publico" && (
+                <div className="card-tonal p-7 shadow-ambient-sm">
+                  <SectionHeader
+                    overline="INFORMATIVO À POPULAÇÃO"
+                    title="Resumo e Recomendações"
+                    action={
+                      <div className="flex gap-2">
+                        <Btn variant="ghost" icon="visibility" onClick={() => window.open("/report", "_blank")}>
+                          Ver página pública
+                        </Btn>
+                        {!editandoPublico ? (
+                          <Btn variant="secondary" icon="edit" onClick={abrirEdicaoPublico}>Editar</Btn>
+                        ) : (
+                          <Btn variant="ghost" icon="close" onClick={() => setEditandoPublico(false)}>Cancelar</Btn>
+                        )}
+                      </div>
+                    }
+                  />
+                  {!editandoPublico ? <><div className="mb-5 rounded-xl bg-gradient-to-br from-primary to-primary-container p-7 text-white"><Chip tone="secondary" className="!bg-white/15 !text-white">AVISO À POPULAÇÃO</Chip><p className="mt-4 text-[14px] leading-relaxed text-white/85">{evento.resumo_publico || "Nenhum resumo público cadastrado."}</p></div>{evento.recomendacoes.length > 0 ? <div className="space-y-2">{evento.recomendacoes.map((recommendation, index) => <div key={index} className="flex items-start gap-3 rounded-lg bg-surface-container-low p-3.5"><Icon name="verified_user" filled className="mt-0.5 shrink-0 text-[18px] text-secondary" /><p className="text-[13px] leading-relaxed text-on-surface">{recommendation}</p></div>)}</div> : <p className="text-[12px] italic text-on-surface-variant">Nenhuma recomendação cadastrada.</p>}</> : <div className="space-y-5"><div><MetaTag className="mb-2 block">RESUMO EXIBIDO À POPULAÇÃO</MetaTag><textarea value={rascunhoResumo} onChange={(event) => setRascunhoResumo(event.target.value)} rows={4} className="w-full resize-none rounded-lg bg-surface-container-low px-4 py-3 text-sm font-medium outline-none focus:ring-2 focus:ring-secondary" /></div><div><div className="mb-2 flex items-center justify-between"><MetaTag>RECOMENDAÇÕES</MetaTag><Btn variant="ghost" icon="add" onClick={() => setRascunhoRecs((current) => [...current, ""])}>Adicionar</Btn></div><div className="space-y-2">{rascunhoRecs.map((recommendation, index) => <div key={index} className="flex items-start gap-2"><textarea value={recommendation} onChange={(event) => setRascunhoRecs((current) => current.map((item, itemIndex) => itemIndex === index ? event.target.value : item))} rows={2} className="flex-1 resize-none rounded-lg bg-surface-container-low px-4 py-2.5 text-[13px] font-medium outline-none focus:ring-2 focus:ring-secondary" /><button type="button" onClick={() => setRascunhoRecs((current) => current.filter((_, itemIndex) => itemIndex !== index))} className="mt-1.5 rounded-lg p-2 hover:bg-surface-container" aria-label="Remover recomendação"><Icon name="delete" className="text-[18px] text-on-surface-variant" /></button></div>)}</div></div><Btn variant="success" icon="check" onClick={salvarPublico} disabled={savingAction}>{savingAction ? "Salvando..." : "Publicar alterações"}</Btn></div>}
                 </div>
               )}
             </div>
           )}
         </div>
-      </div>
+      )}
+
+      {showCreateModal && <EventFormModal open onClose={() => setShowCreateModal(false)} onSaved={fetchData} />}
+      {showEditModal && evento && <EventFormModal open onClose={() => setShowEditModal(false)} onSaved={fetchData} evento={evento} />}
     </div>
   );
 }
