@@ -18,7 +18,7 @@ const CoordsPickerMap = dynamic(
 /* ───────────── tipos ───────────── */
 
 export type Categoria = "geologico" | "climatico" | "vias_publicas" | "produtos_perigosos";
-export type StatusOcorrencia = "em_analise" | "alta_prioridade" | "aguardando" | "em_andamento" | "concluido";
+export type StatusOcorrencia = "em_analise" | "alta_prioridade" | "aguardando" | "em_andamento" | "concluida";
 
 export const CATEGORIA_OPCOES: { id: Categoria; label: string; icon: string }[] = [
   { id: "geologico", label: "Geológico", icon: "terrain" },
@@ -32,7 +32,7 @@ export const STATUS_LABEL: Record<StatusOcorrencia, string> = {
   alta_prioridade: "Alta Prioridade",
   aguardando: "Aguardando",
   em_andamento: "Em Andamento",
-  concluido: "Concluído",
+  concluida: "Concluída",
 };
 
 interface AnexoItem {
