@@ -1,3 +1,4 @@
+// DefCivil_FrontEnd/app/(gardian)/families/page.tsx
 "use client";
 
 import { useCallback, useEffect, useMemo, useState } from "react";
@@ -5,6 +6,7 @@ import { Btn, Chip, Icon, KPI, MetaTag } from "@/app/components/Primitives";
 import { useGardian } from "@/app/components/GardianContext";
 import { api } from "@/app/services/Api";
 import { CreateFamilyModal } from "@/app/components/CreateFamilyModal";
+import { EditFamilyModal, TransferCidadaoModal } from "@/app/components/FamilyModals";
 
 /* ── tipos vindos da API (GET /familias/) ── */
 
@@ -89,6 +91,8 @@ export default function FamiliesPage() {
   const [novoAnimal, setNovoAnimal] = useState({ nome: "", especie: "", porte: "medio", quantidade: "1" });
   const [salvando, setSalvando] = useState(false);
   const [modalAberto, setModalAberto] = useState(false);
+  const [editando, setEditando] = useState(false);
+  const [transferindo, setTransferindo] = useState<Cidadao | null>(null);
 
   const msgErro = useCallback(
     (e: unknown, padrao: string) =>
@@ -430,6 +434,14 @@ export default function FamiliesPage() {
                       </p>
                     )}
                   </div>
+                  <div className="flex flex-col gap-2 shrink-0">
+                    <button
+                      type="button"
+                      onClick={() => setEditando(true)}
+                      className="inline-flex items-center gap-2 px-4 py-2.5 rounded-lg bg-white/10 backdrop-blur-md text-white text-[11px] font-bold uppercase tracking-mono-tight hover:bg-white/20 transition-all"
+                    >
+                      <Icon name="edit" className="text-[16px]" /> Editar
+                    </button>
                   {mapsUrl(familia.coordenadas) ? (
                     <a
                       href={mapsUrl(familia.coordenadas)!}
@@ -444,6 +456,7 @@ export default function FamiliesPage() {
                       <Icon name="wrong_location" className="text-[16px]" /> Sem coordenada
                     </span>
                   )}
+                  </div>
                 </div>
               </div>
 
@@ -515,6 +528,15 @@ export default function FamiliesPage() {
                           {m.idade != null ? `${m.idade} anos` : "idade —"}
                         </span>
                         <Chip tone={m.responsavel ? "secondary" : "neutral"}>{m.parentesco}</Chip>
+                        <button
+                          type="button"
+                          onClick={() => setTransferindo(m)}
+                          className="text-on-surface-variant hover:text-secondary"
+                          title="Transferir para outra família ou separar numa nova"
+                          aria-label={`Transferir ${m.nome}`}
+                        >
+                          <Icon name="swap_horiz" className="text-[16px]" />
+                        </button>
                         <button
                           type="button"
                           onClick={() => removerCidadao(m.id)}
@@ -690,6 +712,38 @@ export default function FamiliesPage() {
           setRecarga((n) => n + 1);
         }}
       />
+
+      {/* `key` força remontagem ao trocar de família: assim o formulário nasce
+          já com os dados certos, sem efeito de sincronização. */}
+      {familia && (
+        <EditFamilyModal
+          key={`edit-${familia.id}-${editando}`}
+          open={editando}
+          familia={familia}
+          onClose={() => setEditando(false)}
+          onSaved={() => setRecarga((n) => n + 1)}
+        />
+      )}
+
+      {transferindo && familia && (
+        <TransferCidadaoModal
+          key={`transf-${transferindo.id}`}
+          open={transferindo !== null}
+          cidadao={transferindo}
+          familiaOrigemId={familia.id}
+          familias={familias.map((f) => ({
+            id: f.id,
+            nome: f.nome,
+            zona_nome: f.zona_nome,
+            total_cidadaos: f.total_cidadaos,
+          }))}
+          onClose={() => setTransferindo(null)}
+          onDone={(novaId) => {
+            setSelectedId(novaId);
+            setRecarga((n) => n + 1);
+          }}
+        />
+      )}
     </div>
   );
 }

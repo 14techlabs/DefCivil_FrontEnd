@@ -1,3 +1,4 @@
+// DefCivil_FrontEnd/app/data/adaptabrasil.ts
 // AdaptaBrasil data structure — Risco Climático IPCC
 // Hierarchy: Tipo de impacto → Indicador → Composição (Vulnerabilidade/Exposição/Ameaça)
 //            → Sub-índices → Fatores influenciadores

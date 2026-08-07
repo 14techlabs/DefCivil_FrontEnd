@@ -1,9 +1,10 @@
+// DefCivil_FrontEnd/app/components/CreateFamilyModal.tsx
 "use client";
 
 import { useState } from "react";
 import { Btn, Chip, Icon, MetaTag } from "@/app/components/Primitives";
 import { ModalShell } from "@/app/components/Modals";
-import { CoordsPickerMap } from "@/app/components/CoordsPickerMap";
+import { AddressLocationField } from "@/app/components/AddressLocationField";
 import { useGardian } from "@/app/components/GardianContext";
 import { api } from "@/app/services/Api";
 
@@ -83,6 +84,7 @@ export function CreateFamilyModal({ open, onClose, onCreated }: CreateFamilyModa
   const [endereco, setEndereco] = useState("");
   const [telefone, setTelefone] = useState("");
   const [areaDeRisco, setAreaDeRisco] = useState(false);
+  const [zonaNome, setZonaNome] = useState<string | null>(null);
   // O CoordsPickerMap trabalha com strings; convertemos ao enviar.
   const [lat, setLat] = useState("");
   const [lng, setLng] = useState("");
@@ -104,6 +106,7 @@ export function CreateFamilyModal({ open, onClose, onCreated }: CreateFamilyModa
     setAreaDeRisco(false);
     setLat("");
     setLng("");
+    setZonaNome(null);
     setCidadaos([{ ...CIDADAO_VAZIO }]);
     setAnimais([]);
     setSalvando(false);
@@ -236,16 +239,7 @@ export function CreateFamilyModal({ open, onClose, onCreated }: CreateFamilyModa
                   className={CAMPO}
                 />
               </div>
-              <div>
-                <MetaTag className="block mb-1.5">ENDEREÇO</MetaTag>
-                <input
-                  value={endereco}
-                  onChange={(e) => setEndereco(e.target.value)}
-                  placeholder="Rua, número, bairro"
-                  className={CAMPO}
-                />
-              </div>
-              <div>
+              <div className="sm:col-span-2">
                 <MetaTag className="block mb-1.5">TELEFONE</MetaTag>
                 <input
                   value={telefone}
@@ -256,27 +250,18 @@ export function CreateFamilyModal({ open, onClose, onCreated }: CreateFamilyModa
               </div>
             </div>
 
-            <div>
-              <MetaTag className="block mb-1.5">LOCALIZAÇÃO DA RESIDÊNCIA *</MetaTag>
-              <p className="text-[11px] text-on-surface-variant mb-2">
-                Clique ou arraste o marcador. A zona é determinada por qual polígono contém
-                este ponto.
-              </p>
-              <CoordsPickerMap
-                lat={lat}
-                lng={lng}
-                onChange={(novaLat, novaLng) => {
-                  setLat(novaLat);
-                  setLng(novaLng);
-                }}
-                height={240}
-              />
-              {coordOk && (
-                <p className="text-[11px] font-mono text-on-surface-variant mt-2">
-                  {Number(lat).toFixed(6)}, {Number(lng).toFixed(6)}
-                </p>
-              )}
-            </div>
+            <AddressLocationField
+              endereco={endereco}
+              onEnderecoChange={setEndereco}
+              lat={lat}
+              lng={lng}
+              onCoordChange={(la, ln) => {
+                setLat(la);
+                setLng(ln);
+              }}
+              zonaNome={zonaNome}
+              onZonaChange={setZonaNome}
+            />
 
             <label className="flex items-center gap-3 cursor-pointer">
               <input
