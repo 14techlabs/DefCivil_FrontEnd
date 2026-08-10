@@ -1,13 +1,26 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
+import dynamic from "next/dynamic";
 import { Btn, Chip, Icon, MetaTag } from "@/app/components/Primitives";
 import {
-  MOCK_EVENTOS,
   MOCK_ENTIDADE,
   MOCK_FORM_CONFIG,
   STATUS_CIDADE_META,
 } from "@/app/data/mock";
+import { api } from "@/app/services/Api";
+
+// mapa de seleção de local (mesmo do formulário de criação de ocorrência)
+const CoordsPickerMap = dynamic(
+  () => import("@/app/components/CoordsPickerMap").then((m) => m.CoordsPickerMap),
+  { ssr: false },
+);
+
+interface EventoPublico {
+  nome: string;
+  resumoPublico: string;
+  recomendacoes: string[];
+}
 
 /* configuração vinda da tela de Entidade */
 const CONFIG = MOCK_FORM_CONFIG;
@@ -15,7 +28,35 @@ const CHECKLIST = CONFIG.checklist.filter((c) => c.ativo);
 const CATEGORIAS = CONFIG.categorias.filter((c) => c.ativo);
 
 export default function PublicReportPage() {
-  const eventoAtivo = MOCK_EVENTOS.find((e) => e.status === "ativo") ?? null;
+  const [eventoAtivo, setEventoAtivo] = useState<EventoPublico | null>(null);
+
+  // resumo público do evento ativo (feito pelo técnico)
+  useEffect(() => {
+    let cancelled = false;
+    api
+      .get<{
+        evento: {
+          nome: string;
+          resumo_publico: string | null;
+          recomendacoes: string[] | null;
+        };
+      }>("/eventos/publico/ativo/")
+      .then((res) => {
+        if (cancelled) return;
+        const e = res.data.evento;
+        setEventoAtivo({
+          nome: e.nome,
+          resumoPublico: e.resumo_publico ?? "",
+          recomendacoes: e.recomendacoes ?? [],
+        });
+      })
+      .catch(() => {
+        if (!cancelled) setEventoAtivo(null);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, []);
 
   const [categoria, setCategoria] = useState(CATEGORIAS[0]?.id ?? "climatico");
   const [descricao, setDescricao] = useState("");
@@ -25,10 +66,12 @@ export default function PublicReportPage() {
   const [lat, setLat] = useState("");
   const [lng, setLng] = useState("");
   const [contato, setContato] = useState("");
+  const [cpf, setCpf] = useState("");
   const [anexos, setAnexos] = useState<{ nome: string; tamanho: string }[]>([]);
   const [geoStatus, setGeoStatus] = useState<"idle" | "carregando" | "ok" | "erro">("idle");
   const [erro, setErro] = useState("");
   const [enviado, setEnviado] = useState(false);
+  const [enviando, setEnviando] = useState(false);
   const [protocolo, setProtocolo] = useState("");
 
   const pegarLocalizacao = () => {
@@ -49,7 +92,7 @@ export default function PublicReportPage() {
     );
   };
 
-  const enviar = () => {
+  const enviar = async () => {
     if (descricao.trim().length < CONFIG.minCaracteresDescricao) {
       setErro(
         `Descreva o que está acontecendo com pelo menos ${CONFIG.minCaracteresDescricao} caracteres.`,
@@ -60,17 +103,31 @@ export default function PublicReportPage() {
       setErro("Informe um telefone de contato para prosseguir.");
       return;
     }
-    if (CONFIG.exigirLocalizacao && modoLocal === "endereco" && !endereco.trim()) {
-      setErro("Informe o endereço ou use sua localização atual.");
+    if (cpf.replace(/\D/g, "").length !== 11) {
+      setErro("Informe um CPF válido (11 dígitos) para prosseguir.");
       return;
     }
-    if (CONFIG.exigirLocalizacao && modoLocal === "coordenada" && (!lat.trim() || !lng.trim())) {
-      setErro("Informe as coordenadas ou use sua localização atual.");
+    if (CONFIG.exigirLocalizacao && (!lat.trim() || !lng.trim())) {
+      setErro("Marque o local no mapa ou use sua localização atual.");
       return;
     }
     setErro("");
-    setProtocolo(`PS-${new Date().getFullYear()}-${Math.floor(1000 + Math.random() * 9000)}`);
-    setEnviado(true);
+    setEnviando(true);
+    try {
+      const res = await api.post<{ protocolo: string }>("/ocorrencias/publicas/", {
+        descricao: descricao.trim(),
+        categoria,
+        cpf: cpf.replace(/\D/g, ""),
+        contato: contato.trim(),
+        coordenadas: { lat: parseFloat(lat), lng: parseFloat(lng) },
+      });
+      setProtocolo(res.data.protocolo);
+      setEnviado(true);
+    } catch {
+      setErro("Não foi possível enviar o registro. Confira os dados e tente novamente.");
+    } finally {
+      setEnviando(false);
+    }
   };
 
   /* ───────── confirmação ───────── */
@@ -130,6 +187,7 @@ export default function PublicReportPage() {
                 setLat("");
                 setLng("");
                 setContato("");
+                setCpf("");
                 setAnexos([]);
                 setGeoStatus("idle");
               }}
@@ -340,6 +398,24 @@ export default function PublicReportPage() {
               </div>
             </div>
           )}
+
+          <div className="mt-4">
+            <CoordsPickerMap
+              public
+              lat={lat}
+              lng={lng}
+              height={260}
+              onChange={(la, ln) => {
+                setLat(la);
+                setLng(ln);
+                setModoLocal("coordenada");
+                setGeoStatus("ok");
+              }}
+            />
+            <p className="text-[11px] text-on-surface-variant mt-2">
+              Arraste o marcador até o local exato do ocorrido.
+            </p>
+          </div>
         </section>
 
         {/* anexos */}
@@ -408,6 +484,18 @@ export default function PublicReportPage() {
                 ? "Deixe um telefone se puder ser contatado pela equipe. Você pode registrar de forma anônima."
                 : "Deixe um telefone para que a equipe possa entrar em contato."}
           </p>
+          <MetaTag className="block mb-1.5">CPF (OBRIGATÓRIO)</MetaTag>
+          <input
+            value={cpf}
+            onChange={(e) => setCpf(e.target.value)}
+            placeholder="000.000.000-00"
+            inputMode="numeric"
+            className="w-full bg-surface-container-low rounded-lg px-4 py-3 text-sm font-medium focus:ring-2 focus:ring-secondary outline-none placeholder:text-on-surface-variant/50 mb-4"
+          />
+
+          <MetaTag className="block mb-1.5">
+            TELEFONE {CONFIG.exigirContato ? "(OBRIGATÓRIO)" : "(OPCIONAL)"}
+          </MetaTag>
           <input
             value={contato}
             onChange={(e) => setContato(e.target.value)}
@@ -425,7 +513,7 @@ export default function PublicReportPage() {
 
         <div className="flex flex-col sm:flex-row gap-3 pb-12">
           <Btn variant="primary" icon="send" full onClick={enviar}>
-            Enviar registro
+            {enviando ? "Enviando…" : "Enviar registro"}
           </Btn>
         </div>
 

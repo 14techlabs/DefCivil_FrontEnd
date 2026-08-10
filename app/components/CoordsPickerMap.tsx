@@ -23,6 +23,8 @@ interface CoordsPickerMapProps {
   zonas?: { id: number; nome: string }[];
   /** Fired when the marker position changes which zone(s) it overlaps. */
   onZoneDetect?: (ids: number[]) => void;
+  /** Modo público (sem login): busca a área da entidade pública. */
+  public?: boolean;
 }
 
 /* ───────────── point-in-polygon ───────────── */
@@ -85,7 +87,7 @@ function polygonCentroid(polygon: GeoJSON.Polygon): [number, number] {
 
 export function CoordsPickerMap({
   lat, lng, onChange, height = 200,
-  zonas: zonasNames, onZoneDetect,
+  zonas: zonasNames, onZoneDetect, public: publicMode = false,
 }: CoordsPickerMapProps) {
   const containerRef = useRef<HTMLDivElement>(null);
   const mapRef = useRef<maplibregl.Map | null>(null);
@@ -122,14 +124,15 @@ export function CoordsPickerMap({
 
   /* ── buscar dados da entidade ── */
   useEffect(() => {
-    if (!user?.entidade) return;
+    if (!publicMode && !user?.entidade) return;
     let cancelled = false;
 
+    const url = publicMode ? "/entidades/areas/publicas/" : "/entidades/areas/";
     api
       .get<{
         area: { id: number; area: GeoJSON.MultiPolygon };
         zonas: { id: number; area: GeoJSON.Polygon | null }[];
-      }>("/entidades/areas/")
+      }>(url)
       .then((res) => {
         if (cancelled) return;
         const { area, zonas } = res.data;
@@ -158,7 +161,7 @@ export function CoordsPickerMap({
       });
 
     return () => { cancelled = true; };
-  }, [user?.entidade]);
+  }, [user?.entidade, publicMode]);
 
   /* ── inicializar mapa (após loaded) ── */
   useEffect(() => {
