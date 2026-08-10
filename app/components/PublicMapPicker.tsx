@@ -8,13 +8,12 @@ import {
   getMultiPolygonCenter,
 } from "@/app/lib/mapShared";
 import { api } from "@/app/services/Api";
-import { useGardian } from "@/app/components/GardianContext";
 
 import "maplibre-gl/dist/maplibre-gl.css";
 
 /* ───────────── types ───────────── */
 
-interface CoordsPickerMapProps {
+interface PublicMapPickerProps {
   lat: string;
   lng: string;
   onChange: (lat: string, lng: string) => void;
@@ -83,15 +82,15 @@ function polygonCentroid(polygon: GeoJSON.Polygon): [number, number] {
 
 /* ───────────── componente ───────────── */
 
-export function CoordsPickerMap({
+// versao publica (sem login): sempre busca a area da entidade publica
+export function PublicMapPicker({
   lat, lng, onChange, height = 200,
   zonas: zonasNames, onZoneDetect,
-}: CoordsPickerMapProps) {
+}: PublicMapPickerProps) {
   const containerRef = useRef<HTMLDivElement>(null);
   const mapRef = useRef<maplibregl.Map | null>(null);
   const markerRef = useRef<maplibregl.Marker | null>(null);
   const isDragging = useRef(false);
-  const { user } = useGardian();
   const onChangeRef = useRef(onChange);
   const onZoneDetectRef = useRef(onZoneDetect);
   const zonasNamesRef = useRef(zonasNames);
@@ -122,14 +121,13 @@ export function CoordsPickerMap({
 
   /* ── buscar dados da entidade ── */
   useEffect(() => {
-    if (!user?.entidade) return;
     let cancelled = false;
 
     api
       .get<{
         area: { id: number; area: GeoJSON.MultiPolygon };
         zonas: { id: number; area: GeoJSON.Polygon | null }[];
-      }>("/entidades/areas/")
+      }>("/entidades/areas/publicas/")
       .then((res) => {
         if (cancelled) return;
         const { area, zonas } = res.data;
@@ -158,7 +156,7 @@ export function CoordsPickerMap({
       });
 
     return () => { cancelled = true; };
-  }, [user?.entidade]);
+  }, []);
 
   /* ── inicializar mapa (após loaded) ── */
   useEffect(() => {

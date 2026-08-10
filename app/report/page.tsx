@@ -10,9 +10,9 @@ import {
 } from "@/app/data/mock";
 import { api } from "@/app/services/Api";
 
-// mapa de seleção de local (mesmo do formulário de criação de ocorrência)
-const CoordsPickerMap = dynamic(
-  () => import("@/app/components/CoordsPickerMap").then((m) => m.CoordsPickerMap),
+// mapa de seleção de local publico (sem login)
+const PublicMapPicker = dynamic(
+  () => import("@/app/components/PublicMapPicker").then((m) => m.PublicMapPicker),
   { ssr: false },
 );
 
@@ -400,8 +400,7 @@ export default function PublicReportPage() {
           )}
 
           <div className="mt-4">
-            <CoordsPickerMap
-              public
+            <PublicMapPicker
               lat={lat}
               lng={lng}
               height={260}
