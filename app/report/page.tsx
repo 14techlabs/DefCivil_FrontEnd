@@ -22,6 +22,24 @@ interface EventoPublico {
   recomendacoes: string[];
 }
 
+/* máscaras: aceitam apenas dígitos e formatam enquanto digita */
+function mascararCpf(raw: string): string {
+  const d = raw.replace(/\D/g, "").slice(0, 11);
+  if (d.length <= 3) return d;
+  if (d.length <= 6) return `${d.slice(0, 3)}.${d.slice(3)}`;
+  if (d.length <= 9) return `${d.slice(0, 3)}.${d.slice(3, 6)}.${d.slice(6)}`;
+  return `${d.slice(0, 3)}.${d.slice(3, 6)}.${d.slice(6, 9)}-${d.slice(9)}`;
+}
+
+function mascararTelefone(raw: string): string {
+  const d = raw.replace(/\D/g, "").slice(0, 11);
+  if (!d) return "";
+  if (d.length <= 2) return `(${d}`;
+  if (d.length <= 6) return `(${d.slice(0, 2)}) ${d.slice(2)}`;
+  if (d.length <= 10) return `(${d.slice(0, 2)}) ${d.slice(2, 6)}-${d.slice(6)}`;
+  return `(${d.slice(0, 2)}) ${d.slice(2, 7)}-${d.slice(7)}`;
+}
+
 /* configuração vinda da tela de Entidade */
 const CONFIG = MOCK_FORM_CONFIG;
 const CHECKLIST = CONFIG.checklist.filter((c) => c.ativo);
@@ -69,6 +87,9 @@ export default function PublicReportPage() {
   const [cpf, setCpf] = useState("");
   const [anexos, setAnexos] = useState<{ nome: string; tamanho: string }[]>([]);
   const [geoStatus, setGeoStatus] = useState<"idle" | "carregando" | "ok" | "erro">("idle");
+  const [geoBuscando, setGeoBuscando] = useState(false);
+  const [geoAviso, setGeoAviso] = useState("");
+  const [enderecoAviso, setEnderecoAviso] = useState("");
   const [erro, setErro] = useState("");
   const [enviado, setEnviado] = useState(false);
   const [enviando, setEnviando] = useState(false);
@@ -77,9 +98,11 @@ export default function PublicReportPage() {
   const pegarLocalizacao = () => {
     if (typeof navigator === "undefined" || !navigator.geolocation) {
       setGeoStatus("erro");
+      setGeoAviso("Seu navegador não suporta geolocalização. Marque o local no mapa.");
       return;
     }
     setGeoStatus("carregando");
+    setGeoAviso("");
     navigator.geolocation.getCurrentPosition(
       (pos) => {
         setLat(pos.coords.latitude.toFixed(6));
@@ -87,9 +110,50 @@ export default function PublicReportPage() {
         setModoLocal("coordenada");
         setGeoStatus("ok");
       },
-      () => setGeoStatus("erro"),
-      { enableHighAccuracy: true, timeout: 10000 },
+      (err) => {
+        setGeoStatus("erro");
+        const msgs: Record<number, string> = {
+          1: "Acesso à localização negado. Permita no navegador e tente de novo, ou marque o ponto no mapa.",
+          2: "Localização indisponível no momento. Marque o ponto no mapa.",
+          3: "Tempo esgotado. Tente novamente ou marque o ponto no mapa.",
+        };
+        setGeoAviso(
+          msgs[err.code] ?? "Não foi possível obter a localização. Marque o ponto no mapa.",
+        );
+      },
+      { enableHighAccuracy: true, timeout: 10000, maximumAge: 60000 },
     );
+  };
+
+  const buscarEndereco = async () => {
+    const termo = endereco.trim();
+    if (termo.length < 4) {
+      setEnderecoAviso("Informe um endereço com pelo menos 4 caracteres.");
+      return;
+    }
+    setGeoBuscando(true);
+    setEnderecoAviso("");
+    try {
+      const res = await api.get<{
+        candidatos: { lat: number; lng: number }[];
+        aviso?: string;
+      }>("/ocorrencias/geocodificar/", { params: { endereco: termo } });
+      const primeiro = res.data.candidatos?.[0];
+      if (primeiro) {
+        setLat(String(primeiro.lat));
+        setLng(String(primeiro.lng));
+        setModoLocal("coordenada");
+        setGeoStatus("ok");
+      } else {
+        setEnderecoAviso(
+          res.data.aviso ?? "Nenhum endereço encontrado. Marque o ponto no mapa.",
+        );
+      }
+    } catch {
+      setEnderecoAviso("Não foi possível localizar o endereço. Marque o ponto no mapa.");
+    } finally {
+      setGeoBuscando(false);
+    }
   };
 
   const enviar = async () => {
@@ -99,8 +163,8 @@ export default function PublicReportPage() {
       );
       return;
     }
-    if (CONFIG.exigirContato && !contato.trim()) {
-      setErro("Informe um telefone de contato para prosseguir.");
+    if (CONFIG.exigirContato && contato.replace(/\D/g, "").length < 10) {
+      setErro("Informe um telefone válido (com DDD) para prosseguir.");
       return;
     }
     if (cpf.replace(/\D/g, "").length !== 11) {
@@ -118,7 +182,8 @@ export default function PublicReportPage() {
         descricao: descricao.trim(),
         categoria,
         cpf: cpf.replace(/\D/g, ""),
-        contato: contato.trim(),
+        contato: contato.replace(/\D/g, ""),
+        endereco: endereco.trim(),
         coordenadas: { lat: parseFloat(lat), lng: parseFloat(lng) },
       });
       setProtocolo(res.data.protocolo);
@@ -190,6 +255,9 @@ export default function PublicReportPage() {
                 setCpf("");
                 setAnexos([]);
                 setGeoStatus("idle");
+                setGeoAviso("");
+                setEnderecoAviso("");
+                setGeoBuscando(false);
               }}
             >
               Registrar outra ocorrência
@@ -364,18 +432,34 @@ export default function PublicReportPage() {
             </Chip>
           )}
           {geoStatus === "erro" && (
-            <Chip tone="error" icon="error" className="mb-3">
-              NÃO FOI POSSÍVEL OBTER A LOCALIZAÇÃO — PREENCHA MANUALMENTE
-            </Chip>
+            <>
+              <Chip tone="error" icon="error" className="mb-1">
+                {geoAviso || "NÃO FOI POSSÍVEL OBTER A LOCALIZAÇÃO — PREENCHA MANUALMENTE"}
+              </Chip>
+              <p className="text-[10px] text-on-surface-variant mb-3">
+                Dica: a geolocalização precisa de HTTPS (ou localhost). Você também pode marcar
+                o ponto no mapa.
+              </p>
+            </>
           )}
 
           {modoLocal === "endereco" ? (
-            <input
-              value={endereco}
-              onChange={(e) => setEndereco(e.target.value)}
-              placeholder="Rua, número, bairro e ponto de referência"
-              className="w-full bg-surface-container-low rounded-lg px-4 py-3 text-sm font-medium focus:ring-2 focus:ring-secondary outline-none placeholder:text-on-surface-variant/50"
-            />
+            <div className="space-y-2">
+              <input
+                value={endereco}
+                onChange={(e) => setEndereco(e.target.value)}
+                placeholder="Rua, número, bairro e ponto de referência"
+                className="w-full bg-surface-container-low rounded-lg px-4 py-3 text-sm font-medium focus:ring-2 focus:ring-secondary outline-none placeholder:text-on-surface-variant/50"
+              />
+              <div className="flex flex-wrap items-center gap-2">
+                <Btn variant="secondary" icon="search" onClick={buscarEndereco}>
+                  {geoBuscando ? "Buscando…" : "Localizar no mapa"}
+                </Btn>
+                {enderecoAviso && (
+                  <span className="text-[11px] text-error font-bold">{enderecoAviso}</span>
+                )}
+              </div>
+            </div>
           ) : (
             <div className="grid grid-cols-2 gap-3">
               <div>
@@ -486,9 +570,10 @@ export default function PublicReportPage() {
           <MetaTag className="block mb-1.5">CPF (OBRIGATÓRIO)</MetaTag>
           <input
             value={cpf}
-            onChange={(e) => setCpf(e.target.value)}
+            onChange={(e) => setCpf(mascararCpf(e.target.value))}
             placeholder="000.000.000-00"
             inputMode="numeric"
+            maxLength={14}
             className="w-full bg-surface-container-low rounded-lg px-4 py-3 text-sm font-medium focus:ring-2 focus:ring-secondary outline-none placeholder:text-on-surface-variant/50 mb-4"
           />
 
@@ -497,8 +582,11 @@ export default function PublicReportPage() {
           </MetaTag>
           <input
             value={contato}
-            onChange={(e) => setContato(e.target.value)}
+            onChange={(e) => setContato(mascararTelefone(e.target.value))}
             placeholder="(73) 90000-0000"
+            type="tel"
+            inputMode="tel"
+            maxLength={14}
             className="w-full bg-surface-container-low rounded-lg px-4 py-3 text-sm font-medium focus:ring-2 focus:ring-secondary outline-none placeholder:text-on-surface-variant/50"
           />
         </section>
