@@ -526,7 +526,6 @@ export default function EntityPage() {
                   {[
                     { id: "exigirLocalizacao", label: "Exigir localização (endereço ou coordenada)", icon: "location_on" },
                     { id: "permitirAnexos", label: "Permitir anexar fotos e vídeos", icon: "attach_file" },
-                    { id: "permitirAnonimo", label: "Permitir registro anônimo", icon: "visibility_off" },
                     { id: "exigirContato", label: "Exigir telefone de contato", icon: "call" },
                     { id: "mostrarAvisoEvento", label: "Exibir aviso do evento em andamento", icon: "campaign" },
                   ].map((r) => {

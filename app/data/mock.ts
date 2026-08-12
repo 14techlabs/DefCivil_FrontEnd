@@ -721,7 +721,6 @@ export interface ConfigFormulario {
   minCaracteresDescricao: number;
   exigirLocalizacao: boolean;
   permitirAnexos: boolean;
-  permitirAnonimo: boolean;
   exigirContato: boolean;
   mostrarAvisoEvento: boolean;
   telefonesEmergencia: string;
@@ -739,7 +738,6 @@ export const MOCK_FORM_CONFIG: ConfigFormulario = {
   minCaracteresDescricao: 10,
   exigirLocalizacao: true,
   permitirAnexos: true,
-  permitirAnonimo: true,
   exigirContato: false,
   mostrarAvisoEvento: true,
   telefonesEmergencia: "199 (Defesa Civil) ou 193 (Bombeiros)",
