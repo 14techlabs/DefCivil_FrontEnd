@@ -51,7 +51,6 @@ interface Evento {
   status: string | null;
   data_inicio: string | null;
   data_fim: string | null;
-  vinculacao_ativa: boolean;
   resumo_publico: string;
   recomendacoes: string[];
   timeline: TimelineItem[];
@@ -74,10 +73,12 @@ interface Zona {
 
 interface EventoListResponse {
   eventos: Evento[];
+  evento_vinculado_id: number | null;
 }
 
 interface EventoDetailResponse {
   eventos: Evento;
+  evento_vinculado_id: number | null;
 }
 
 interface OcorrenciaListResponse {
@@ -146,6 +147,7 @@ const isClosed = (status: string | null) =>
 export default function EventsPage() {
   const { showToast } = useGardian();
   const [eventos, setEventos] = useState<Evento[]>([]);
+  const [eventoVinculadoId, setEventoVinculadoId] = useState<number | null>(null);
   const [ocorrencias, setOcorrencias] = useState<Ocorrencia[]>([]);
   const [zonaLookup, setZonaLookup] = useState<Map<number, string>>(new Map());
   const [selectedId, setSelectedId] = useState<number | null>(null);
@@ -171,6 +173,7 @@ export default function EventsPage() {
       const eventResponse = await api.get<EventoListResponse>("/eventos/");
       const eventList = eventResponse.data.eventos ?? [];
       setEventos(eventList);
+      setEventoVinculadoId(eventResponse.data.evento_vinculado_id ?? null);
       setSelectedId((current) =>
         current != null && eventList.some((event) => event.id === current)
           ? current
@@ -196,6 +199,7 @@ export default function EventsPage() {
       );
     } catch {
       setEventos([]);
+      setEventoVinculadoId(null);
       setOcorrencias([]);
       setZonaLookup(new Map());
       setSelectedId(null);
@@ -220,6 +224,7 @@ export default function EventsPage() {
         .then((response) => {
           if (cancelled) return;
           const detail = response.data.eventos;
+          setEventoVinculadoId(response.data.evento_vinculado_id);
           setEventos((current) =>
             current.map((event) => (event.id === detail.id ? detail : event)),
           );
@@ -272,14 +277,17 @@ export default function EventsPage() {
   const toggleVinculacao = async () => {
     if (!evento) return;
     setSavingAction(true);
+    const vinculado = eventoVinculadoId === evento.id;
     try {
-      const response = await api.patch<Evento>(`/eventos/${evento.id}/`, {
-        vinculacao_ativa: !evento.vinculacao_ativa,
-      });
-      setEventos((current) =>
-        current.map((item) => (item.id === evento.id ? { ...item, ...response.data } : item)),
+      const response = await api.post<{ evento_vinculado_id: number | null }>(
+        vinculado ? `/eventos/${evento.id}/desativar/` : `/eventos/${evento.id}/ativar/`,
       );
-      showToast("Configuração de vinculação atualizada.");
+      setEventoVinculadoId(response.data.evento_vinculado_id);
+      showToast(
+        vinculado
+          ? "Vinculação automática desativada."
+          : "Evento vinculado ao formulário público.",
+      );
     } catch {
       showToast("Não foi possível atualizar a vinculação.", "error");
     } finally {
@@ -413,7 +421,7 @@ export default function EventsPage() {
                   <div className="pl-3">
                     <div className="mb-2 flex items-center justify-between gap-2">
                       <Chip tone={statusTone(item.status)}>{statusLabel(item.status)}</Chip>
-                      {item.vinculacao_ativa && <span className="flex items-center gap-1.5"><StatusDot tone="secondary" /><MetaTag className="text-secondary">VINCULAÇÃO ATIVA</MetaTag></span>}
+                      {item.id === eventoVinculadoId && <span className="flex items-center gap-1.5"><StatusDot tone="secondary" /><MetaTag className="text-secondary">VINCULAÇÃO ATIVA</MetaTag></span>}
                     </div>
                     <p className="font-headline text-[15px] font-bold leading-snug text-primary">{item.nome}</p>
                     <p className="mt-1 text-[11px] text-on-surface-variant">{TYPE_LABEL[item.tipo]}</p>
@@ -445,7 +453,7 @@ export default function EventsPage() {
                     <div className="card-recessed p-4">
                       <div className="flex items-center justify-between gap-4">
                         <div><p className="text-[11px] font-black uppercase tracking-mono-tight text-primary">Vinculação automática</p><p className="mt-0.5 max-w-[180px] text-[10px] text-on-surface-variant">Configura este evento para receber novas ocorrências.</p></div>
-                        <button type="button" onClick={toggleVinculacao} disabled={savingAction || isClosed(evento.status)} aria-label="Alternar vinculação automática" className={`relative h-7 w-12 shrink-0 rounded-full transition-colors disabled:opacity-40 ${evento.vinculacao_ativa ? "bg-secondary" : "bg-slate-300"}`}><span className={`absolute top-1 h-5 w-5 rounded-full bg-white shadow transition-all ${evento.vinculacao_ativa ? "left-6" : "left-1"}`} /></button>
+                        <button type="button" onClick={toggleVinculacao} disabled={savingAction || isClosed(evento.status)} aria-label="Alternar vinculação automática" className={`relative h-7 w-12 shrink-0 rounded-full transition-colors disabled:opacity-40 ${eventoVinculadoId === evento.id ? "bg-secondary" : "bg-slate-300"}`}><span className={`absolute top-1 h-5 w-5 rounded-full bg-white shadow transition-all ${eventoVinculadoId === evento.id ? "left-6" : "left-1"}`} /></button>
                       </div>
                     </div>
                   </div>
