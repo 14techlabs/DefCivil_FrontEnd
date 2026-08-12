@@ -145,7 +145,7 @@ export default function PublicReportPage() {
       const res = await api.get<{
         candidatos: { lat: number; lng: number; entidade?: string }[];
         aviso?: string;
-      }>("/ocorrencias/geocodificar/", { params: { endereco: termo } });
+      }>("/api/geocodificar/", { params: { endereco: termo } });
       const primeiro = res.data.candidatos?.[0];
       if (primeiro) {
         setLat(String(primeiro.lat));
