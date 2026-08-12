@@ -265,8 +265,6 @@ function ZoneDetailContent() {
           <Icon name="arrow_back" className="text-[16px]" /> Voltar para Zonas
         </button>
         <div className="flex items-center gap-2 mb-3">
-          <MetaTag className="text-secondary">GEO-DATA PROTOCOL · v2.4</MetaTag>
-          <span className="w-1 h-1 rounded-full bg-outline-variant" />
           <MetaTag>ZONA #{z.id}</MetaTag>
           <span className="w-1 h-1 rounded-full bg-outline-variant" />
           <Chip tone={tone}>{STATUS_LABEL[z.status]}</Chip>

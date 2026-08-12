@@ -887,6 +887,9 @@ export const formatBRL = (v: number) =>
   v.toLocaleString("pt-BR", { style: "currency", currency: "BRL" });
 
 export const STATUS_OCORRENCIA_LABEL: Record<string, string> = {
+  aberto: "Aberto",
+  resolvido: "Resolvido",
+  fechado: "Fechado",
   em_analise: "Em Análise",
   alta_prioridade: "Alta Prioridade",
   em_andamento: "Em Andamento",

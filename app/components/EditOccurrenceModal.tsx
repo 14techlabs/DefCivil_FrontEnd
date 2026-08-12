@@ -5,30 +5,38 @@ import { Btn, MetaTag } from "@/app/components/Primitives";
 import { ModalShell } from "@/app/components/Modals";
 import { useGardian } from "@/app/components/GardianContext";
 import { api } from "@/app/services/Api";
-import {
-  OccurrenceFormFields,
-  type Categoria,
-  type StatusOcorrencia,
-} from "@/app/components/OccurrenceFormFields";
+import { OccurrenceFormFields } from "@/app/components/OccurrenceFormFields";
 
 /* ───────────── types ───────────── */
+
+interface OcorrenciaEdit {
+  id: number;
+  titulo: string;
+  categoria: string;
+  status: string;
+  descricao: string;
+  coordenadas: { lat: number; lng: number } | null;
+  zona: number | null;
+  anexos: unknown[];
+}
 
 interface Props {
   open: boolean;
   onClose: () => void;
-  onCreated: () => void;
+  onSaved: () => void;
   zonas: { id: number; nome: string }[];
+  ocorrencia: OcorrenciaEdit;
 }
 
 /* ───────────── componente ───────────── */
 
-export function CreateOccurrenceModal({ open, onClose, onCreated, zonas }: Props) {
+export function EditOccurrenceModal({ open, onClose, onSaved, zonas, ocorrencia }: Props) {
   const { showToast } = useGardian();
 
   // form state
-  const [categoria, setCategoria] = useState<Categoria>("geologico");
+  const [categoria, setCategoria] = useState("");
   const [titulo, setTitulo] = useState("");
-  const [status, setStatus] = useState<StatusOcorrencia>("em_analise");
+  const [status, setStatus] = useState("");
   const [descricao, setDescricao] = useState("");
   const [zonaId, setZonaId] = useState<number | null>(null);
   const [detectedZonaIds, setDetectedZonaIds] = useState<number[]>([]);
@@ -40,43 +48,29 @@ export function CreateOccurrenceModal({ open, onClose, onCreated, zonas }: Props
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState("");
 
-  // reset ao abrir
+  // popula o formulário com os dados da ocorrência ao abrir
   useEffect(() => {
     if (open) {
-      setCategoria("geologico");
-      setTitulo("");
-      setStatus("em_analise");
-      setDescricao("");
-      setZonaId(null);
+      setCategoria(ocorrencia.categoria ?? "");
+      setTitulo(ocorrencia.titulo ?? "");
+      setStatus(ocorrencia.status ?? "");
+      setDescricao(ocorrencia.descricao ?? "");
+      setZonaId(ocorrencia.zona ?? null);
       setDetectedZonaIds([]);
-      setLat("");
-      setLng("");
-      setAnexos([]);
+      setLat(ocorrencia.coordenadas ? String(ocorrencia.coordenadas.lat) : "");
+      setLng(ocorrencia.coordenadas ? String(ocorrencia.coordenadas.lng) : "");
+      setAnexos((ocorrencia.anexos ?? []).map((a) => {
+        const item = a as { nome?: string; tipo?: string; tamanho?: string };
+        return {
+          nome: item.nome ?? "Arquivo",
+          tamanho: item.tamanho ?? "",
+          tipo: item.tipo ?? "documento",
+        };
+      }));
       setSaving(false);
       setError("");
     }
-  }, [open]);
-
-  /* ── anexos ── */
-  const handleFiles = (files: FileList | null) => {
-    if (!files) return;
-    const novos = Array.from(files).map((f) => ({
-      nome: f.name,
-      tamanho:
-        f.size > 1024 * 1024
-          ? `${(f.size / (1024 * 1024)).toFixed(1).replace(".", ",")} MB`
-          : `${Math.max(1, Math.round(f.size / 1024))} KB`,
-      tipo: f.type.startsWith("video")
-        ? "video"
-        : f.type.startsWith("image")
-          ? "foto"
-          : "documento",
-    }));
-    setAnexos((prev) => [...prev, ...novos]);
-  };
-
-  const removerAnexo = (i: number) =>
-    setAnexos((prev) => prev.filter((_, idx) => idx !== i));
+  }, [open, ocorrencia]);
 
   /* ── submit ── */
   const handleSubmit = async () => {
@@ -101,18 +95,17 @@ export function CreateOccurrenceModal({ open, onClose, onCreated, zonas }: Props
         coordenadas: { lat: parsedLat, lng: parsedLng },
       };
       if (zonaId !== null) body.zona = zonaId;
-      if (anexos.length > 0) body.anexos = anexos;
 
-      await api.post("/ocorrencias/", body);
-      showToast("ocorrência registrada com sucesso.");
-      onCreated();
+      await api.patch(`/ocorrencias/${ocorrencia.id}/`, body);
+      showToast("ocorrência atualizada com sucesso.");
+      onSaved();
       onClose();
     } catch (err: unknown) {
       const axiosErr = err as { response?: { status?: number } };
       if (axiosErr?.response?.status === 400) {
         setError("dados inválidos. verifique os campos obrigatórios.");
       } else {
-        setError("erro ao registrar ocorrência. tente novamente.");
+        setError("erro ao atualizar ocorrência. tente novamente.");
       }
     } finally {
       setSaving(false);
@@ -125,13 +118,13 @@ export function CreateOccurrenceModal({ open, onClose, onCreated, zonas }: Props
     <ModalShell open={open} onClose={onClose} maxWidth="max-w-2xl">
       {/* cabeçalho */}
       <div className="bg-surface-container-low px-8 py-6">
-        <MetaTag>NOVA OCORRÊNCIA</MetaTag>
+        <MetaTag>EDITAR OCORRÊNCIA · #{ocorrencia.id}</MetaTag>
         <h2 className="font-headline font-black text-2xl tracking-tighter mt-2 text-primary">
-          Registrar Nova Ocorrência
+          Editar Ocorrência
         </h2>
       </div>
 
-      {/* corpo compartilhado com o modal de edição */}
+      {/* corpo compartilhado com o modal de criação */}
       <OccurrenceFormFields
         categoria={categoria}
         titulo={titulo}
@@ -142,21 +135,24 @@ export function CreateOccurrenceModal({ open, onClose, onCreated, zonas }: Props
         zonaId={zonaId}
         detectedZonaIds={detectedZonaIds}
         zonas={zonas}
-        setCategoria={(v) => setCategoria(v as Categoria)}
+        setCategoria={setCategoria}
         setTitulo={setTitulo}
-        setStatus={(v) => setStatus(v as StatusOcorrencia)}
+        setStatus={setStatus}
         setDescricao={setDescricao}
         setLat={setLat}
         setLng={setLng}
         setZonaId={setZonaId}
         onZoneDetect={(ids) => {
           setDetectedZonaIds(ids);
+          // preserva a zona atual quando nada é detectado
           if (ids.length === 1) setZonaId(ids[0]);
-          else setZonaId(null);
+          else if (ids.length > 1) setZonaId(null);
         }}
         anexos={anexos}
-        onFiles={handleFiles}
-        onRemoveAnexo={removerAnexo}
+        onFiles={() => {}}
+        onRemoveAnexo={() => {}}
+        anexosReadOnly
+        coordsHint={!ocorrencia.coordenadas}
         error={error}
       />
 
@@ -166,7 +162,7 @@ export function CreateOccurrenceModal({ open, onClose, onCreated, zonas }: Props
           Cancelar
         </Btn>
         <Btn variant="primary" icon="save" onClick={handleSubmit} disabled={saving} full>
-          {saving ? "Salvando…" : "Registrar Ocorrência"}
+          {saving ? "Salvando…" : "Salvar Alterações"}
         </Btn>
       </div>
     </ModalShell>

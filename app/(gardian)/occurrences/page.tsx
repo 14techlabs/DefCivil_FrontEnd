@@ -5,6 +5,7 @@ import { useSearchParams } from "next/navigation";
 import { Btn, Chip, Icon, KPI, MetaTag, Tab } from "@/app/components/Primitives";
 import { api } from "@/app/services/Api";
 import { CreateOccurrenceModal } from "@/app/components/CreateOccurrenceModal";
+import { EditOccurrenceModal } from "@/app/components/EditOccurrenceModal";
 import { useGardian } from "@/app/components/GardianContext";
 import {
   MOCK_OCORRENCIAS,
@@ -63,6 +64,14 @@ interface UsuarioInfo {
 // --- helpers ---
 
 const CATEGORIA_LABEL: Record<string, string> = {
+  desabamento: "Desabamento",
+  deslizamento: "Deslizamento",
+  queda_de_barreira: "Queda De Barreira",
+  erosao: "Erosão",
+  incendio: "Incêndio",
+  alagamento: "Alagamento",
+  inundacao: "Inundação",
+  outro: "Outro",
   geologico: "Geológico",
   climatico: "Climático",
   vias_publicas: "Vias Públicas",
@@ -75,6 +84,18 @@ const CATEGORIA_ICON: Record<string, string> = {
   vias_publicas: "directions_car",
   produtos_perigosos: "science",
 };
+
+function categoriaLabel(categoria: string): string {
+  const label = CATEGORIA_LABEL[categoria] ?? categoria.replaceAll("_", " ");
+  return label
+    .split(" ")
+    .map((palavra) =>
+      palavra
+        ? palavra[0].toLocaleUpperCase("pt-BR") + palavra.slice(1)
+        : palavra,
+    )
+    .join(" ");
+}
 
 function statusToneFor(status: string): "error" | "warning" | "secondary" {
   const s = status.toLowerCase();
@@ -104,13 +125,6 @@ function formatDate(iso: string): string {
     .replace(/\./g, "");
 }
 
-function formatCoords(
-  coords: { lat: number; lng: number } | null,
-): string | null {
-  if (!coords) return null;
-  return `${coords.lat.toFixed(4)}, ${coords.lng.toFixed(4)}`;
-}
-
 // --- componente ---
 
 function OccurrencesContent() {
@@ -127,6 +141,7 @@ function OccurrencesContent() {
   const [filter, setFilter] = useState("todas");
   const [selected, setSelected] = useState<number | null>(null);
   const [showCreateModal, setShowCreateModal] = useState(false);
+  const [showEditModal, setShowEditModal] = useState(false);
 
   // busca, filtro por status e agrupamento em evento
   const [busca, setBusca] = useState("");
@@ -299,7 +314,7 @@ function OccurrencesContent() {
   }
 
   return (
-    <div className="p-8 max-w-[1600px] mx-auto">
+    <div className="mx-auto max-w-[1600px] overflow-x-clip p-8">
       {/* cabeçalho */}
       <header className="mb-8">
         <div className="flex items-center gap-2 mb-3">
@@ -378,83 +393,173 @@ function OccurrencesContent() {
 
       {/* ranking por zona */}
       {indicadores.ranking.length > 0 && (
-        <div className="card-recessed p-5 mb-6">
-          <MetaTag className="block mb-3">ZONAS COM MAIS OCORRÊNCIAS</MetaTag>
-          <div className="flex flex-wrap gap-2">
-            {indicadores.ranking.map(([zid, qtd]) => (
-              <Chip key={zid} tone="neutral" icon="location_on">
-                {zonaLookup.get(zid) ?? `Zona #${zid}`} · {qtd}
-              </Chip>
-            ))}
+        <section className="card-tonal mb-6 p-6 shadow-ambient-sm">
+          <div className="mb-5 flex items-center justify-between gap-4">
+            <div className="flex items-center gap-3">
+              <span className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl bg-secondary/10 text-secondary">
+                <Icon name="leaderboard" className="text-[22px]" />
+              </span>
+              <h2 className="font-headline text-lg font-black tracking-tight text-primary">
+                Zonas com Mais Ocorrências
+              </h2>
+            </div>
           </div>
-        </div>
+
+          <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-4">
+            {indicadores.ranking.map(([zid, qtd], index) => {
+              const nome = zonaLookup.get(zid) ?? `Zona #${zid}`;
+              const maiorQuantidade = indicadores.ranking[0]?.[1] ?? 1;
+              const proporcao = Math.max(8, (qtd / maiorQuantidade) * 100);
+
+              return (
+                <button
+                  key={zid}
+                  type="button"
+                  onClick={() => setBusca(nome)}
+                  className="group rounded-xl border border-outline-variant/20 bg-surface-container-low p-4 text-left transition-all duration-200 hover:-translate-y-0.5 hover:border-secondary/35 hover:bg-white hover:shadow-ambient-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-secondary"
+                  aria-label={`Filtrar ocorrências da ${nome}`}
+                >
+                  <div className="mb-4 flex items-center justify-between">
+                    <span
+                      className={`flex h-8 w-8 items-center justify-center rounded-full text-xs font-black ${index === 0
+                          ? "bg-secondary text-white"
+                          : "bg-surface-container-high text-on-surface-variant"
+                        }`}
+                    >
+                      {index + 1}º
+                    </span>
+                    <span className="rounded-full bg-white px-2.5 py-1 text-[10px] font-black uppercase tracking-mono-tight text-primary shadow-sm">
+                      {qtd} {qtd === 1 ? "registro" : "registros"}
+                    </span>
+                  </div>
+
+                  <div className="flex items-center gap-2">
+                    <Icon name="location_on" filled className="text-[17px] text-secondary" />
+                    <p className="truncate text-sm font-bold text-primary">{nome}</p>
+                  </div>
+
+                  <div className="mt-4 h-1.5 overflow-hidden rounded-full bg-surface-container-high">
+                    <div
+                      className={`h-full rounded-full ${index === 0 ? "bg-secondary" : "bg-primary/45"}`}
+                      style={{ width: `${proporcao}%` }}
+                    />
+                  </div>
+
+                  <span className="mt-3 flex items-center justify-end gap-1 text-[9px] font-bold uppercase tracking-mono-tight text-on-surface-variant transition-colors group-hover:text-secondary">
+                    Filtrar ocorrências
+                    <Icon
+                      name="arrow_forward"
+                      className="text-[14px] transition-transform group-hover:translate-x-0.5"
+                    />
+                  </span>
+                </button>
+              );
+            })}
+          </div>
+        </section>
       )}
 
-      {/* barra de pesquisa + filtro de status */}
-      <div className="flex flex-wrap items-center gap-3 mb-5">
-        <div className="relative flex-1 min-w-[260px]">
-          <Icon
-            name="search"
-            className="absolute left-4 top-1/2 -translate-y-1/2 text-on-surface-variant text-[18px]"
-          />
-          <input
-            value={busca}
-            onChange={(e) => setBusca(e.target.value)}
-            placeholder="Pesquisar por título, endereço, zona ou número da ocorrência…"
-            className="w-full bg-surface-container-low rounded-lg pl-11 pr-4 py-3 text-sm font-medium focus:ring-2 focus:ring-secondary outline-none placeholder:text-on-surface-variant/50"
-          />
-          {busca && (
+      {/* filtros fixos: permanecem visíveis durante a leitura da lista */}
+      <section className="sticky top-16 z-20 mb-6 min-w-0 max-w-full overflow-hidden rounded-xl border border-outline-variant/25 bg-surface/95 p-4 shadow-ambient-sm backdrop-blur-xl">
+        <div className="flex min-w-0 flex-col gap-3 sm:flex-row sm:items-center">
+          <div className="hidden h-11 w-11 shrink-0 items-center justify-center rounded-lg bg-primary text-white sm:flex">
+            <Icon name="filter_list" className="text-[20px]" />
+          </div>
+
+          <div className="relative min-w-0 flex-1">
+            <Icon
+              name="search"
+              className="absolute left-4 top-1/2 -translate-y-1/2 text-on-surface-variant text-[19px]"
+            />
+            <input
+              value={busca}
+              onChange={(e) => setBusca(e.target.value)}
+              placeholder="Pesquisar por título, endereço, zona ou número…"
+              className="h-11 w-full rounded-lg border border-transparent bg-surface-container-low pl-11 pr-10 text-sm font-medium outline-none transition-all placeholder:text-on-surface-variant/50 hover:border-outline-variant/40 focus:border-secondary/40 focus:ring-2 focus:ring-secondary/30"
+            />
+            {busca && (
+              <button
+                type="button"
+                onClick={() => setBusca("")}
+                className="absolute right-3 top-1/2 -translate-y-1/2 rounded-md p-1 transition-colors hover:bg-surface-container"
+                aria-label="Limpar busca"
+              >
+                <Icon name="close" className="text-on-surface-variant text-[16px]" />
+              </button>
+            )}
+          </div>
+
+          <label className="relative w-full shrink-0 sm:w-auto">
+            <span className="sr-only">Filtrar por status</span>
+            <Icon
+              name="tune"
+              className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-on-surface-variant text-[17px]"
+            />
+            <select
+              value={statusFilter}
+              onChange={(e) => setStatusFilter(e.target.value)}
+              className="h-11 w-full appearance-none rounded-lg border border-outline-variant/25 bg-white pl-10 pr-10 text-xs font-bold text-primary outline-none transition-all hover:border-secondary/40 focus:ring-2 focus:ring-secondary/30 sm:min-w-[180px]"
+            >
+              {statusDisponiveis.map((st) => (
+                <option key={st} value={st}>
+                  {st === "todos" ? "Todos os Status" : STATUS_OCORRENCIA_LABEL[st] ?? st}
+                </option>
+              ))}
+            </select>
+            <Icon
+              name="expand_more"
+              className="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 text-on-surface-variant text-[18px]"
+            />
+          </label>
+
+          <label className="relative w-full shrink-0 sm:w-auto">
+            <span className="sr-only">Filtrar por categoria</span>
+            <Icon
+              name="category"
+              className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-on-surface-variant text-[17px]"
+            />
+            <select
+              value={filter}
+              onChange={(e) => setFilter(e.target.value)}
+              className="h-11 w-full appearance-none rounded-lg border border-outline-variant/25 bg-white pl-10 pr-10 text-xs font-bold text-primary outline-none transition-all hover:border-secondary/40 focus:ring-2 focus:ring-secondary/30 sm:min-w-[210px]"
+            >
+              {categoriasDisponiveis.map((cat) => (
+                <option key={cat} value={cat}>
+                  {cat === "todas"
+                    ? "Todas as Categorias"
+                    : `${categoriaLabel(cat)} (${contagem.get(cat) ?? 0})`}
+                </option>
+              ))}
+            </select>
+            <Icon
+              name="expand_more"
+              className="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 text-on-surface-variant text-[18px]"
+            />
+          </label>
+
+          <div className="hidden h-11 shrink-0 items-center rounded-lg bg-primary/5 px-3 xl:flex">
+            <span className="text-[10px] font-bold uppercase tracking-mono-tight text-primary">
+              <strong className="text-sm text-secondary">{ocorrenciasFiltradas.length}</strong>{" "}
+              de {ocorrencias.length}
+            </span>
+          </div>
+
+          {(busca || statusFilter !== "todos" || filter !== "todas") && (
             <button
               type="button"
-              onClick={() => setBusca("")}
-              className="absolute right-3 top-1/2 -translate-y-1/2 p-1 rounded-md hover:bg-surface-container"
-              aria-label="Limpar busca"
+              onClick={() => {
+                setBusca("");
+                setStatusFilter("todos");
+                setFilter("todas");
+              }}
+              className="hidden h-11 shrink-0 items-center gap-1.5 rounded-lg px-3 text-[10px] font-bold uppercase tracking-mono-tight text-on-surface-variant transition-colors hover:bg-surface-container-high hover:text-primary sm:flex"
             >
-              <Icon name="close" className="text-on-surface-variant text-[16px]" />
+              <Icon name="filter_alt_off" className="text-[16px]" />
+              Limpar
             </button>
           )}
         </div>
-        <select
-          value={statusFilter}
-          onChange={(e) => setStatusFilter(e.target.value)}
-          className="bg-surface-container-low rounded-lg px-4 py-3 text-xs font-bold focus:ring-2 focus:ring-secondary outline-none"
-        >
-          {statusDisponiveis.map((st) => (
-            <option key={st} value={st}>
-              {st === "todos" ? "Todos os status" : STATUS_OCORRENCIA_LABEL[st] ?? st}
-            </option>
-          ))}
-        </select>
-        <Chip tone="primarySoft">
-          {ocorrenciasFiltradas.length} DE {ocorrencias.length}
-        </Chip>
-      </div>
-
-      {/* abas de categoria */}
-      {categoriasDisponiveis.length > 1 && (
-        <div className="flex flex-wrap gap-2 mb-6">
-          {categoriasDisponiveis.map((cat) => {
-            const label =
-              cat === "todas"
-                ? "Todas"
-                : CATEGORIA_LABEL[cat] ?? cat;
-            const icon = cat === "todas" ? "list" : CATEGORIA_ICON[cat] ?? "help";
-            const count =
-              cat === "todas" ? ocorrencias.length : contagem.get(cat) ?? 0;
-
-            return (
-              <Tab
-                key={cat}
-                active={filter === cat}
-                onClick={() => setFilter(cat)}
-                icon={icon}
-              >
-                {label} <span className="opacity-60">({count})</span>
-              </Tab>
-            );
-          })}
-        </div>
-      )}
+      </section>
 
       {/* lista + detalhe */}
       {ocorrenciasFiltradas.length === 0 ? (
@@ -480,13 +585,12 @@ function OccurrencesContent() {
                 <button
                   key={o.id}
                   onClick={() => (modoAgrupar ? toggleMarcada(o.id) : setSelected(o.id))}
-                  className={`w-full card-tonal p-6 shadow-ambient-sm text-left relative overflow-hidden hover:shadow-ambient transition-all ${
-                    modoAgrupar && marcadas.includes(o.id)
+                  className={`w-full card-tonal p-6 shadow-ambient-sm text-left relative overflow-hidden hover:shadow-ambient transition-all ${modoAgrupar && marcadas.includes(o.id)
                       ? "ring-2 ring-secondary"
                       : !modoAgrupar && selected === o.id
                         ? "ring-2 ring-secondary"
                         : ""
-                  }`}
+                    }`}
                 >
                   <span
                     className={`absolute top-0 left-0 bottom-0 w-1 ${statusAccentClass(o.status)}`}
@@ -504,7 +608,7 @@ function OccurrencesContent() {
                           #{o.id}
                         </span>
                         <Chip tone={statusToneFor(o.status)}>
-                          {o.status.toUpperCase()}
+                          {(STATUS_OCORRENCIA_LABEL[o.status] ?? o.status.replaceAll("_", " ")).toUpperCase()}
                         </Chip>
                       </div>
                       <MetaTag>{formatDate(o.created_at)}</MetaTag>
@@ -532,7 +636,7 @@ function OccurrencesContent() {
                           }
                           className="text-[14px]"
                         />
-                        {CATEGORIA_LABEL[o.categoria] ?? o.categoria}
+                        {categoriaLabel(o.categoria)}
                       </span>
                       {autorNome && (
                         <span className="flex items-center gap-1.5">
@@ -556,12 +660,17 @@ function OccurrencesContent() {
           {/* painel de detalhe */}
           {selecionada && (
             <aside className="col-span-12 lg:col-span-5">
-              <div className="card-tonal shadow-ambient-sm sticky top-24 overflow-hidden">
+              <div className="card-tonal shadow-ambient-sm overflow-hidden lg:sticky lg:top-36 lg:max-h-[calc(100vh-10rem)] lg:overflow-y-auto">
                 {/* cabeçalho do detalhe */}
                 <div className="bg-gradient-to-br from-primary to-primary-container text-white p-6">
-                  <Chip tone="primarySoft" className="!bg-white/15 !text-white">
-                    {(CATEGORIA_LABEL[selecionada.categoria] ?? selecionada.categoria).toUpperCase()}
-                  </Chip>
+                  <div className="flex items-start justify-between gap-3">
+                    <Chip tone="primarySoft" className="!bg-white/15 !text-white">
+                      {categoriaLabel(selecionada.categoria).toUpperCase()}
+                    </Chip>
+                    <Btn variant="ghostDark" icon="edit" onClick={() => setShowEditModal(true)}>
+                      Editar
+                    </Btn>
+                  </div>
                   <h2 className="font-headline font-black text-2xl tracking-tighter mt-3">
                     {selecionada.titulo}
                   </h2>
@@ -575,22 +684,49 @@ function OccurrencesContent() {
 
                 <div className="p-6 space-y-6">
                   {/* endereço por extenso */}
-                  <div className="card-recessed p-4">
-                    <MetaTag className="block mb-2">ENDEREÇO</MetaTag>
-                    <p className="text-[13px] font-bold text-primary leading-relaxed">
-                      {selecionada.endereco ??
-                        (selecionada.coordenadas
-                          ? `Coordenadas ${formatCoords(selecionada.coordenadas)}`
-                          : "Endereço não informado")}
-                    </p>
-                    <a
-                      href={googleMapsUrl(selecionada.coordenadas, selecionada.endereco)}
-                      target="_blank"
-                      rel="noreferrer"
-                      className="inline-flex items-center gap-2 mt-3 px-4 py-2.5 rounded-lg bg-secondary/10 text-secondary text-[11px] font-bold uppercase tracking-mono-tight hover:bg-secondary/15 transition-all"
-                    >
-                      <Icon name="map" className="text-[16px]" /> Abrir no mapa
-                    </a>
+                  <div className="card-recessed p-5">
+                    <div className="mb-3 flex items-center gap-2">
+                      <Icon name="location_on" filled className="text-[18px] text-secondary" />
+                      <MetaTag>LOCALIZAÇÃO</MetaTag>
+                    </div>
+
+                    {selecionada.endereco && (
+                      <p className="mb-4 text-[13px] font-bold leading-relaxed text-primary">
+                        {selecionada.endereco}
+                      </p>
+                    )}
+
+                    {selecionada.coordenadas ? (
+                      <div className="grid grid-cols-2 gap-2">
+                        <div className="rounded-lg border border-outline-variant/20 bg-white p-3">
+                          <MetaTag className="mb-1 block">Latitude</MetaTag>
+                          <p className="font-mono text-sm font-bold text-primary">
+                            {selecionada.coordenadas.lat.toFixed(6).replace(".", ",")}
+                          </p>
+                        </div>
+                        <div className="rounded-lg border border-outline-variant/20 bg-white p-3">
+                          <MetaTag className="mb-1 block">Longitude</MetaTag>
+                          <p className="font-mono text-sm font-bold text-primary">
+                            {selecionada.coordenadas.lng.toFixed(6).replace(".", ",")}
+                          </p>
+                        </div>
+                      </div>
+                    ) : !selecionada.endereco ? (
+                      <p className="text-[13px] font-medium text-on-surface-variant">
+                        Localização não informada
+                      </p>
+                    ) : null}
+
+                    <div className="mt-4 flex flex-wrap gap-2">
+                      <a
+                        href={googleMapsUrl(selecionada.coordenadas, selecionada.endereco)}
+                        target="_blank"
+                        rel="noreferrer"
+                        className="inline-flex items-center gap-2 rounded-lg bg-secondary/10 px-4 py-2.5 text-[11px] font-bold uppercase tracking-mono-tight text-secondary transition-all hover:bg-secondary/15"
+                      >
+                        <Icon name="map" className="text-[16px]" /> Abrir no mapa
+                      </a>
+                    </div>
                   </div>
 
                   {/* descricao (relato) */}
@@ -600,21 +736,13 @@ function OccurrencesContent() {
                       {selecionada.descricao}
                     </p>
 
-                    {(selecionada.autor != null || selecionada.coordenadas) && (
+                    {selecionada.autor != null && (
                       <div className="flex flex-wrap gap-4 mt-3 text-[11px] text-on-surface-variant">
-                        {selecionada.autor != null && (
-                          <span className="flex items-center gap-1.5">
-                            <Icon name="person" className="text-[14px]" />
-                            {usuarioLookup.get(selecionada.autor) ??
-                              `Usuário #${selecionada.autor}`}
-                          </span>
-                        )}
-                        {selecionada.coordenadas && (
-                          <span className="flex items-center gap-1.5">
-                            <Icon name="pin_drop" className="text-[14px]" />
-                            {formatCoords(selecionada.coordenadas)}
-                          </span>
-                        )}
+                        <span className="flex items-center gap-1.5">
+                          <Icon name="person" className="text-[14px]" />
+                          {usuarioLookup.get(selecionada.autor) ??
+                            `Usuário #${selecionada.autor}`}
+                        </span>
                       </div>
                     )}
 
@@ -738,24 +866,22 @@ function OccurrencesContent() {
                               className="flex items-center gap-3 p-3 rounded-lg bg-surface-container-low hover:bg-surface-container transition-all text-left"
                             >
                               <div
-                                className={`w-10 h-10 rounded-md flex items-center justify-center shrink-0 ${
-                                  tipo === "video"
+                                className={`w-10 h-10 rounded-md flex items-center justify-center shrink-0 ${tipo === "video"
                                     ? "bg-orange-100"
                                     : tipo === "documento"
                                       ? "bg-primary/8"
                                       : "bg-secondary/10"
-                                }`}
+                                  }`}
                               >
                                 <Icon
                                   name={icone}
                                   filled
-                                  className={`text-[20px] ${
-                                    tipo === "video"
+                                  className={`text-[20px] ${tipo === "video"
                                       ? "text-orange-700"
                                       : tipo === "documento"
                                         ? "text-primary"
                                         : "text-secondary"
-                                  }`}
+                                    }`}
                                 />
                               </div>
                               <div className="min-w-0 flex-1">
@@ -792,6 +918,19 @@ function OccurrencesContent() {
         }}
         zonas={Array.from(zonaLookup.entries()).map(([id, nome]) => ({ id, nome }))}
       />
+
+      {selecionada && (
+        <EditOccurrenceModal
+          open={showEditModal}
+          onClose={() => setShowEditModal(false)}
+          onSaved={() => {
+            setShowEditModal(false);
+            fetchData();
+          }}
+          zonas={Array.from(zonaLookup.entries()).map(([id, nome]) => ({ id, nome }))}
+          ocorrencia={selecionada}
+        />
+      )}
     </div>
   );
 }

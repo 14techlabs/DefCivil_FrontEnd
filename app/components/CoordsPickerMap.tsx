@@ -95,9 +95,13 @@ export function CoordsPickerMap({
   const onChangeRef = useRef(onChange);
   const onZoneDetectRef = useRef(onZoneDetect);
   const zonasNamesRef = useRef(zonasNames);
+  const latRef = useRef(lat);
+  const lngRef = useRef(lng);
   onChangeRef.current = onChange;
   onZoneDetectRef.current = onZoneDetect;
   zonasNamesRef.current = zonasNames;
+  latRef.current = lat;
+  lngRef.current = lng;
 
   // Store fetched zone polygons for point-in-polygon detection
   const zonePolygonsRef = useRef<Map<number, GeoJSON.Polygon>>(new Map());
@@ -280,6 +284,14 @@ export function CoordsPickerMap({
       });
 
       markerRef.current = marker;
+
+      // posiciona o marcador nas coordenadas iniciais (modo edição)
+      const initialLat = parseFloat(latRef.current);
+      const initialLng = parseFloat(lngRef.current);
+      if (!isNaN(initialLat) && !isNaN(initialLng)) {
+        marker.setLngLat([initialLng, initialLat]);
+        detectZones(initialLng, initialLat);
+      }
     });
 
     mapRef.current = map;
