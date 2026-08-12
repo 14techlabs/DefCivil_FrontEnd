@@ -38,8 +38,8 @@ function getMultiPolygonBounds(mp: GeoJSON.MultiPolygon): maplibregl.LngLatBound
 
 /* ───────────── componente ───────────── */
 
-// versao publica (sem login): busca a area da entidade publica e mostra
-// somente o poligono da entidade (as zonas sao resolvidas no backend)
+// versao publica (sem login): busca as areas de todas as entidades e
+// desenha todos os poligonos; a entidade do ponto e resolvida no backend
 export function PublicMapPicker({
   lat, lng, onChange, height = 200,
 }: PublicMapPickerProps) {
@@ -58,19 +58,30 @@ export function PublicMapPicker({
   const [entityArea, setEntityArea] = useState<GeoJSON.MultiPolygon | null>(null);
   const [loaded, setLoaded] = useState(false);
 
-  /* ── buscar dados da entidade publica ── */
+  /* ── buscar areas de todas as entidades ── */
   useEffect(() => {
     let cancelled = false;
 
     api
-      .get<{ area: { id: number; area: GeoJSON.MultiPolygon } }>(
+      .get<{ entidades: { id: number; area: GeoJSON.MultiPolygon }[] }>(
         "/entidades/areas/publicas/",
       )
       .then((res) => {
         if (cancelled) return;
-        const { area } = res.data;
-        setEntityArea(area.area);
-        setEntityCenter(getMultiPolygonCenter(area.area));
+        // junta todos os poligonos num unico MultiPolygon (layer unico)
+        const areas = (res.data.entidades ?? [])
+          .map((e) => e.area)
+          .filter((a): a is GeoJSON.MultiPolygon => !!a);
+        if (areas.length > 0) {
+          const merged: GeoJSON.MultiPolygon = {
+            type: "MultiPolygon",
+            coordinates: areas.flatMap((a) => a.coordinates),
+          };
+          setEntityArea(merged);
+          setEntityCenter(getMultiPolygonCenter(merged));
+        } else {
+          setEntityCenter([-39.5, -16.0]);
+        }
         setLoaded(true);
       })
       .catch(() => {

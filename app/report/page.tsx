@@ -17,6 +17,7 @@ const PublicMapPicker = dynamic(
 );
 
 interface EventoPublico {
+  entidade: string;
   nome: string;
   resumoPublico: string;
   recomendacoes: string[];
@@ -46,30 +47,36 @@ const CHECKLIST = CONFIG.checklist.filter((c) => c.ativo);
 const CATEGORIAS = CONFIG.categorias.filter((c) => c.ativo);
 
 export default function PublicReportPage() {
-  const [eventoAtivo, setEventoAtivo] = useState<EventoPublico | null>(null);
+  const [eventosAtivos, setEventosAtivos] = useState<EventoPublico[]>([]);
 
   // resumo público do evento ativo (feito pelo técnico)
   useEffect(() => {
     let cancelled = false;
     api
       .get<{
-        evento: {
-          nome: string;
-          resumo_publico: string | null;
-          recomendacoes: string[] | null;
-        };
+        eventos: {
+          entidade_id: number;
+          entidade: string;
+          evento: {
+            nome: string;
+            resumo_publico: string | null;
+            recomendacoes: string[] | null;
+          };
+        }[];
       }>("/eventos/publico/ativo/")
       .then((res) => {
         if (cancelled) return;
-        const e = res.data.evento;
-        setEventoAtivo({
-          nome: e.nome,
-          resumoPublico: e.resumo_publico ?? "",
-          recomendacoes: e.recomendacoes ?? [],
-        });
+        setEventosAtivos(
+          (res.data.eventos ?? []).map((item) => ({
+            entidade: item.entidade,
+            nome: item.evento.nome,
+            resumoPublico: item.evento.resumo_publico ?? "",
+            recomendacoes: item.evento.recomendacoes ?? [],
+          })),
+        );
       })
       .catch(() => {
-        if (!cancelled) setEventoAtivo(null);
+        if (!cancelled) setEventosAtivos([]);
       });
     return () => {
       cancelled = true;
@@ -237,7 +244,7 @@ export default function PublicReportPage() {
           </h1>
           <p className="text-sm text-on-surface-variant mt-3 leading-relaxed">
             Sua ocorrência foi encaminhada à Defesa Civil e será analisada pela equipe.
-            {eventoAtivo ? " Ela foi vinculada automaticamente ao evento em andamento." : ""}
+            {eventosAtivos.length > 0 ? " Ela foi vinculada automaticamente ao evento em andamento." : ""}
           </p>
           <div className="card-recessed p-5 mt-6">
             <MetaTag className="block mb-1">PROTOCOLO</MetaTag>
@@ -319,24 +326,25 @@ export default function PublicReportPage() {
           <p className="text-[13px] leading-relaxed text-white/90">{MOCK_ENTIDADE.mensagemPublica}</p>
         </section>
 
-        {/* aviso do evento ativo (resumo público + recomendações) */}
-        {CONFIG.mostrarAvisoEvento && eventoAtivo && (
-          <section className="card-tonal p-6 shadow-ambient-sm border-l-4 border-error">
-            <div className="flex items-center gap-2 mb-3">
-              <Icon name="campaign" filled className="text-error text-[20px]" />
-              <MetaTag className="text-error">AVISO EM ANDAMENTO · {eventoAtivo.nome.toUpperCase()}</MetaTag>
-            </div>
-            <p className="text-[13px] text-on-surface leading-relaxed">{eventoAtivo.resumoPublico}</p>
-            <div className="mt-4 space-y-2">
-              {eventoAtivo.recomendacoes.map((r, i) => (
-                <div key={i} className="flex items-start gap-2.5">
-                  <Icon name="verified_user" filled className="text-secondary text-[16px] mt-0.5 shrink-0" />
-                  <p className="text-[12px] text-on-surface-variant leading-relaxed">{r}</p>
-                </div>
-              ))}
-            </div>
-          </section>
-        )}
+        {/* avisos dos eventos ativos (resumo público + recomendações) */}
+        {CONFIG.mostrarAvisoEvento &&
+          eventosAtivos.map((ev) => (
+            <section key={ev.entidade + ev.nome} className="card-tonal p-6 shadow-ambient-sm border-l-4 border-error">
+              <div className="flex items-center gap-2 mb-3">
+                <Icon name="campaign" filled className="text-error text-[20px]" />
+                <MetaTag className="text-error">AVISO EM ANDAMENTO · {ev.entidade.toUpperCase()} · {ev.nome.toUpperCase()}</MetaTag>
+              </div>
+              <p className="text-[13px] text-on-surface leading-relaxed">{ev.resumoPublico}</p>
+              <div className="mt-4 space-y-2">
+                {ev.recomendacoes.map((r, i) => (
+                  <div key={i} className="flex items-start gap-2.5">
+                    <Icon name="verified_user" filled className="text-secondary text-[16px] mt-0.5 shrink-0" />
+                    <p className="text-[12px] text-on-surface-variant leading-relaxed">{r}</p>
+                  </div>
+                ))}
+              </div>
+            </section>
+          ))}
 
         {/* tipo */}
         <section className="card-tonal p-6 shadow-ambient-sm">
