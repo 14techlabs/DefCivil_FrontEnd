@@ -90,6 +90,7 @@ export default function PublicReportPage() {
   const [geoBuscando, setGeoBuscando] = useState(false);
   const [geoAviso, setGeoAviso] = useState("");
   const [enderecoAviso, setEnderecoAviso] = useState("");
+  const [localEntidade, setLocalEntidade] = useState("");
   const [erro, setErro] = useState("");
   const [enviado, setEnviado] = useState(false);
   const [enviando, setEnviando] = useState(false);
@@ -135,7 +136,7 @@ export default function PublicReportPage() {
     setEnderecoAviso("");
     try {
       const res = await api.get<{
-        candidatos: { lat: number; lng: number }[];
+        candidatos: { lat: number; lng: number; entidade?: string }[];
         aviso?: string;
       }>("/ocorrencias/geocodificar/", { params: { endereco: termo } });
       const primeiro = res.data.candidatos?.[0];
@@ -144,7 +145,9 @@ export default function PublicReportPage() {
         setLng(String(primeiro.lng));
         setModoLocal("coordenada");
         setGeoStatus("ok");
+        setLocalEntidade(primeiro.entidade ?? "");
       } else {
+        setLocalEntidade("");
         setEnderecoAviso(
           res.data.aviso ?? "Nenhum endereço encontrado. Marque o ponto no mapa.",
         );
@@ -188,8 +191,12 @@ export default function PublicReportPage() {
       });
       setProtocolo(res.data.protocolo);
       setEnviado(true);
-    } catch {
-      setErro("Não foi possível enviar o registro. Confira os dados e tente novamente.");
+    } catch (err) {
+      const e = err as { response?: { data?: { error?: string } } };
+      setErro(
+        e.response?.data?.error ??
+          "Não foi possível enviar o registro. Confira os dados e tente novamente.",
+      );
     } finally {
       setEnviando(false);
     }
@@ -498,6 +505,11 @@ export default function PublicReportPage() {
             <p className="text-[11px] text-on-surface-variant mt-2">
               Arraste o marcador até o local exato do ocorrido.
             </p>
+            {localEntidade && (
+              <p className="text-[11px] text-secondary font-bold mt-1">
+                Localização em {localEntidade}
+              </p>
+            )}
           </div>
         </section>
 
