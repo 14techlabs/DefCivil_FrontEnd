@@ -149,7 +149,7 @@ export function CreateOccurrenceModal({ open, onClose, onCreated, zonas }: Props
   return (
     <ModalShell open={open} onClose={onClose} maxWidth="max-w-2xl">
       {/* cabeçalho */}
-      <div className="bg-surface-container-low px-8 py-6">
+      <div className="bg-surface-container-low px-8 py-6 shrink-0">
         <MetaTag>NOVA OCORRÊNCIA</MetaTag>
         <h2 className="font-headline font-black text-2xl tracking-tighter mt-2 text-primary">
           Registrar Nova Ocorrência
@@ -157,7 +157,7 @@ export function CreateOccurrenceModal({ open, onClose, onCreated, zonas }: Props
       </div>
 
       {/* corpo */}
-      <div className="p-8 space-y-5 max-h-[70vh] overflow-y-auto">
+      <div className="p-8 space-y-5 flex-1 min-h-0 overflow-y-auto">
 
         {/* categoria */}
         <div>
@@ -344,7 +344,7 @@ export function CreateOccurrenceModal({ open, onClose, onCreated, zonas }: Props
       </div>
 
       {/* rodapé */}
-      <div className="px-8 py-5 flex gap-3 border-t border-outline-variant/20">
+      <div className="px-8 py-5 flex gap-3 border-t border-outline-variant/20 shrink-0">
         <Btn variant="secondary" onClick={onClose} disabled={saving} full>
           Cancelar
         </Btn>

@@ -133,14 +133,14 @@ export function CreateZoneModal({ open, onClose, onCreated }: CreateZoneModalPro
       {/* passo 0 */}
       {step === 0 && (
         <>
-          <div className="bg-surface-container-low px-8 py-6">
+          <div className="bg-surface-container-low px-8 py-6 shrink-0">
             <MetaTag>NOVA ZONA · PASSO 1/2</MetaTag>
             <h2 className="font-headline font-black text-2xl tracking-tighter mt-2 text-primary">
               Informações da Zona
             </h2>
           </div>
 
-          <div className="p-8 space-y-5 max-h-[70vh] overflow-y-auto">
+          <div className="p-8 space-y-5 flex-1 min-h-0 overflow-y-auto">
             {/* nome */}
             <div>
               <MetaTag className="block mb-2">Nome</MetaTag>
@@ -230,7 +230,7 @@ export function CreateZoneModal({ open, onClose, onCreated }: CreateZoneModalPro
       {/* passo 1 */}
       {step === 1 && (
         <>
-          <div className="bg-surface-container-low px-8 py-6">
+          <div className="bg-surface-container-low px-8 py-6 shrink-0">
             <MetaTag>NOVA ZONA · PASSO 2/2</MetaTag>
             <h2 className="font-headline font-black text-2xl tracking-tighter mt-2 text-primary">
               Desenhe a Área no Mapa
@@ -268,7 +268,7 @@ export function CreateZoneModal({ open, onClose, onCreated }: CreateZoneModalPro
           )}
 
           {/* actions */}
-          <div className="px-8 py-5 flex gap-3 border-t border-outline-variant/20">
+          <div className="px-8 py-5 flex gap-3 border-t border-outline-variant/20 shrink-0">
             <Btn variant="secondary" icon="arrow_back" onClick={() => setStep(0)} disabled={saving}>
               Voltar
             </Btn>

@@ -347,6 +347,7 @@ const NAV = [
   { id: "team", label: "Equipe", icon: "groups" },
   { id: "history", label: "Histórico", icon: "history" },
   { id: "entity", label: "Entidade", icon: "account_balance" },
+  { id: "admin", label: "Admin", icon: "admin_panel_settings" },
   { id: "profile", label: "Meu Perfil", icon: "badge" },
 ];
 
