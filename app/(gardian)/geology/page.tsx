@@ -1,7 +1,7 @@
+// DefCivil_FrontEnd/app/(gardian)/geology/page.tsx
 "use client";
 
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { MapPlaceholder } from "@/app/components/MapPlaceholder";
 import { Btn, Chip, Icon, MetaTag, SectionHeader } from "@/app/components/Primitives";
 import { useGardian } from "@/app/components/GardianContext";
 import { ADAPTABRASIL } from "@/app/data/adaptabrasil";
@@ -15,6 +15,13 @@ type GeoNode = {
   parent?: string;
   leaf?: boolean;
   municipio?: string;
+  descricao_completa?: string | null;
+  faixa?: string | null;
+  cor?: string | null;
+  tipo_dado?: "indice" | "fator" | "projecao";
+  cenario?: number | null;
+  cenario_nome?: string;
+  ano?: number;
   composition?: { id: string; label: string; value: number }[];
   factors?: { id?: string; label: string; value?: number | null }[];
 };
@@ -39,6 +46,8 @@ type ZonaResumo = {
   cadastro: CadastroZona | null;
 };
 
+type CenarioOpcao = { valor: number | null; nome: string };
+
 type ArvoreResposta = {
   municipio?: string;
   indicador?: number;
@@ -46,6 +55,17 @@ type ArvoreResposta = {
   root?: string;
   geo: Record<string, GeoNode>;
   zona?: ZonaResumo;
+  cenario?: number | null;
+  cenario_nome?: string;
+  cenarios_disponiveis?: CenarioOpcao[];
+  resumo_tipos?: Record<string, number>;
+};
+
+/** Rótulo e cor por tipo de dado — evita ler projeção como se fosse medição. */
+const TIPO_DADO: Record<string, { label: string; tone: "secondary" | "warning" | "neutral"; icone: string }> = {
+  indice: { label: "ÍNDICE COMPOSTO", tone: "secondary", icone: "account_tree" },
+  fator: { label: "FATOR", tone: "neutral", icone: "subdirectory_arrow_right" },
+  projecao: { label: "PROJEÇÃO — NÃO É MEDIÇÃO", tone: "warning", icone: "trending_up" },
 };
 
 const VAZIO: Record<string, GeoNode> = {};
@@ -167,6 +187,12 @@ export default function GeologyPage() {
   const [zonas, setZonas] = useState<ZonaResumo[]>([]);
   const [zonaSel, setZonaSel] = useState<number | null>(null);
 
+  // Cenário: null = dado observado. Projeção só aparece se for pedida.
+  const [cenario, setCenario] = useState<number | null>(null);
+  const [cenariosDisp, setCenariosDisp] = useState<CenarioOpcao[]>([
+    { valor: null, nome: "Dado observado" },
+  ]);
+
   // ── árvore vinda da API ──
   // O resultado é guardado junto com a "chave" da consulta que o produziu
   // (indicador|ano|zona|tentativa). Assim `loading` e `erro` são DERIVADOS da
@@ -219,7 +245,7 @@ export default function GeologyPage() {
 
   /* ── carrega a árvore de indicadores ── */
   const aplicavel = indicadorId != null && porMunicipio;
-  const chave = `${indicadorId}|${anoBase}|${zonaSel ?? ""}|${tentativa}`;
+  const chave = `${indicadorId}|${anoBase}|${zonaSel ?? ""}|${cenario ?? ""}|${tentativa}`;
 
   const carregado = resultado?.chave === chave;
   const falhou = falha?.chave === chave;
@@ -242,6 +268,7 @@ export default function GeologyPage() {
       ano: String(anoBase),
     });
     if (zonaSel != null) params.set("zona", String(zonaSel));
+    if (cenario != null) params.set("cenario", String(cenario));
 
     api
       .get<ArvoreResposta>(`/geologia/arvore/?${params.toString()}`)
@@ -251,6 +278,9 @@ export default function GeologyPage() {
         if (geo && Object.keys(geo).length > 0) {
           setResultado({ chave, geo, municipio: res.data.municipio ?? null });
           setPath([res.data.root ?? "root"]);
+          if (res.data.cenarios_disponiveis?.length) {
+            setCenariosDisp(res.data.cenarios_disponiveis);
+          }
         } else {
           setFalha({ chave, msg: "O AdaptaBrasil não retornou dados para este indicador." });
         }
@@ -267,7 +297,7 @@ export default function GeologyPage() {
     return () => {
       cancelado = true;
     };
-  }, [aplicavel, carregado, falhou, chave, indicadorId, anoBase, zonaSel, msgErro, campoErro]);
+  }, [aplicavel, carregado, falhou, chave, indicadorId, anoBase, zonaSel, cenario, msgErro, campoErro]);
 
   /* ── navegação no drill-down ── */
   const currentId = path[path.length - 1];
@@ -373,11 +403,37 @@ export default function GeologyPage() {
                 ))}
               </select>
             </div>
-            <Btn variant="primary" icon="tune">
-              Opções
-            </Btn>
+            <div>
+              <MetaTag className="block mb-1.5">TIPO DE DADO</MetaTag>
+              <select
+                value={cenario ?? ""}
+                onChange={(e) => setCenario(e.target.value ? Number(e.target.value) : null)}
+                title="Dado observado é medição; cenários são projeções climáticas"
+                className="bg-white rounded-lg px-4 py-2.5 text-sm font-medium focus:ring-2 focus:ring-secondary outline-none min-w-[200px]"
+              >
+                {cenariosDisp.map((c) => (
+                  <option key={c.valor ?? "obs"} value={c.valor ?? ""}>
+                    {c.nome}
+                  </option>
+                ))}
+              </select>
+            </div>
           </div>
         </div>
+
+        {cenario != null && (
+          <div className="mt-4 flex items-start gap-3 px-4 py-3 rounded-lg bg-warning/10 border-l-4 border-warning">
+            <Icon name="trending_up" className="text-warning text-[18px] mt-0.5" />
+            <p className="text-[12px] text-on-surface leading-relaxed">
+              Você está vendo uma <strong>projeção climática</strong>
+              {cenariosDisp.find((c) => c.valor === cenario)?.nome
+                ? ` (${cenariosDisp.find((c) => c.valor === cenario)!.nome})`
+                : ""}
+              , não uma medição. Use para planejamento de longo prazo — para a
+              situação atual, volte a &quot;Dado observado&quot;.
+            </p>
+          </div>
+        )}
 
         {zonaSelData && (
           <div className="mt-4 flex items-start gap-3 px-4 py-3 rounded-lg bg-secondary/8">
@@ -566,6 +622,19 @@ export default function GeologyPage() {
                 </div>
               </div>
 
+              {/* Classificação do dado: deixa explícito se é índice composto,
+                  fator isolado ou projeção — informação que muda como o
+                  número deve ser lido. */}
+              {current.tipo_dado && TIPO_DADO[current.tipo_dado] && (
+                <div className="flex items-center gap-2 mb-4 flex-wrap">
+                  <Chip tone={TIPO_DADO[current.tipo_dado].tone}>
+                    {TIPO_DADO[current.tipo_dado].label}
+                  </Chip>
+                  {current.ano && <MetaTag>ANO-BASE {current.ano}</MetaTag>}
+                  {current.faixa && <MetaTag>FAIXA: {current.faixa.toUpperCase()}</MetaTag>}
+                </div>
+              )}
+
               <AdaptaGauge value={current.value ?? 0} size="lg" />
 
               {current.description && (
@@ -573,6 +642,25 @@ export default function GeologyPage() {
                   {current.description}
                 </p>
               )}
+
+              {/* Por que este dado importa — texto longo do AdaptaBrasil. */}
+              {current.descricao_completa &&
+                current.descricao_completa !== current.description && (
+                  <details className="mt-4 card-recessed p-4 group">
+                    <summary className="flex items-center gap-2 cursor-pointer list-none">
+                      <Icon
+                        name="expand_more"
+                        className="text-secondary text-[18px] transition-transform group-open:rotate-180"
+                      />
+                      <MetaTag className="text-secondary">
+                        POR QUE ESTE INDICADOR É RELEVANTE
+                      </MetaTag>
+                    </summary>
+                    <p className="text-[12px] text-on-surface-variant leading-relaxed mt-3 whitespace-pre-line">
+                      {current.descricao_completa}
+                    </p>
+                  </details>
+                )}
             </div>
 
             {/* Composição */}
@@ -582,7 +670,7 @@ export default function GeologyPage() {
                   <h3 className="font-headline font-black text-lg text-primary tracking-tight">
                     Composição
                   </h3>
-                  <Icon name="help" className="text-on-surface-variant text-[16px]" />
+                  <Chip tone="secondary">CLIQUE PARA DETALHAR</Chip>
                 </div>
                 <div className="space-y-2">
                   {current.composition.map((c) => {
@@ -619,7 +707,7 @@ export default function GeologyPage() {
                   <h3 className="font-headline font-black text-lg text-primary tracking-tight">
                     Fatores Influenciadores
                   </h3>
-                  <Icon name="help" className="text-on-surface-variant text-[16px]" />
+                  <Chip tone="neutral">NÃO SE DECOMPÕEM</Chip>
                 </div>
                 <div className="space-y-2 max-h-[420px] overflow-y-auto pr-2">
                   {current.factors.map((f, i) => (
@@ -642,18 +730,13 @@ export default function GeologyPage() {
             )}
           </div>
 
-          {/* Coluna direita — mapa, legenda, ranking */}
+          {/* Coluna direita — legenda e ranking */}
           <div className="col-span-12 lg:col-span-5 space-y-5">
-            <div className="card-tonal p-2 shadow-ambient-sm relative">
-              {alertMode && (
-                <div className="absolute top-6 left-6 z-20">
-                  <div className="bg-error text-white px-4 py-2 rounded-md text-[11px] font-black uppercase tracking-mono-tight flex items-center gap-2 shadow-ambient">
-                    <Icon name="warning" filled className="text-[16px]" /> NÍVEL CRÍTICO DETECTADO
-                  </div>
-                </div>
-              )}
-              <MapPlaceholder variant="topo" height={420} />
-            </div>
+            {alertMode && (
+              <div className="bg-error text-white px-4 py-3 rounded-lg text-[11px] font-black uppercase tracking-mono-tight flex items-center gap-2 shadow-ambient">
+                <Icon name="warning" filled className="text-[16px]" /> NÍVEL CRÍTICO DETECTADO
+              </div>
+            )}
 
             <LevelLegend />
 

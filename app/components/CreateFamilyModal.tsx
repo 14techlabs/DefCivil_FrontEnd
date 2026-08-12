@@ -28,7 +28,6 @@ type AnimalForm = {
   nome: string;
   especie: string;
   porte: "pequeno" | "medio" | "grande";
-  quantidade: string;
 };
 
 const CIDADAO_VAZIO: CidadaoForm = {
@@ -39,7 +38,7 @@ const CIDADAO_VAZIO: CidadaoForm = {
   responsavel: true,
 };
 
-const ANIMAL_VAZIO: AnimalForm = { nome: "", especie: "", porte: "medio", quantidade: "1" };
+const ANIMAL_VAZIO: AnimalForm = { nome: "", especie: "", porte: "medio" };
 
 const CAMPO =
   "w-full min-w-0 bg-surface-container-low rounded-lg px-3.5 py-2.5 text-xs font-medium focus:ring-2 focus:ring-secondary outline-none";
@@ -173,7 +172,6 @@ export function CreateFamilyModal({ open, onClose, onCreated }: CreateFamilyModa
             nome: a.nome.trim(),
             especie: a.especie.trim(),
             porte: a.porte,
-            quantidade: Number(a.quantidade) || 1,
           })),
         },
       );
@@ -431,16 +429,6 @@ export function CreateFamilyModal({ open, onClose, onCreated }: CreateFamilyModa
                         <option value="medio">Médio</option>
                         <option value="grande">Grande</option>
                       </select>
-                    </div>
-                    <div>
-                      <MetaTag className="block mb-1.5">QUANTIDADE</MetaTag>
-                      <input
-                        type="number"
-                        min={1}
-                        value={a.quantidade}
-                        onChange={(e) => atualizarAnimal(i, "quantidade", e.target.value)}
-                        className={CAMPO}
-                      />
                     </div>
                   </div>
                 </div>

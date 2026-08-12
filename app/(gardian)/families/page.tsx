@@ -6,7 +6,11 @@ import { Btn, Chip, Icon, KPI, MetaTag } from "@/app/components/Primitives";
 import { useGardian } from "@/app/components/GardianContext";
 import { api } from "@/app/services/Api";
 import { CreateFamilyModal } from "@/app/components/CreateFamilyModal";
-import { EditFamilyModal, TransferCidadaoModal } from "@/app/components/FamilyModals";
+import {
+  DesligarCidadaoModal,
+  EditFamilyModal,
+  TransferCidadaoModal,
+} from "@/app/components/FamilyModals";
 
 /* ── tipos vindos da API (GET /familias/) ── */
 
@@ -21,6 +25,11 @@ type Cidadao = {
   responsavel: boolean;
   telefone: string;
   necessidade_especial: string;
+  ativo: boolean;
+  motivo_desligamento: string;
+  motivo_label: string;
+  data_desligamento: string | null;
+  observacao_desligamento: string;
 };
 
 type Animal = {
@@ -29,7 +38,6 @@ type Animal = {
   especie: string;
   porte: "pequeno" | "medio" | "grande";
   porte_label: string;
-  quantidade: number;
   observacoes: string;
 };
 
@@ -53,6 +61,7 @@ type Familia = {
   area_de_risco: boolean;
   observacoes: string;
   cidadaos: Cidadao[];
+  cidadaos_desligados: Cidadao[];
   animais: Animal[];
   total_cidadaos: number;
   total_animais: number;
@@ -84,15 +93,17 @@ export default function FamiliesPage() {
   const [erro, setErro] = useState<string | null>(null);
   const [recarga, setRecarga] = useState(0);
 
+  const [busca, setBusca] = useState("");
   const [filtroZona, setFiltroZona] = useState<number | "todas" | "sem_zona">("todas");
   const [selectedId, setSelectedId] = useState<number | null>(null);
 
   const [novoCidadao, setNovoCidadao] = useState({ nome: "", cpf: "", nascimento: "", parentesco: "" });
-  const [novoAnimal, setNovoAnimal] = useState({ nome: "", especie: "", porte: "medio", quantidade: "1" });
+  const [novoAnimal, setNovoAnimal] = useState({ nome: "", especie: "", porte: "medio" });
   const [salvando, setSalvando] = useState(false);
   const [modalAberto, setModalAberto] = useState(false);
   const [editando, setEditando] = useState(false);
   const [transferindo, setTransferindo] = useState<Cidadao | null>(null);
+  const [desligando, setDesligando] = useState<Cidadao | null>(null);
 
   const msgErro = useCallback(
     (e: unknown, padrao: string) =>
@@ -151,10 +162,26 @@ export default function FamiliesPage() {
   const familias = useMemo(() => dados?.familias ?? [], [dados]);
 
   const filtradas = useMemo(() => {
-    if (filtroZona === "todas") return familias;
-    if (filtroZona === "sem_zona") return familias.filter((f) => f.zona == null);
-    return familias.filter((f) => f.zona === filtroZona);
-  }, [familias, filtroZona]);
+    let lista = familias;
+    if (filtroZona === "sem_zona") lista = lista.filter((f) => f.zona == null);
+    else if (filtroZona !== "todas") lista = lista.filter((f) => f.zona === filtroZona);
+
+    const termo = busca.trim().toLowerCase();
+    if (!termo) return lista;
+    // Filtra no cliente porque a lista já está carregada; para bases grandes
+    // o endpoint /familias/?busca= faz o mesmo no servidor.
+    const digitos = termo.replace(/\D/g, "");
+    return lista.filter(
+      (f) =>
+        f.nome.toLowerCase().includes(termo) ||
+        f.endereco.toLowerCase().includes(termo) ||
+        f.cidadaos.some(
+          (c) =>
+            c.nome.toLowerCase().includes(termo) ||
+            (digitos.length >= 3 && (c.cpf ?? "").includes(digitos)),
+        ),
+    );
+  }, [familias, filtroZona, busca]);
 
   const familia = useMemo(
     () => familias.find((f) => f.id === selectedId) ?? filtradas[0] ?? familias[0] ?? null,
@@ -190,13 +217,14 @@ export default function FamiliesPage() {
     }
   };
 
-  const removerCidadao = async (id: number) => {
+  const reativarCidadao = async (id: number) => {
     if (!familia) return;
     try {
-      await api.delete(`/familias/${familia.id}/cidadaos/${id}/`);
+      await api.post(`/familias/${familia.id}/cidadaos/${id}/reativar/`, {});
       setRecarga((n) => n + 1);
+      showToast("Cidadão reativado.");
     } catch (e) {
-      showToast(msgErro(e, "Não foi possível remover o cidadão."), "error");
+      showToast(msgErro(e, "Não foi possível reativar o cidadão."), "error");
     }
   };
 
@@ -212,9 +240,8 @@ export default function FamiliesPage() {
         nome: novoAnimal.nome.trim(),
         especie: novoAnimal.especie.trim(),
         porte: novoAnimal.porte,
-        quantidade: Number(novoAnimal.quantidade) || 1,
       });
-      setNovoAnimal({ nome: "", especie: "", porte: "medio", quantidade: "1" });
+      setNovoAnimal({ nome: "", especie: "", porte: "medio" });
       setRecarga((n) => n + 1);
       showToast("Animal vinculado.");
     } catch (e) {
@@ -313,6 +340,15 @@ export default function FamiliesPage() {
           icon="pets"
           tone="secondary"
           sub="Vinculados às famílias"
+        />
+      </div>
+
+      <div>
+        <input
+          value={busca}
+          onChange={(e) => setBusca(e.target.value)}
+          placeholder="Buscar por família, endereço, morador ou CPF…"
+          className="w-full bg-white rounded-lg px-4 py-3 text-sm font-medium focus:ring-2 focus:ring-secondary outline-none shadow-ambient-sm"
         />
       </div>
 
@@ -539,11 +575,12 @@ export default function FamiliesPage() {
                         </button>
                         <button
                           type="button"
-                          onClick={() => removerCidadao(m.id)}
+                          onClick={() => setDesligando(m)}
                           className="text-on-surface-variant hover:text-error"
-                          aria-label={`Remover ${m.nome}`}
+                          title="Desligar do cadastro (óbito, mudança…) — o registro é preservado"
+                          aria-label={`Desligar ${m.nome}`}
                         >
-                          <Icon name="close" className="text-[16px]" />
+                          <Icon name="person_off" className="text-[16px]" />
                         </button>
                       </div>
                     ))}
@@ -603,6 +640,47 @@ export default function FamiliesPage() {
                   </div>
                 </div>
 
+                {/* Cidadãos desligados */}
+                {familia.cidadaos_desligados.length > 0 && (
+                  <div>
+                    <MetaTag className="block mb-3">
+                      DESLIGADOS ({familia.cidadaos_desligados.length})
+                    </MetaTag>
+                    <div className="space-y-2">
+                      {familia.cidadaos_desligados.map((m) => (
+                        <div
+                          key={m.id}
+                          className="flex items-center gap-3 p-3 rounded-lg bg-surface-container-low text-[12px] opacity-70"
+                        >
+                          <div className="w-8 h-8 rounded-md bg-surface-container-high flex items-center justify-center">
+                            <Icon name="person_off" className="text-on-surface-variant text-[16px]" />
+                          </div>
+                          <div className="flex-1 min-w-0">
+                            <p className="font-bold text-primary truncate line-through decoration-1">
+                              {m.nome}
+                            </p>
+                            <p className="text-[10px] text-on-surface-variant">
+                              {m.motivo_label}
+                              {m.data_desligamento
+                                ? ` · ${new Date(m.data_desligamento + "T00:00:00").toLocaleDateString("pt-BR")}`
+                                : ""}
+                            </p>
+                          </div>
+                          <button
+                            type="button"
+                            onClick={() => reativarCidadao(m.id)}
+                            className="text-on-surface-variant hover:text-secondary"
+                            title="Reativar — desfaz o desligamento"
+                            aria-label={`Reativar ${m.nome}`}
+                          >
+                            <Icon name="undo" className="text-[16px]" />
+                          </button>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                )}
+
                 {/* Animais */}
                 <div>
                   <MetaTag className="block mb-3">
@@ -624,9 +702,6 @@ export default function FamiliesPage() {
                         </div>
                         <span className="font-bold text-primary flex-1 truncate">
                           {a.nome || a.especie}
-                          {a.quantidade > 1 && (
-                            <span className="text-on-surface-variant font-normal"> ×{a.quantidade}</span>
-                          )}
                         </span>
                         <Chip tone="secondary">{a.especie}</Chip>
                         <Chip tone="neutral">{a.porte_label}</Chip>
@@ -676,16 +751,6 @@ export default function FamiliesPage() {
                           ))}
                         </select>
                       </div>
-                      <div>
-                        <MetaTag className="block mb-1.5">QUANTIDADE</MetaTag>
-                        <input
-                          type="number"
-                          min={1}
-                          value={novoAnimal.quantidade}
-                          onChange={(e) => setNovoAnimal((v) => ({ ...v, quantidade: e.target.value }))}
-                          className="w-full min-w-0 bg-surface-container-low rounded-lg px-3.5 py-2.5 text-xs font-medium focus:ring-2 focus:ring-secondary outline-none"
-                        />
-                      </div>
                     </div>
                     <Btn
                       variant="secondary"
@@ -731,17 +796,23 @@ export default function FamiliesPage() {
           open={transferindo !== null}
           cidadao={transferindo}
           familiaOrigemId={familia.id}
-          familias={familias.map((f) => ({
-            id: f.id,
-            nome: f.nome,
-            zona_nome: f.zona_nome,
-            total_cidadaos: f.total_cidadaos,
-          }))}
+          origemCoordenadas={familia.coordenadas}
           onClose={() => setTransferindo(null)}
           onDone={(novaId) => {
             setSelectedId(novaId);
             setRecarga((n) => n + 1);
           }}
+        />
+      )}
+
+      {desligando && familia && (
+        <DesligarCidadaoModal
+          key={`desl-${desligando.id}`}
+          open={desligando !== null}
+          cidadao={desligando}
+          familiaId={familia.id}
+          onClose={() => setDesligando(null)}
+          onDone={() => setRecarga((n) => n + 1)}
         />
       )}
     </div>
