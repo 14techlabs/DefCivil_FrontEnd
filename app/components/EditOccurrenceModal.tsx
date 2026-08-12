@@ -20,6 +20,28 @@ interface OcorrenciaEdit {
   anexos: unknown[];
 }
 
+interface AnexoEditavel {
+  nome: string;
+  tamanho: string;
+  tipo: string;
+  arquivo?: File;
+  referenceId?: string;
+}
+
+interface AnexoApi {
+  arquivo?: {
+    nome?: string;
+    reference_id?: string | null;
+  };
+}
+
+function tipoDoArquivo(nome: string): string {
+  const extensao = nome.split(".").pop()?.toLowerCase() ?? "";
+  if (["mp4", "webm", "mov", "avi"].includes(extensao)) return "video";
+  if (["jpg", "jpeg", "png", "gif", "webp", "bmp", "svg"].includes(extensao)) return "foto";
+  return "documento";
+}
+
 interface Props {
   open: boolean;
   onClose: () => void;
@@ -42,7 +64,8 @@ export function EditOccurrenceModal({ open, onClose, onSaved, zonas, ocorrencia 
   const [detectedZonaIds, setDetectedZonaIds] = useState<number[]>([]);
   const [lat, setLat] = useState("");
   const [lng, setLng] = useState("");
-  const [anexos, setAnexos] = useState<{ nome: string; tamanho: string; tipo: string }[]>([]);
+  const [anexos, setAnexos] = useState<AnexoEditavel[]>([]);
+  const [referenciasExcluir, setReferenciasExcluir] = useState<string[]>([]);
 
   // shared
   const [saving, setSaving] = useState(false);
@@ -60,17 +83,44 @@ export function EditOccurrenceModal({ open, onClose, onSaved, zonas, ocorrencia 
       setLat(ocorrencia.coordenadas ? String(ocorrencia.coordenadas.lat) : "");
       setLng(ocorrencia.coordenadas ? String(ocorrencia.coordenadas.lng) : "");
       setAnexos((ocorrencia.anexos ?? []).map((a) => {
-        const item = a as { nome?: string; tipo?: string; tamanho?: string };
+        const item = a as AnexoApi;
+        const nome = item.arquivo?.nome ?? "Arquivo";
         return {
-          nome: item.nome ?? "Arquivo",
-          tamanho: item.tamanho ?? "",
-          tipo: item.tipo ?? "documento",
+          nome,
+          tamanho: "Salvo",
+          tipo: tipoDoArquivo(nome),
+          referenceId: item.arquivo?.reference_id ?? undefined,
         };
       }));
+      setReferenciasExcluir([]);
       setSaving(false);
       setError("");
     }
   }, [open, ocorrencia]);
+
+  const handleFiles = (files: FileList | null) => {
+    if (!files) return;
+    const novos: AnexoEditavel[] = Array.from(files).map((arquivo) => ({
+      nome: arquivo.name,
+      arquivo,
+      tipo: tipoDoArquivo(arquivo.name),
+      tamanho:
+        arquivo.size > 1024 * 1024
+          ? `${(arquivo.size / (1024 * 1024)).toFixed(1).replace(".", ",")} MB`
+          : `${Math.max(1, Math.round(arquivo.size / 1024))} KB`,
+    }));
+    setAnexos((atuais) => [...atuais, ...novos]);
+  };
+
+  const removerAnexo = (index: number) => {
+    setAnexos((atuais) => {
+      const removido = atuais[index];
+      if (removido?.referenceId) {
+        setReferenciasExcluir((referencias) => [...referencias, removido.referenceId!]);
+      }
+      return atuais.filter((_, itemIndex) => itemIndex !== index);
+    });
+  };
 
   /* ── submit ── */
   const handleSubmit = async () => {
@@ -97,7 +147,66 @@ export function EditOccurrenceModal({ open, onClose, onSaved, zonas, ocorrencia 
       if (zonaId !== null) body.zona = zonaId;
 
       await api.patch(`/ocorrencias/${ocorrencia.id}/`, body);
-      showToast("Ocorrência atualizada com sucesso.");
+
+      const novosAnexos = anexos.filter(
+        (anexo): anexo is AnexoEditavel & { arquivo: File } => anexo.arquivo instanceof File,
+      );
+      const operacoes = [
+        ...novosAnexos.map((anexo) => {
+          const formData = new FormData();
+          formData.append("file", anexo.arquivo, anexo.nome);
+          return {
+            tipo: "adicionar" as const,
+            nome: anexo.nome,
+            promise: api.post(`/ocorrencias/${ocorrencia.id}/anexos/`, formData),
+          };
+        }),
+        ...referenciasExcluir.map((referenceId) =>
+          ({
+            tipo: "excluir" as const,
+            referenceId,
+            promise: api.delete("/api/arquivo", { params: { reference_id: referenceId } }),
+          }),
+        ),
+      ];
+      const resultados = await Promise.allSettled(operacoes.map((operacao) => operacao.promise));
+      let operacoesComFalha = resultados
+        .map((resultado, index) => ({ resultado, operacao: operacoes[index] }))
+        .filter(({ resultado }) => resultado.status === "rejected");
+
+      if (operacoesComFalha.length > 0) {
+        try {
+          const atualizada = await api.get<{ anexos: AnexoApi[] }>(
+            `/ocorrencias/${ocorrencia.id}/`,
+          );
+          const anexosAtuais = atualizada.data.anexos ?? [];
+          const referenciasAtuais = new Set(
+            anexosAtuais.map((item) => item.arquivo?.reference_id).filter(Boolean),
+          );
+          const nomesAtuais = new Set(
+            anexosAtuais.map((item) => item.arquivo?.nome).filter(Boolean),
+          );
+
+          operacoesComFalha = operacoesComFalha.filter(({ operacao }) =>
+            operacao.tipo === "adicionar"
+              ? !nomesAtuais.has(operacao.nome)
+              : referenciasAtuais.has(operacao.referenceId),
+          );
+        } catch {
+          // Mantém as falhas originais quando não for possível confirmar o estado final
+        }
+      }
+
+      const falhas = operacoesComFalha.length;
+
+      if (falhas > 0) {
+        showToast(
+          `Ocorrência atualizada, mas ${falhas} alteração(ões) de anexo não foram concluídas.`,
+          "error",
+        );
+      } else {
+        showToast("Ocorrência atualizada com sucesso.");
+      }
       onSaved();
       onClose();
     } catch (err: unknown) {
@@ -149,9 +258,8 @@ export function EditOccurrenceModal({ open, onClose, onSaved, zonas, ocorrencia 
           else if (ids.length > 1) setZonaId(null);
         }}
         anexos={anexos}
-        onFiles={() => {}}
-        onRemoveAnexo={() => {}}
-        anexosReadOnly
+        onFiles={handleFiles}
+        onRemoveAnexo={removerAnexo}
         coordsHint={!ocorrencia.coordenadas}
         error={error}
       />

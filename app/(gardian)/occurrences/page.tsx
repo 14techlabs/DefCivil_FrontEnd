@@ -38,6 +38,16 @@ interface Ocorrencia {
   endereco?: string;
 }
 
+interface OcorrenciaAnexo {
+  id?: number;
+  arquivo?: {
+    id?: number;
+    nome?: string;
+    reference_id?: string | null;
+    local_storage?: string | null;
+  };
+}
+
 interface OcorrenciaListResponse {
   ocorrencias: Ocorrencia[];
 }
@@ -121,6 +131,23 @@ function formatDate(iso: string): string {
     })
     .toUpperCase()
     .replace(/\./g, "");
+}
+
+function mimeTypeDoArquivo(nome: string): string | null {
+  const extensao = nome.split(".").pop()?.toLowerCase();
+  const tipos: Record<string, string> = {
+    pdf: "application/pdf",
+    jpg: "image/jpeg",
+    jpeg: "image/jpeg",
+    png: "image/png",
+    gif: "image/gif",
+    webp: "image/webp",
+    bmp: "image/bmp",
+    mp4: "video/mp4",
+    webm: "video/webm",
+    mov: "video/quicktime",
+  };
+  return extensao ? tipos[extensao] ?? null : null;
 }
 
 // --- componente ---
@@ -276,6 +303,46 @@ function OccurrencesContent() {
 
   const toggleMarcada = (id: number) =>
     setMarcadas((prev) => (prev.includes(id) ? prev.filter((x) => x !== id) : [...prev, id]));
+
+  const abrirAnexo = async (anexo: OcorrenciaAnexo) => {
+    const arquivo = anexo.arquivo;
+    if (!arquivo?.reference_id) {
+      showToast("Este anexo não possui um arquivo disponível para visualização.", "error");
+      return;
+    }
+
+    const novaAba = window.open("", "_blank");
+    if (novaAba) {
+      novaAba.document.title = "Carregando anexo…";
+      novaAba.document.body.textContent = "Carregando anexo…";
+    }
+
+    try {
+      const response = await api.get<Blob>("/api/arquivo", {
+        params: { reference_id: arquivo.reference_id },
+        responseType: "blob",
+      });
+      const headerContentType = response.headers["content-type"];
+      const tipoPeloNome = mimeTypeDoArquivo(arquivo.nome ?? "");
+      const contentType = tipoPeloNome
+        ?? (typeof headerContentType === "string" ? headerContentType : "application/octet-stream");
+      const blob = new Blob([response.data], { type: contentType });
+      const url = URL.createObjectURL(blob);
+      if (novaAba) {
+        novaAba.location.replace(url);
+      } else {
+        const link = document.createElement("a");
+        link.href = url;
+        link.target = "_blank";
+        link.rel = "noopener noreferrer";
+        link.click();
+      }
+      window.setTimeout(() => URL.revokeObjectURL(url), 60_000);
+    } catch {
+      novaAba?.close();
+      showToast("Não foi possível abrir o anexo. Tente novamente.", "error");
+    }
+  };
 
   const agruparEmEvento = () => {
     if (marcadas.length < 2) {
@@ -910,12 +977,14 @@ function OccurrencesContent() {
                       </p>
                     ) : (
                       <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
-                        {(selecionada.anexos as {
-                          nome?: string;
-                          tipo?: string;
-                          tamanho?: string;
-                        }[]).map((a, i) => {
-                          const tipo = a.tipo ?? "documento";
+                        {(selecionada.anexos as OcorrenciaAnexo[]).map((a, i) => {
+                          const nome = a.arquivo?.nome ?? `Arquivo ${i + 1}`;
+                          const extensao = nome.split(".").pop()?.toLowerCase() ?? "";
+                          const tipo = ["mp4", "webm", "mov", "avi"].includes(extensao)
+                            ? "video"
+                            : ["jpg", "jpeg", "png", "gif", "webp", "bmp", "svg"].includes(extensao)
+                              ? "foto"
+                              : "documento";
                           const icone =
                             tipo === "video"
                               ? "movie"
@@ -926,7 +995,7 @@ function OccurrencesContent() {
                             <button
                               key={i}
                               type="button"
-                              onClick={() => showToast(`Abrindo ${a.nome ?? "anexo"} (visualização simulada).`)}
+                              onClick={() => void abrirAnexo(a)}
                               className="flex items-center gap-3 p-3 rounded-lg bg-surface-container-low hover:bg-surface-container transition-all text-left"
                             >
                               <div
@@ -950,10 +1019,10 @@ function OccurrencesContent() {
                               </div>
                               <div className="min-w-0 flex-1">
                                 <p className="text-[12px] font-bold text-primary truncate">
-                                  {a.nome ?? `Arquivo ${i + 1}`}
+                                  {nome}
                                 </p>
                                 <p className="text-[10px] font-mono font-bold text-slate-400 uppercase">
-                                  {tipo} · {a.tamanho ?? "—"}
+                                  {tipo} · {extensao || "arquivo"}
                                 </p>
                               </div>
                               <Icon

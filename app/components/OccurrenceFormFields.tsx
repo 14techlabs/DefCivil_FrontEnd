@@ -69,6 +69,7 @@ interface OccurrenceFormFieldsProps {
   coordsHint?: boolean;
   // erro
   error: string;
+  fieldErrors?: Record<string, string>;
 }
 
 /* ───────────── campos compartilhados ───────────── */
@@ -97,9 +98,24 @@ export function OccurrenceFormFields({
   anexosReadOnly = false,
   coordsHint = false,
   error,
+  fieldErrors = {},
 }: OccurrenceFormFieldsProps) {
   return (
     <div className="p-8 space-y-5 max-h-[70vh] overflow-y-auto">
+      {error && (
+        <div
+          role="alert"
+          aria-live="assertive"
+          className="sticky top-0 z-20 flex items-start gap-3 rounded-lg border border-error/30 bg-error-container p-4 text-on-error-container shadow-ambient-sm"
+        >
+          <Icon name="error" filled className="mt-0.5 shrink-0 text-[22px] text-error" />
+          <div>
+            <p className="text-sm font-black">Revise o formulário</p>
+            <p className="mt-1 text-sm font-medium leading-relaxed">{error}</p>
+          </div>
+        </div>
+      )}
+
       {/* categoria */}
       <div>
         <MetaTag className="block mb-2">Categoria</MetaTag>
@@ -129,27 +145,37 @@ export function OccurrenceFormFields({
         <div>
           <MetaTag className="block mb-2">Título</MetaTag>
           <input
+            id="occurrence-title"
             value={titulo}
             onChange={(e) => setTitulo(e.target.value)}
             placeholder="ex: rachadura em encosta"
             className="w-full bg-surface-container-low border-none rounded-lg px-4 py-3 text-sm font-medium text-primary focus:ring-2 focus:ring-secondary placeholder:text-on-surface-variant/60"
           />
+          {fieldErrors.titulo && (
+            <p className="mt-1.5 text-sm font-semibold text-error">{fieldErrors.titulo}</p>
+          )}
         </div>
 
         <div>
           <MetaTag className="block mb-2">Status</MetaTag>
-          <select
-            value={status}
-            onChange={(e) => setStatus(e.target.value)}
-            className="w-full bg-surface-container-low border-none rounded-lg px-4 py-3 text-sm font-bold text-primary focus:ring-2 focus:ring-secondary"
-          >
-            {status && !(status in STATUS_LABEL) && (
-              <option value={status}>{status}</option>
-            )}
-            {(Object.entries(STATUS_LABEL) as [StatusOcorrencia, string][]).map(([val, lbl]) => (
-              <option key={val} value={val}>{lbl}</option>
-            ))}
-          </select>
+          <div className="relative">
+            <select
+              value={status}
+              onChange={(e) => setStatus(e.target.value)}
+              className="w-full appearance-none bg-surface-container-low border-none rounded-lg py-3 pl-4 pr-10 text-sm font-bold text-primary focus:ring-2 focus:ring-secondary"
+            >
+              {status && !(status in STATUS_LABEL) && (
+                <option value={status}>{status}</option>
+              )}
+              {(Object.entries(STATUS_LABEL) as [StatusOcorrencia, string][]).map(([val, lbl]) => (
+                <option key={val} value={val}>{lbl}</option>
+              ))}
+            </select>
+            <Icon
+              name="keyboard_arrow_down"
+              className="pointer-events-none absolute right-4 top-1/2 -translate-y-1/2 text-[18px] text-primary"
+            />
+          </div>
         </div>
       </div>
 
@@ -158,6 +184,7 @@ export function OccurrenceFormFields({
         <div>
           <MetaTag className="block mb-2">Latitude</MetaTag>
           <input
+            id="occurrence-latitude"
             type="number"
             step="any"
             value={lat}
@@ -169,6 +196,7 @@ export function OccurrenceFormFields({
         <div>
           <MetaTag className="block mb-2">Longitude</MetaTag>
           <input
+            id="occurrence-longitude"
             type="number"
             step="any"
             value={lng}
@@ -178,6 +206,9 @@ export function OccurrenceFormFields({
           />
         </div>
       </div>
+      {fieldErrors.coordenadas && (
+        <p className="-mt-3 text-sm font-semibold text-error">{fieldErrors.coordenadas}</p>
+      )}
 
       {/* mapa de coordenadas */}
       {coordsHint && !lat.trim() && !lng.trim() && (
@@ -197,18 +228,26 @@ export function OccurrenceFormFields({
       {/* zona; auto-detectada pelo mapa */}
       {detectedZonaIds.length > 1 && (
         <div>
-          <MetaTag className="block mb-2">Zonas sobrepostas — selecione uma</MetaTag>
-          <select
-            value={zonaId ?? ""}
-            onChange={(e) => setZonaId(e.target.value ? Number(e.target.value) : null)}
-            className="w-full bg-surface-container-low border-none rounded-lg px-4 py-3 text-sm font-bold text-primary focus:ring-2 focus:ring-secondary"
-          >
-            <option value="">— selecione —</option>
-            {detectedZonaIds.map((id) => {
-              const z = zonas.find((z) => z.id === id);
-              return <option key={id} value={id}>{z?.nome ?? `Zona #${id}`}</option>;
-            })}
-          </select>
+          <MetaTag className="block mb-2">Zonas sobrepostas — selecione uma zona</MetaTag>
+          <div className="relative">
+            <select
+              value={zonaId ?? ""}
+              onChange={(e) => setZonaId(e.target.value ? Number(e.target.value) : null)}
+              className={`w-full appearance-none bg-surface-container-low border-none rounded-lg py-3 pl-4 pr-12 text-sm font-bold focus:ring-2 focus:ring-secondary ${
+                zonaId === null ? "text-on-surface-variant" : "text-primary"
+              }`}
+            >
+              <option value="">Selecione uma zona</option>
+              {detectedZonaIds.map((id) => {
+                const z = zonas.find((z) => z.id === id);
+                return <option key={id} value={id}>{z?.nome ?? `Zona #${id}`}</option>;
+              })}
+            </select>
+            <Icon
+              name="keyboard_arrow_down"
+              className="pointer-events-none absolute right-4 top-1/2 -translate-y-1/2 text-[20px] text-gray"
+            />
+          </div>
         </div>
       )}
       {detectedZonaIds.length === 0 && (
@@ -228,12 +267,16 @@ export function OccurrenceFormFields({
       <div>
         <MetaTag className="block mb-2">Relato Detalhado</MetaTag>
         <textarea
+          id="occurrence-description"
           rows={4}
           value={descricao}
           onChange={(e) => setDescricao(e.target.value)}
-          placeholder="descreva o que foi observado, dimensões aproximadas, número de pessoas afetadas…"
+          placeholder="Descreva o que foi observado, dimensões aproximadas, número de pessoas afetadas…"
           className="w-full bg-surface-container-low border-none rounded-lg px-4 py-3 text-sm font-medium text-primary focus:ring-2 focus:ring-secondary placeholder:text-on-surface-variant/60 resize-none"
         />
+        {fieldErrors.descricao && (
+          <p className="mt-1.5 text-sm font-semibold text-error">{fieldErrors.descricao}</p>
+        )}
       </div>
 
       {/* anexos */}
@@ -255,7 +298,10 @@ export function OccurrenceFormFields({
               multiple
               accept="image/*,video/*,.pdf"
               className="hidden"
-              onChange={(e) => onFiles(e.target.files)}
+              onChange={(e) => {
+                onFiles(e.target.files);
+                e.target.value = "";
+              }}
             />
           </label>
         )}
@@ -289,10 +335,6 @@ export function OccurrenceFormFields({
         )}
       </div>
 
-      {/* erro */}
-      {error && (
-        <p className="text-[12px] text-red-600 font-medium">{error}</p>
-      )}
     </div>
   );
 }
