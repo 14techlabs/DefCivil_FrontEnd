@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import axios from "axios";
 import dynamic from "next/dynamic";
 import { Btn, Chip, Icon, MetaTag } from "@/app/components/Primitives";
 import {
@@ -21,6 +22,36 @@ interface EventoPublico {
   nome: string;
   resumoPublico: string;
   recomendacoes: string[];
+}
+
+function mensagemApi(error: unknown, fallback: string): string {
+  if (!axios.isAxiosError(error)) return fallback;
+
+  const data = error.response?.data;
+  if (data && typeof data === "object") {
+    const payload = data as Record<string, unknown>;
+    const mensagem = payload.error ?? payload.detail ?? payload.message;
+
+    if (typeof mensagem === "string" && mensagem.trim()) return mensagem;
+
+    for (const valor of Object.values(payload)) {
+      if (typeof valor === "string" && valor.trim()) return valor;
+      if (Array.isArray(valor)) {
+        const textos = valor.filter((item): item is string => typeof item === "string");
+        if (textos.length > 0) return textos.join(" ");
+      }
+    }
+  }
+
+  if (!error.response) {
+    return "Não foi possível conectar ao serviço. Verifique sua internet e tente novamente.";
+  }
+
+  if (error.response.status >= 500) {
+    return "O serviço está temporariamente indisponível. Tente novamente em alguns instantes.";
+  }
+
+  return fallback;
 }
 
 /* máscaras: aceitam apenas dígitos e formatam enquanto digita */
@@ -159,8 +190,10 @@ export default function PublicReportPage() {
           res.data.aviso ?? "Nenhum endereço encontrado. Marque o ponto no mapa.",
         );
       }
-    } catch {
-      setEnderecoAviso("Não foi possível localizar o endereço. Marque o ponto no mapa.");
+    } catch (error) {
+      setEnderecoAviso(
+        mensagemApi(error, "Não foi possível localizar o endereço. Marque o ponto no mapa."),
+      );
     } finally {
       setGeoBuscando(false);
     }
@@ -198,11 +231,9 @@ export default function PublicReportPage() {
       });
       setProtocolo(res.data.protocolo);
       setEnviado(true);
-    } catch (err) {
-      const e = err as { response?: { data?: { error?: string } } };
+    } catch (error) {
       setErro(
-        e.response?.data?.error ??
-          "Não foi possível enviar o registro. Confira os dados e tente novamente.",
+        mensagemApi(error, "Não foi possível enviar o registro. Confira os dados e tente novamente."),
       );
     } finally {
       setEnviando(false);
@@ -348,21 +379,25 @@ export default function PublicReportPage() {
 
         {/* tipo */}
         <section className="card-tonal p-6 shadow-ambient-sm">
-          <MetaTag className="block mb-3">1. O QUE ESTÁ ACONTECENDO?</MetaTag>
+          <h2 className="mb-4 text-sm font-bold text-primary">1. O que está acontecendo?</h2>
           <div className="grid grid-cols-2 md:grid-cols-4 gap-2">
             {CATEGORIAS.map((c) => (
               <button
                 key={c.id}
                 type="button"
                 onClick={() => setCategoria(c.id)}
-                className={`flex flex-col items-center gap-2 p-4 rounded-lg transition-all ${
+                className={`flex min-h-32 flex-col items-center justify-center gap-2 p-4 rounded-lg transition-all ${
                   categoria === c.id
                     ? "bg-primary text-white shadow-ambient-sm"
                     : "bg-surface-container-low text-on-surface-variant hover:bg-surface-container"
                 }`}
               >
-                <Icon name={c.icon} filled={categoria === c.id} className="text-[24px]" />
-                <span className="text-[11px] font-bold text-center leading-tight">{c.label}</span>
+                <span className="flex flex-col items-center justify-center gap-2">
+                  <Icon name={c.icon} filled={categoria === c.id} className="text-[24px] leading-none" />
+                  <span className="text-sm font-bold text-center leading-snug">
+                    {c.label}
+                  </span>
+                </span>
               </button>
             ))}
           </div>
@@ -370,21 +405,21 @@ export default function PublicReportPage() {
 
         {/* descrição */}
         <section className="card-tonal p-6 shadow-ambient-sm">
-          <MetaTag className="block mb-3">2. DESCREVA A SITUAÇÃO</MetaTag>
+          <h2 className="mb-4 text-sm font-bold text-primary">2. Descreva a situação</h2>
           <textarea
             value={descricao}
             onChange={(e) => setDescricao(e.target.value)}
             rows={5}
             placeholder="Ex.: a água começou a entrar no quintal por volta das 6h e já está na altura do joelho na rua..."
-            className="w-full bg-surface-container-low rounded-lg px-4 py-3 text-sm font-medium focus:ring-2 focus:ring-secondary outline-none resize-none placeholder:text-on-surface-variant/50"
+            className="w-full bg-surface-container-low rounded-lg px-4 py-3 text-base font-medium text-on-surface focus:ring-2 focus:ring-secondary outline-none resize-none placeholder:text-[14px] placeholder:text-on-surface-variant/75"
           />
-          <p className="text-[11px] text-on-surface-variant mt-2">{descricao.length} caracteres</p>
+          <p className="mt-2 text-xs font-medium text-on-surface-variant">{descricao.length} caracteres</p>
         </section>
 
         {/* checklist */}
         <section className="card-tonal p-6 shadow-ambient-sm">
-          <MetaTag className="block mb-1">3. MARQUE O QUE SE APLICA</MetaTag>
-          <p className="text-[11px] text-on-surface-variant mb-4">
+          <h2 className="mb-1 text-sm font-bold text-primary">3. Marque o que se aplica</h2>
+          <p className="mb-4 text-sm text-on-surface-variant">
             Isso ajuda a equipe a definir a prioridade do atendimento.
           </p>
           <div className="space-y-2">
@@ -404,7 +439,7 @@ export default function PublicReportPage() {
                     className={`text-[20px] shrink-0 ${on ? "text-secondary" : "text-on-surface-variant"}`}
                   />
                   <Icon name={c.icon} className={`text-[18px] shrink-0 ${on ? "text-secondary" : "text-on-surface-variant"}`} />
-                  <span className={`text-[13px] font-medium ${on ? "text-primary font-bold" : "text-on-surface"}`}>
+                  <span className={`text-sm font-medium ${on ? "text-primary font-bold" : "text-on-surface"}`}>
                     {c.label}
                   </span>
                 </button>
@@ -415,7 +450,7 @@ export default function PublicReportPage() {
 
         {/* localização */}
         <section className="card-tonal p-6 shadow-ambient-sm">
-          <MetaTag className="block mb-3">4. ONDE É?</MetaTag>
+          <h2 className="mb-4 text-sm font-bold text-primary">4. Onde é?</h2>
 
           <div className="flex flex-wrap items-center gap-2 mb-4">
             <button
@@ -464,7 +499,7 @@ export default function PublicReportPage() {
                 value={endereco}
                 onChange={(e) => setEndereco(e.target.value)}
                 placeholder="Rua, número, bairro e ponto de referência"
-                className="w-full bg-surface-container-low rounded-lg px-4 py-3 text-sm font-medium focus:ring-2 focus:ring-secondary outline-none placeholder:text-on-surface-variant/50"
+                className="w-full bg-surface-container-low rounded-lg px-4 py-3 text-sm font-medium focus:ring-2 focus:ring-secondary outline-none placeholder:text-[14px] placeholder:text-on-surface-variant/50"
               />
               <div className="flex flex-wrap items-center gap-2">
                 <Btn variant="secondary" icon="search" onClick={buscarEndereco}>
@@ -483,7 +518,7 @@ export default function PublicReportPage() {
                   value={lat}
                   onChange={(e) => setLat(e.target.value)}
                   placeholder="-16.440000"
-                  className="w-full bg-surface-container-low rounded-lg px-4 py-3 text-sm font-medium focus:ring-2 focus:ring-secondary outline-none"
+                  className="w-full bg-surface-container-low rounded-lg px-4 py-3 text-sm font-medium focus:ring-2 focus:ring-secondary outline-none placeholder:text-[14px]"
                 />
               </div>
               <div>
@@ -492,7 +527,7 @@ export default function PublicReportPage() {
                   value={lng}
                   onChange={(e) => setLng(e.target.value)}
                   placeholder="-39.070000"
-                  className="w-full bg-surface-container-low rounded-lg px-4 py-3 text-sm font-medium focus:ring-2 focus:ring-secondary outline-none"
+                  className="w-full bg-surface-container-low rounded-lg px-4 py-3 text-sm font-medium focus:ring-2 focus:ring-secondary outline-none placeholder:text-[14px]"
                 />
               </div>
             </div>
@@ -524,8 +559,8 @@ export default function PublicReportPage() {
         {/* anexos */}
         {CONFIG.permitirAnexos && (
           <section className="card-tonal p-6 shadow-ambient-sm">
-            <MetaTag className="block mb-1">FOTOS E VÍDEOS (OPCIONAL)</MetaTag>
-            <p className="text-[11px] text-on-surface-variant mb-3">
+            <h2 className="mb-1 text-sm font-bold text-primary">Fotos e vídeos (opcional)</h2>
+            <p className="mb-3 text-sm text-on-surface-variant">
               Imagens ajudam a equipe a dimensionar a situação antes de chegar ao local.
             </p>
             <label className="flex flex-col items-center justify-center gap-2 py-6 rounded-lg bg-surface-container-low border-2 border-dashed border-outline-variant/40 cursor-pointer hover:bg-surface-container transition-all">
@@ -577,42 +612,48 @@ export default function PublicReportPage() {
 
         {/* contato */}
         <section className="card-tonal p-6 shadow-ambient-sm">
-          <MetaTag className="block mb-1">
-            5. CONTATO {CONFIG.exigirContato ? "(OBRIGATÓRIO)" : "(OPCIONAL)"}
-          </MetaTag>
-          <p className="text-[11px] text-on-surface-variant mb-3">
+          <h2 className="mb-1 text-sm font-bold text-primary">
+            5. Contato {CONFIG.exigirContato ? "(obrigatório)" : "(opcional)"}
+          </h2>
+          <p className="mb-3 text-sm text-on-surface-variant">
             {CONFIG.exigirContato
               ? "Informe um telefone para que a equipe possa confirmar os detalhes do registro."
-              : CONFIG.permitirAnonimo
-                ? "Deixe um telefone se puder ser contatado pela equipe. Você pode registrar de forma anônima."
-                : "Deixe um telefone para que a equipe possa entrar em contato."}
+              : "O CPF é obrigatório para identificar o registro. O telefone é opcional e permite que a equipe entre em contato."}
           </p>
-          <MetaTag className="block mb-1.5">CPF (OBRIGATÓRIO)</MetaTag>
+          <label htmlFor="report-cpf" className="mb-1.5 block text-sm font-semibold text-primary">
+            CPF (obrigatório)
+          </label>
           <input
+            id="report-cpf"
             value={cpf}
             onChange={(e) => setCpf(mascararCpf(e.target.value))}
             placeholder="000.000.000-00"
             inputMode="numeric"
             maxLength={14}
-            className="w-full bg-surface-container-low rounded-lg px-4 py-3 text-sm font-medium focus:ring-2 focus:ring-secondary outline-none placeholder:text-on-surface-variant/50 mb-4"
+            className="w-full bg-surface-container-low rounded-lg px-4 py-3 text-sm font-medium focus:ring-2 focus:ring-secondary outline-none placeholder:text-[14px] placeholder:text-on-surface-variant/50 mb-4"
           />
 
-          <MetaTag className="block mb-1.5">
-            TELEFONE {CONFIG.exigirContato ? "(OBRIGATÓRIO)" : "(OPCIONAL)"}
-          </MetaTag>
+          <label htmlFor="report-telefone" className="mb-1.5 block text-sm font-semibold text-primary">
+            Telefone {CONFIG.exigirContato ? "(obrigatório)" : "(opcional)"}
+          </label>
           <input
+            id="report-telefone"
             value={contato}
             onChange={(e) => setContato(mascararTelefone(e.target.value))}
             placeholder="(73) 90000-0000"
             type="tel"
             inputMode="tel"
             maxLength={14}
-            className="w-full bg-surface-container-low rounded-lg px-4 py-3 text-sm font-medium focus:ring-2 focus:ring-secondary outline-none placeholder:text-on-surface-variant/50"
+            className="w-full bg-surface-container-low rounded-lg px-4 py-3 text-sm font-medium focus:ring-2 focus:ring-secondary outline-none placeholder:text-[14px] placeholder:text-on-surface-variant/50"
           />
         </section>
 
         {erro && (
-          <div className="flex items-center gap-2 p-4 rounded-lg bg-error-container text-on-error-container">
+          <div
+            role="alert"
+            aria-live="assertive"
+            className="flex items-center gap-2 p-4 rounded-lg bg-error-container text-on-error-container"
+          >
             <Icon name="error" filled className="text-[18px]" />
             <span className="text-[13px] font-bold">{erro}</span>
           </div>
@@ -624,7 +665,7 @@ export default function PublicReportPage() {
           </Btn>
         </div>
 
-        <p className="text-[11px] text-on-surface-variant text-center -mt-8 pb-8">
+        <p className="text-[13px] text-on-surface-variant text-center -mt-8 pb-8">
           Emergência com risco à vida: ligue {CONFIG.telefonesEmergencia}.
         </p>
       </div>

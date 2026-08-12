@@ -20,6 +20,13 @@ interface Props {
   zonas: { id: number; nome: string }[];
 }
 
+interface AnexoPendente {
+  nome: string;
+  tamanho: string;
+  tipo: string;
+  arquivo: File;
+}
+
 /* ───────────── componente ───────────── */
 
 export function CreateOccurrenceModal({ open, onClose, onCreated, zonas }: Props) {
@@ -34,11 +41,12 @@ export function CreateOccurrenceModal({ open, onClose, onCreated, zonas }: Props
   const [detectedZonaIds, setDetectedZonaIds] = useState<number[]>([]);
   const [lat, setLat] = useState("");
   const [lng, setLng] = useState("");
-  const [anexos, setAnexos] = useState<{ nome: string; tamanho: string; tipo: string }[]>([]);
+  const [anexos, setAnexos] = useState<AnexoPendente[]>([]);
 
   // shared
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState("");
+  const [fieldErrors, setFieldErrors] = useState<Record<string, string>>({});
 
   // reset ao abrir
   useEffect(() => {
@@ -54,6 +62,7 @@ export function CreateOccurrenceModal({ open, onClose, onCreated, zonas }: Props
       setAnexos([]);
       setSaving(false);
       setError("");
+      setFieldErrors({});
     }
   }, [open]);
 
@@ -62,6 +71,7 @@ export function CreateOccurrenceModal({ open, onClose, onCreated, zonas }: Props
     if (!files) return;
     const novos = Array.from(files).map((f) => ({
       nome: f.name,
+      arquivo: f,
       tamanho:
         f.size > 1024 * 1024
           ? `${(f.size / (1024 * 1024)).toFixed(1).replace(".", ",")} MB`
@@ -80,17 +90,43 @@ export function CreateOccurrenceModal({ open, onClose, onCreated, zonas }: Props
 
   /* ── submit ── */
   const handleSubmit = async () => {
-    // validação
-    if (!titulo.trim()) { setError("preencha o título."); return; }
-    if (!descricao.trim()) { setError("preencha o relato."); return; }
-    if (!lat.trim() || !lng.trim()) { setError("preencha as coordenadas (lat / lng)."); return; }
+    const novosErros: Record<string, string> = {};
+    if (!titulo.trim()) novosErros.titulo = "Preencha o título.";
+    if (!lat.trim() || !lng.trim()) novosErros.coordenadas = "Defina a localização no mapa.";
+    if (!descricao.trim()) novosErros.descricao = "Preencha o relato detalhado.";
+
+    if (Object.keys(novosErros).length > 0) {
+      setError("");
+      setFieldErrors(novosErros);
+      const primeiroCampo = novosErros.titulo
+        ? "occurrence-title"
+        : novosErros.coordenadas
+          ? "occurrence-latitude"
+          : "occurrence-description";
+      requestAnimationFrame(() => {
+        const campo = document.getElementById(primeiroCampo);
+        campo?.scrollIntoView({ behavior: "smooth", block: "center" });
+        campo?.focus({ preventScroll: true });
+      });
+      return;
+    }
 
     const parsedLat = parseFloat(lat);
     const parsedLng = parseFloat(lng);
-    if (isNaN(parsedLat) || isNaN(parsedLng)) { setError("coordenadas inválidas."); return; }
+    if (isNaN(parsedLat) || isNaN(parsedLng)) {
+      setError("");
+      setFieldErrors({ coordenadas: "Informe uma latitude e uma longitude válidas." });
+      requestAnimationFrame(() => {
+        const campo = document.getElementById("occurrence-latitude");
+        campo?.scrollIntoView({ behavior: "smooth", block: "center" });
+        campo?.focus({ preventScroll: true });
+      });
+      return;
+    }
 
     setSaving(true);
     setError("");
+    setFieldErrors({});
 
     try {
       const body: Record<string, unknown> = {
@@ -101,10 +137,29 @@ export function CreateOccurrenceModal({ open, onClose, onCreated, zonas }: Props
         coordenadas: { lat: parsedLat, lng: parsedLng },
       };
       if (zonaId !== null) body.zona = zonaId;
-      if (anexos.length > 0) body.anexos = anexos;
 
-      await api.post("/ocorrencias/", body);
-      showToast("Ocorrência registrada com sucesso.");
+      const res = await api.post<{ id: number }>("/ocorrencias/", body);
+      const uploads = await Promise.allSettled(
+        anexos.map((anexo) => {
+          const formData = new FormData();
+          formData.append("file", anexo.arquivo, anexo.nome);
+          return api.post(`/ocorrencias/${res.data.id}/anexos/`, formData);
+        }),
+      );
+      const uploadsComErro = uploads.filter((resultado) => resultado.status === "rejected").length;
+
+      if (uploadsComErro > 0) {
+        showToast(
+          `Ocorrência criada, mas ${uploadsComErro} de ${anexos.length} anexo(s) não foram enviados.`,
+          "error",
+        );
+      } else {
+        showToast(
+          anexos.length > 0
+            ? "Ocorrência e anexos registrados com sucesso."
+            : "Ocorrência registrada com sucesso.",
+        );
+      }
       onCreated();
       onClose();
     } catch (err: unknown) {
@@ -143,11 +198,23 @@ export function CreateOccurrenceModal({ open, onClose, onCreated, zonas }: Props
         detectedZonaIds={detectedZonaIds}
         zonas={zonas}
         setCategoria={(v) => setCategoria(v as Categoria)}
-        setTitulo={setTitulo}
+        setTitulo={(value) => {
+          setTitulo(value);
+          setFieldErrors((prev) => ({ ...prev, titulo: "" }));
+        }}
         setStatus={(v) => setStatus(v as StatusOcorrencia)}
-        setDescricao={setDescricao}
-        setLat={setLat}
-        setLng={setLng}
+        setDescricao={(value) => {
+          setDescricao(value);
+          setFieldErrors((prev) => ({ ...prev, descricao: "" }));
+        }}
+        setLat={(value) => {
+          setLat(value);
+          setFieldErrors((prev) => ({ ...prev, coordenadas: "" }));
+        }}
+        setLng={(value) => {
+          setLng(value);
+          setFieldErrors((prev) => ({ ...prev, coordenadas: "" }));
+        }}
         setZonaId={setZonaId}
         onZoneDetect={(ids) => {
           setDetectedZonaIds(ids);
@@ -158,6 +225,7 @@ export function CreateOccurrenceModal({ open, onClose, onCreated, zonas }: Props
         onFiles={handleFiles}
         onRemoveAnexo={removerAnexo}
         error={error}
+        fieldErrors={fieldErrors}
       />
 
       {/* rodapé */}
