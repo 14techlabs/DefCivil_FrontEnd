@@ -1,11 +1,14 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import maplibregl from "maplibre-gl";
 import {
   MAP_STYLE,
+  ZONE_STATUS_COLORS,
   addBoundaryLayer,
+  addPolygonLayer,
   getMultiPolygonCenter,
+  removePolygonLayer,
 } from "@/app/lib/mapShared";
 import { api } from "@/app/services/Api";
 
@@ -20,6 +23,8 @@ interface PublicMapPickerProps {
   height?: number;
   /** modo monodedicao: desenha apenas a area desta entidade e avisa se o pin sair dela */
   entidadeId?: number;
+  /** ids das zonas afetadas pelo evento vinculado — destacadas no mapa */
+  zonasDestaqueIds?: number[];
 }
 
 function getMultiPolygonBounds(mp: GeoJSON.MultiPolygon): maplibregl.LngLatBounds {
@@ -67,7 +72,7 @@ function pontoDentroDe(mp: GeoJSON.MultiPolygon | null, lng: number, lat: number
 // poligonos; sem entidadeId desenha todas (entidade resolvida no backend),
 // com entidadeId desenha apenas a escolhida e avisa se o pin sair dela
 export function PublicMapPicker({
-  lat, lng, onChange, height = 200, entidadeId,
+  lat, lng, onChange, height = 200, entidadeId, zonasDestaqueIds,
 }: PublicMapPickerProps) {
   const containerRef = useRef<HTMLDivElement>(null);
   const mapRef = useRef<maplibregl.Map | null>(null);
@@ -85,17 +90,56 @@ export function PublicMapPicker({
   const [entidadeNome, setEntidadeNome] = useState<string | null>(null);
   const [foraLimites, setForaLimites] = useState(false);
   const [loaded, setLoaded] = useState(false);
+  const [zonas, setZonas] = useState<
+    { id: number; nome: string; area: GeoJSON.Polygon }[]
+  >([]);
+
+  // zonas afetadas escolhidas pelos ids (join com as areas ja buscadas)
+  const zonasDestaque = useMemo(() => {
+    if (!zonasDestaqueIds || zonasDestaqueIds.length === 0) return [];
+    const ids = new Set(zonasDestaqueIds);
+    return zonas.filter((z) => ids.has(z.id));
+  }, [zonas, zonasDestaqueIds]);
+
+  // ref para o destaque (usado dentro dos callbacks do mapa sem recriar)
+  const zonasDestaqueRef = useRef(zonasDestaque);
+  zonasDestaqueRef.current = zonasDestaque;
+
+  // desenha/redesenha o destaque das zonas afetadas pelo evento vinculado
+  const desenharZonasDestaque = useCallback((map: maplibregl.Map) => {
+    for (const zona of zonasDestaqueRef.current) {
+      removePolygonLayer(map, `zonas-afetadas-${zona.id}`);
+      if (!zona.area) continue;
+      const ring = zona.area.coordinates[0];
+      const isDegenerate =
+        ring.length === 0 ||
+        ring.every(
+          (c, i) => i === 0 || (c[0] === ring[0][0] && c[1] === ring[0][1]),
+        );
+      if (isDegenerate) continue;
+      addPolygonLayer(
+        map,
+        `zonas-afetadas-${zona.id}`,
+        zona.area,
+        ZONE_STATUS_COLORS.atencao.fill,
+        ZONE_STATUS_COLORS.atencao.stroke,
+        ZONE_STATUS_COLORS.atencao.fillOpacity,
+      );
+    }
+  }, []);
 
   /* ── buscar areas (todas ou apenas a escolhida) ── */
   useEffect(() => {
     let cancelled = false;
 
     api
-      .get<{ entidades: { id: number; nome: string; area: GeoJSON.MultiPolygon }[] }>(
-        "/entidades/areas/publicas/",
-      )
+      .get<{
+        entidades: { id: number; nome: string; area: GeoJSON.MultiPolygon }[];
+        zonas: { id: number; nome: string; area: GeoJSON.Polygon }[];
+      }>("/entidades/areas/publicas/")
       .then((res) => {
         if (cancelled) return;
+        setZonas(res.data.zonas ?? []);
         const todas = res.data.entidades ?? [];
         const alvo = entidadeId
           ? todas.filter((e) => e.id === entidadeId)
@@ -153,6 +197,9 @@ export function PublicMapPicker({
     map.on("load", () => {
       resize();
 
+      // destaque das zonas afetadas pelo evento vinculado
+      desenharZonasDestaque(map);
+
       // limite da entidade
       if (entityArea) {
         addBoundaryLayer(map, entityArea);
@@ -203,7 +250,14 @@ export function PublicMapPicker({
       mapRef.current = null;
       map.remove();
     };
-  }, [loaded, entityCenter, entityArea]);
+  }, [loaded, entityCenter, entityArea, desenharZonasDestaque]);
+
+  // atualiza o destaque se zonasDestaque mudar depois do mapa criado
+  useEffect(() => {
+    const map = mapRef.current;
+    if (!map || !map.isStyleLoaded()) return;
+    desenharZonasDestaque(map);
+  }, [zonasDestaque, desenharZonasDestaque]);
 
   // sincronizar marcador quando lat/lng mudarem por input externo
   useEffect(() => {
@@ -246,6 +300,15 @@ export function PublicMapPicker({
       {foraLimites && (
         <div className="absolute top-2 left-1/2 -translate-x-1/2 z-10 bg-error text-on-error text-xs font-medium px-3 py-1.5 rounded-full shadow">
           Localização fora da área de {entidadeNome ?? "defesa civil escolhida"}
+        </div>
+      )}
+      {zonasDestaque.length > 0 && (
+        <div className="absolute bottom-2 left-2 z-10 bg-surface text-on-surface text-[11px] font-medium px-2.5 py-1 rounded-md shadow flex items-center gap-1.5">
+          <span
+            className="w-3 h-3 rounded-sm inline-block"
+            style={{ background: ZONE_STATUS_COLORS.atencao.fill }}
+          />
+          Áreas afetadas pelo evento em andamento
         </div>
       )}
     </div>
