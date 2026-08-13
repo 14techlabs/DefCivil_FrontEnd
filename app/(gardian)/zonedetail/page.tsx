@@ -54,7 +54,7 @@ interface Evento {
   tipo: "desastre" | "mitigacao";
   nome: string;
   descricao: string;
-  data_ocorrido: string;
+  data_inicio: string | null;
   status: string | null;
 }
 
@@ -74,7 +74,8 @@ const TIPO_LABEL: Record<string, string> = {
   rural: "Rural",
 };
 
-function formatDate(dateStr: string): string {
+function formatDate(dateStr: string | null | undefined): string {
+  if (!dateStr) return "—";
   const d = new Date(dateStr + "T00:00:00");
   return d
     .toLocaleDateString("pt-BR", {
@@ -86,7 +87,8 @@ function formatDate(dateStr: string): string {
     .replace(/\./g, "");
 }
 
-function formatYear(dateStr: string): string {
+function formatYear(dateStr: string | null | undefined): string {
+  if (!dateStr) return "—";
   return dateStr.slice(0, 4);
 }
 
@@ -199,8 +201,8 @@ function ZoneDetailContent() {
     () =>
       [...eventos].sort(
         (a, b) =>
-          new Date(b.data_ocorrido).getTime() -
-          new Date(a.data_ocorrido).getTime(),
+          new Date(b.data_inicio ?? "").getTime() -
+          new Date(a.data_inicio ?? "").getTime(),
       ),
     [eventos],
   );
@@ -399,7 +401,7 @@ function ZoneDetailContent() {
                 >
                   <div className="flex flex-col items-center shrink-0">
                     <span className="text-[10px] font-mono font-black text-error">
-                      {formatYear(e.data_ocorrido)}
+                      {formatYear(e.data_inicio ?? "")}
                     </span>
                   </div>
                   <div className="flex-1 min-w-0">
@@ -408,7 +410,7 @@ function ZoneDetailContent() {
                       {e.descricao}
                     </p>
                     <span className="text-[9px] font-mono font-bold text-slate-400 mt-2 block">
-                      {formatDate(e.data_ocorrido)}
+                      {formatDate(e.data_inicio ?? "")}
                     </span>
                   </div>
                 </div>
@@ -463,7 +465,7 @@ function ZoneDetailContent() {
                       {e.descricao}
                     </p>
                     <span className="text-[9px] font-mono font-bold text-slate-400 mt-2 block">
-                      {formatDate(e.data_ocorrido)}
+                      {formatDate(e.data_inicio ?? "")}
                     </span>
                   </div>
                 );
@@ -505,7 +507,7 @@ function ZoneDetailContent() {
                             {e.nome}
                           </h5>
                           <span className="text-[10px] font-mono font-bold text-slate-400 uppercase tracking-mono">
-                            {formatDate(e.data_ocorrido)}
+                            {formatDate(e.data_inicio ?? "")}
                           </span>
                         </div>
                         <p className="text-[13px] text-on-surface-variant leading-relaxed mb-3">

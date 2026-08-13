@@ -12,7 +12,6 @@ export interface EventoFormData {
   descricao: string;
   tipo: "desastre" | "mitigacao";
   status: string | null;
-  data_ocorrido: string;
   data_inicio: string | null;
   data_fim: string | null;
 }
@@ -30,7 +29,6 @@ export function EventFormModal({ open, onClose, onSaved, evento }: Props) {
   const [descricao, setDescricao] = useState(evento?.descricao ?? "");
   const [tipo, setTipo] = useState<EventoFormData["tipo"]>(evento?.tipo ?? "desastre");
   const [status, setStatus] = useState(evento?.status ?? "ativo");
-  const [dataOcorrido, setDataOcorrido] = useState(evento?.data_ocorrido ?? "");
   const [dataInicio, setDataInicio] = useState(evento?.data_inicio ?? "");
   const [dataFim, setDataFim] = useState(evento?.data_fim ?? "");
   const [saving, setSaving] = useState(false);
@@ -41,7 +39,7 @@ export function EventFormModal({ open, onClose, onSaved, evento }: Props) {
   };
 
   const handleSave = async () => {
-    if (!nome.trim() || !descricao.trim() || !dataOcorrido) {
+    if (!nome.trim() || !descricao.trim() || !dataInicio) {
       setError("Preencha nome, descrição e data do evento.");
       return;
     }
@@ -58,7 +56,6 @@ export function EventFormModal({ open, onClose, onSaved, evento }: Props) {
       descricao: descricao.trim(),
       tipo,
       status: status.trim() || null,
-      data_ocorrido: dataOcorrido,
       data_inicio: dataInicio || null,
       data_fim: dataFim || null,
     };
@@ -142,16 +139,7 @@ export function EventFormModal({ open, onClose, onSaved, evento }: Props) {
           </div>
         </div>
 
-        <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
-          <div>
-            <MetaTag className="mb-2 block">Data do evento</MetaTag>
-            <input
-              type="date"
-              value={dataOcorrido}
-              onChange={(event) => setDataOcorrido(event.target.value)}
-              className="w-full rounded-lg border-none bg-surface-container-low px-4 py-3 text-sm font-medium text-primary focus:ring-2 focus:ring-secondary"
-            />
-          </div>
+        <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
           <div>
             <MetaTag className="mb-2 block">Início</MetaTag>
             <input

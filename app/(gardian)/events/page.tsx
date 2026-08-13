@@ -47,7 +47,6 @@ interface Evento {
   tipo: "desastre" | "mitigacao";
   nome: string;
   descricao: string;
-  data_ocorrido: string;
   status: string | null;
   data_inicio: string | null;
   data_fim: string | null;
