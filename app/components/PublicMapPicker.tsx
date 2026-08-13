@@ -18,6 +18,8 @@ interface PublicMapPickerProps {
   lng: string;
   onChange: (lat: string, lng: string) => void;
   height?: number;
+  /** modo monodedicao: desenha apenas a area desta entidade e avisa se o pin sair dela */
+  entidadeId?: number;
 }
 
 function getMultiPolygonBounds(mp: GeoJSON.MultiPolygon): maplibregl.LngLatBounds {
@@ -36,12 +38,36 @@ function getMultiPolygonBounds(mp: GeoJSON.MultiPolygon): maplibregl.LngLatBound
   return new maplibregl.LngLatBounds([minLon, minLat], [maxLon, maxLat]);
 }
 
+/* ray casting (mesma logica do CoordsPickerMap) */
+function pontoEmPoligono(lng: number, lat: number, coordinates: number[][][]): boolean {
+  const ring = coordinates[0];
+  let inside = false;
+  for (let i = 0, j = ring.length - 1; i < ring.length; j = i++) {
+    const xi = ring[i][0], yi = ring[i][1];
+    const xj = ring[j][0], yj = ring[j][1];
+    if ((yi > lat) !== (yj > lat) &&
+        lng < ((xj - xi) * (lat - yi)) / (yj - yi) + xi) {
+      inside = !inside;
+    }
+  }
+  return inside;
+}
+
+function pontoDentroDe(mp: GeoJSON.MultiPolygon | null, lng: number, lat: number): boolean {
+  if (!mp) return true; // sem area carregada: nao bloqueia nem avisa
+  for (const polygon of mp.coordinates) {
+    if (pontoEmPoligono(lng, lat, polygon)) return true;
+  }
+  return false;
+}
+
 /* ───────────── componente ───────────── */
 
-// versao publica (sem login): busca as areas de todas as entidades e
-// desenha todos os poligonos; a entidade do ponto e resolvida no backend
+// versao publica (sem login): busca as areas das entidades e desenha os
+// poligonos; sem entidadeId desenha todas (entidade resolvida no backend),
+// com entidadeId desenha apenas a escolhida e avisa se o pin sair dela
 export function PublicMapPicker({
-  lat, lng, onChange, height = 200,
+  lat, lng, onChange, height = 200, entidadeId,
 }: PublicMapPickerProps) {
   const containerRef = useRef<HTMLDivElement>(null);
   const mapRef = useRef<maplibregl.Map | null>(null);
@@ -56,22 +82,29 @@ export function PublicMapPicker({
 
   const [entityCenter, setEntityCenter] = useState<[number, number] | null>(null);
   const [entityArea, setEntityArea] = useState<GeoJSON.MultiPolygon | null>(null);
+  const [entidadeNome, setEntidadeNome] = useState<string | null>(null);
+  const [foraLimites, setForaLimites] = useState(false);
   const [loaded, setLoaded] = useState(false);
 
-  /* ── buscar areas de todas as entidades ── */
+  /* ── buscar areas (todas ou apenas a escolhida) ── */
   useEffect(() => {
     let cancelled = false;
 
     api
-      .get<{ entidades: { id: number; area: GeoJSON.MultiPolygon }[] }>(
+      .get<{ entidades: { id: number; nome: string; area: GeoJSON.MultiPolygon }[] }>(
         "/entidades/areas/publicas/",
       )
       .then((res) => {
         if (cancelled) return;
-        // junta todos os poligonos num unico MultiPolygon (layer unico)
-        const areas = (res.data.entidades ?? [])
+        const todas = res.data.entidades ?? [];
+        const alvo = entidadeId
+          ? todas.filter((e) => e.id === entidadeId)
+          : todas;
+        // junta os poligonos num unico MultiPolygon (layer unico)
+        const areas = alvo
           .map((e) => e.area)
           .filter((a): a is GeoJSON.MultiPolygon => !!a);
+        setEntidadeNome(entidadeId ? (alvo[0]?.nome ?? null) : null);
         if (areas.length > 0) {
           const merged: GeoJSON.MultiPolygon = {
             type: "MultiPolygon",
@@ -80,6 +113,7 @@ export function PublicMapPicker({
           setEntityArea(merged);
           setEntityCenter(getMultiPolygonCenter(merged));
         } else {
+          setEntityArea(null);
           setEntityCenter([-39.5, -16.0]);
         }
         setLoaded(true);
@@ -92,7 +126,7 @@ export function PublicMapPicker({
       });
 
     return () => { cancelled = true; };
-  }, []);
+  }, [entidadeId]);
 
   /* ── inicializar mapa (após loaded) ── */
   useEffect(() => {
@@ -143,6 +177,7 @@ export function PublicMapPicker({
       marker.on("dragend", () => {
         isDragging.current = false;
         const pos = marker.getLngLat();
+        setForaLimites(!pontoDentroDe(entityArea, pos.lng, pos.lat));
         onChangeRef.current(pos.lat.toFixed(6), pos.lng.toFixed(6));
       });
 
@@ -153,6 +188,7 @@ export function PublicMapPicker({
       const initialLng = parseFloat(lngRef.current);
       if (!isNaN(initialLat) && !isNaN(initialLng)) {
         marker.setLngLat([initialLng, initialLat]);
+        setForaLimites(!pontoDentroDe(entityArea, initialLng, initialLat));
       }
     });
 
@@ -186,8 +222,9 @@ export function PublicMapPicker({
       ) {
         marker.setLngLat([parsedLng, parsedLat]);
       }
+      setForaLimites(!pontoDentroDe(entityArea, parsedLng, parsedLat));
     }
-  }, [lat, lng]);
+  }, [lat, lng, entityArea]);
 
   if (!loaded) {
     return (
@@ -206,6 +243,11 @@ export function PublicMapPicker({
       style={{ height }}
     >
       <div ref={containerRef} className="h-full w-full" />
+      {foraLimites && (
+        <div className="absolute top-2 left-1/2 -translate-x-1/2 z-10 bg-error text-on-error text-xs font-medium px-3 py-1.5 rounded-full shadow">
+          Localização fora da área de {entidadeNome ?? "defesa civil escolhida"}
+        </div>
+      )}
     </div>
   );
 }
