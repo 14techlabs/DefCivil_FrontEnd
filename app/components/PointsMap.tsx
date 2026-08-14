@@ -54,46 +54,99 @@ export function PointsMap({ points, height = 420, showFilters = true }: PointsMa
     ponto_apoio: true,
   });
 
+  // vira true só depois que o mapa existe de verdade (criação é assíncrona)
+  const [mapReady, setMapReady] = useState(false);
+
   const filtered = useMemo(
     () => points.filter((p) => visible[p.kind]),
     [points, visible],
   );
 
-  // cria o mapa uma única vez
+  /* ── iniciar o mapa (uma vez, só com o container dimensionado) ──
+     Mesmo padrão do ZoneMap: não criar o mapa no primeiro frame (aba
+     recém-aberta ainda sem layout / double-mount do StrictMode derruba o
+     contexto WebGL → "WebGL context was lost" e mapa em branco). */
   useEffect(() => {
-    if (!containerRef.current || mapRef.current) return;
+    const container = containerRef.current;
+    if (!container || mapRef.current) return;
 
     const center: [number, number] = points.length
       ? [points[0].lng, points[0].lat]
       : [-39.07, -16.44];
 
-    const map = createMap(containerRef.current, center);
-    map.addControl(new maplibregl.NavigationControl({ showCompass: false }), "top-right");
-    map.on("load", () => {
-      if (user?.entidade) {
-        api
-          .get<{ area: { id: number; area: GeoJSON.MultiPolygon } }>(
-            "/entidades/areas/",
-          )
-          .then((res) => addBoundaryLayer(map, res.data.area.area))
-          .catch(() => {});
+    let disposed = false;
+    let attempts = 0;
+
+    const resizeMap = () => {
+      if (!disposed && mapRef.current) mapRef.current.resize();
+    };
+
+    const create = () => {
+      if (disposed || mapRef.current) return;
+
+      // espera o container ter tamanho real antes de pedir contexto WebGL
+      if (container.clientWidth === 0 || container.clientHeight === 0) {
+        if (attempts < 60) {
+          attempts += 1;
+          requestAnimationFrame(create);
+        }
+        return;
       }
-    });
-    mapRef.current = map;
+
+      const map = createMap(container, center);
+      map.addControl(
+        new maplibregl.NavigationControl({ showCompass: false }),
+        "top-right",
+      );
+
+      const ro = new ResizeObserver(() => {
+        resizeMap();
+        // caso o container só ganhe tamanho depois (aba oculta), tenta criar de novo
+        if (!disposed && !mapRef.current && container.clientWidth > 0 && container.clientHeight > 0) {
+          create();
+        }
+      });
+      ro.observe(container);
+      window.addEventListener("resize", resizeMap);
+
+      // se o navegador derrubar e restaurar o contexto, redimensiona o canvas
+      map.on("webglcontextrestored", resizeMap);
+
+      map.on("load", () => {
+        resizeMap();
+        if (user?.entidade) {
+          api
+            .get<{ area: { id: number; area: GeoJSON.MultiPolygon } }>(
+              "/entidades/areas/",
+            )
+            .then((res) => addBoundaryLayer(map, res.data.area.area))
+            .catch(() => {});
+        }
+      });
+
+      mapRef.current = map;
+      requestAnimationFrame(resizeMap);
+      setMapReady(true);
+    };
+
+    create();
 
     return () => {
+      disposed = true;
       markersRef.current.forEach((m) => m.remove());
       markersRef.current = [];
-      map.remove();
+      const map = mapRef.current;
       mapRef.current = null;
+      setMapReady(false);
+      if (map) map.remove();
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  // (re)desenha marcadores conforme filtro
+  // (re)desenha marcadores conforme filtro (e quando o mapa fica pronto)
   useEffect(() => {
     const map = mapRef.current;
-    if (!map) return;
+    if (!map || !mapReady) return;
 
     markersRef.current.forEach((m) => m.remove());
     markersRef.current = [];
@@ -140,7 +193,7 @@ export function PointsMap({ points, height = 420, showFilters = true }: PointsMa
     } else {
       map.fitBounds(bounds, { padding: 60, maxZoom: 14, duration: 500 });
     }
-  }, [filtered]);
+  }, [filtered, mapReady]);
 
   // tipos presentes nos dados (pra não mostrar filtro de algo que não existe)
   const kindsPresent = useMemo(() => {
@@ -150,7 +203,7 @@ export function PointsMap({ points, height = 420, showFilters = true }: PointsMa
 
   return (
     <div className="relative rounded-xl overflow-hidden" style={{ height }}>
-      <div ref={containerRef} className="absolute inset-0" />
+      <div ref={containerRef} className="h-full w-full" />
 
       {showFilters && kindsPresent.length > 0 && (
         <div className="absolute top-3 left-3 z-10 flex flex-wrap gap-2 max-w-[70%]">
