@@ -15,7 +15,7 @@ export interface MapPoint {
   lng: number;
   titulo: string;
   subtitulo?: string;
-  kind: "ocorrencia_aberta" | "ocorrencia_andamento" | "ocorrencia_concluida" | "evento";
+  kind: "ocorrencia_aberta" | "ocorrencia_andamento" | "ocorrencia_concluida" | "evento" | "ponto_apoio";
   tecnicoNoLocal?: string | null;
 }
 
@@ -35,6 +35,7 @@ const KIND_META: Record<
   ocorrencia_andamento: { label: "Em andamento", color: "#BA1A1A", icon: "engineering" },
   ocorrencia_concluida: { label: "Concluídas", color: "#006A60", icon: "check_circle" },
   evento: { label: "Eventos", color: "#1D4ED8", icon: "cyclone" },
+  ponto_apoio: { label: "Pontos de apoio", color: "#7C4DFF", icon: "home_work" },
 };
 
 /* ────────────── Componente ────────────── */
@@ -50,6 +51,7 @@ export function PointsMap({ points, height = 420, showFilters = true }: PointsMa
     ocorrencia_andamento: true,
     ocorrencia_concluida: true,
     evento: true,
+    ponto_apoio: true,
   });
 
   const filtered = useMemo(
