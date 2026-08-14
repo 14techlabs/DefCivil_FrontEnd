@@ -228,7 +228,7 @@ export function CreateDamageItemModal({
 
                 <div className="space-y-1.5">
                   {pesquisa.cotacoes.map((cot, i) => {
-                    const selecionado = Number(valor) === cot.valor;
+                    const selecionado = origem === "pesquisa" && Number(valor) === cot.valor;
                     return (
                       <button
                         key={i}
@@ -255,6 +255,51 @@ export function CreateDamageItemModal({
                   })}
                 </div>
 
+                {/* Informar o próprio valor é uma opção NA MESMA LISTA, e não
+                    um campo perdido no fim do formulário: a pesquisa serve de
+                    referência, mas quem cadastra pode ter cotação melhor. */}
+                <button
+                  type="button"
+                  onClick={() => {
+                    setOrigem("manual");
+                    setValor("");
+                  }}
+                  className={`w-full flex items-center gap-3 p-3 rounded-lg text-left border-2 border-dashed ${
+                    origem === "manual"
+                      ? "bg-secondary/12 border-secondary"
+                      : "bg-surface-container-low border-outline-variant/40 hover:bg-secondary/8"
+                  }`}
+                >
+                  <Icon
+                    name={origem === "manual" ? "radio_button_checked" : "radio_button_unchecked"}
+                    className="text-secondary text-[18px]"
+                  />
+                  <div className="flex-1 min-w-0">
+                    <p className="text-[13px] font-bold text-primary">Informar outro valor</p>
+                    <p className="text-[10px] text-on-surface-variant">
+                      Use sua própria cotação, com base no que viu acima
+                    </p>
+                  </div>
+                  <Icon name="edit" className="text-on-surface-variant text-[16px]" />
+                </button>
+
+                {origem === "manual" && (
+                  <div className="card-recessed p-4">
+                    <MetaTag className="block mb-1.5">SEU VALOR (R$) *</MetaTag>
+                    <input
+                      value={valor}
+                      onChange={(e) => {
+                        setValor(e.target.value);
+                        setOrigem("manual");
+                      }}
+                      inputMode="decimal"
+                      placeholder="0,00"
+                      autoFocus
+                      className={CAMPO}
+                    />
+                  </div>
+                )}
+
                 {pesquisa.sugestao_media != null && (
                   <div className="card-recessed p-3 flex items-center gap-3 flex-wrap">
                     <MetaTag>REFERÊNCIAS</MetaTag>
@@ -265,7 +310,7 @@ export function CreateDamageItemModal({
                     >
                       Média {brl(pesquisa.sugestao_media)}
                     </button>
-                    <span className="text-[11px] text-on-surface-variant">
+                    <span className="text-[11px] text-on-surface-variant whitespace-nowrap">
                       Menor {brl(pesquisa.menor ?? 0)} · Maior {brl(pesquisa.maior ?? 0)}
                     </span>
                   </div>

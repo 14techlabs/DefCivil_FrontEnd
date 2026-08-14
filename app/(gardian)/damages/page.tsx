@@ -214,7 +214,7 @@ export default function DamagesPage() {
                     </p>
                   </div>
                   <div className="text-right shrink-0">
-                    <p className="font-headline font-black text-xl text-primary tracking-tighter">{formatBRL(custo)}</p>
+                    <p className="font-headline font-black text-xl text-primary tracking-tighter tabular-nums whitespace-nowrap">{formatBRL(custo)}</p>
                     <MetaTag>{r.itens.reduce((a, i) => a + i.quantidade, 0)} ITENS</MetaTag>
                   </div>
                   <Icon name={open ? "expand_less" : "expand_more"} className="text-on-surface-variant text-[20px]" />
@@ -230,9 +230,13 @@ export default function DamagesPage() {
                         return (
                           <div key={i} className="flex items-center gap-3 p-3 rounded-lg bg-surface-container-low text-[12px]">
                             <Icon name="inventory_2" className="text-secondary text-[16px]" />
-                            <span className="font-bold text-primary flex-1">{c.nome}</span>
-                            <span className="text-on-surface-variant">{it.quantidade} {c.unidade} × {formatBRL(c.precoUnitario)}</span>
-                            <span className="font-black text-primary w-24 text-right">{formatBRL(it.quantidade * c.precoUnitario)}</span>
+                            <span className="font-bold text-primary flex-1 min-w-0 truncate">{c.nome}</span>
+                            <span className="text-on-surface-variant shrink-0 hidden sm:inline whitespace-nowrap">
+                              {it.quantidade} {c.unidade} × {formatBRL(c.precoUnitario)}
+                            </span>
+                            <span className="font-black text-primary text-right shrink-0 tabular-nums whitespace-nowrap">
+                              {formatBRL(it.quantidade * c.precoUnitario)}
+                            </span>
                           </div>
                         );
                       })}
@@ -258,7 +262,7 @@ export default function DamagesPage() {
                 title={evento.nome}
                 action={
                   <div className="text-right">
-                    <p className="font-headline font-black text-2xl text-primary tracking-tighter">{formatBRL(custo)}</p>
+                    <p className="font-headline font-black text-2xl text-primary tracking-tighter tabular-nums whitespace-nowrap">{formatBRL(custo)}</p>
                     <MetaTag>VALOR BRUTO FINAL</MetaTag>
                   </div>
                 }
@@ -271,9 +275,11 @@ export default function DamagesPage() {
                   return (
                     <div key={catId} className="flex items-center gap-3 p-3 rounded-lg bg-surface-container-low text-[12px]">
                       <Icon name="inventory_2" className="text-secondary text-[16px]" />
-                      <span className="font-bold text-primary flex-1 truncate">{c.nome}</span>
+                      <span className="font-bold text-primary flex-1 min-w-0 truncate">{c.nome}</span>
                       <Chip tone="neutral">{qtd} {c.unidade}</Chip>
-                      <span className="font-black text-primary w-24 text-right shrink-0">{formatBRL(qtd * c.precoUnitario)}</span>
+                      <span className="font-black text-primary text-right shrink-0 tabular-nums whitespace-nowrap">
+                        {formatBRL(qtd * c.precoUnitario)}
+                      </span>
                     </div>
                   );
                 })}
@@ -390,7 +396,7 @@ export default function DamagesPage() {
                           {c.origem_label}
                         </Chip>
                       </td>
-                      <td className="py-3.5 pr-4 text-[13px] font-black text-primary text-right">
+                      <td className="py-3.5 pr-4 text-[13px] font-black text-primary text-right tabular-nums whitespace-nowrap">
                         {formatBRL(Number(c.valor_unitario))}
                       </td>
                       <td className="py-3.5 text-right whitespace-nowrap">

@@ -1,3 +1,4 @@
+// DefCivil_FrontEnd/app/(gardian)/occurrences/page.tsx
 "use client";
 
 import { Suspense, useCallback, useEffect, useMemo, useState } from "react";
@@ -22,6 +23,7 @@ interface Ocorrencia {
   entidade: number;
   zona: number | null;
   autor: number | null;
+  familia: number | null;
   titulo: string;
   categoria: string;
   status: string;
@@ -205,6 +207,17 @@ function OccurrencesContent() {
     return () => clearTimeout(timer);
   }, [searchParams, ocorrencias]);
 
+  // Filtro por família, vindo da tela de Famílias (?familia=12&familia_nome=...).
+  // O nome viaja na URL só para o aviso na tela: evita uma consulta extra a
+  // /familias/ só para descobrir como se chama.
+  const familiaParam = searchParams.get("familia");
+  const familiaId = familiaParam && Number.isFinite(Number(familiaParam))
+    ? Number(familiaParam)
+    : null;
+  const familiaNome = searchParams.get("familia_nome");
+  const [familiaAtiva, setFamiliaAtiva] = useState(true);
+  const filtrandoFamilia = familiaId != null && familiaAtiva;
+
   // agrupa categorias disponiveis a partir dos dados reais
   const categoriasDisponiveis = useMemo(() => {
     const set = new Set(ocorrencias.map((o) => o.categoria));
@@ -214,6 +227,7 @@ function OccurrencesContent() {
   const ocorrenciasFiltradas = useMemo(() => {
     const termo = busca.trim().toLowerCase();
     return ocorrencias.filter((o) => {
+      if (filtrandoFamilia && o.familia !== familiaId) return false;
       if (filter !== "todas" && o.categoria !== filter) return false;
       if (statusFilter !== "todos" && o.status !== statusFilter) return false;
       if (termo) {
@@ -230,7 +244,7 @@ function OccurrencesContent() {
       }
       return true;
     });
-  }, [ocorrencias, filter, statusFilter, busca, zonaLookup]);
+  }, [ocorrencias, filter, statusFilter, busca, zonaLookup, filtrandoFamilia, familiaId]);
 
   // --- indicadores ---
 
@@ -457,6 +471,34 @@ function OccurrencesContent() {
             })}
           </div>
         </section>
+      )}
+
+      {/* Aviso do filtro por família: deixa explícito que a lista está
+          recortada, com um clique para ver todas de novo. Sem isso a pessoa
+          pode achar que sumiram ocorrências. */}
+      {familiaId != null && (
+        <div className="mb-6 flex flex-wrap items-center gap-3 rounded-xl border-l-4 border-secondary bg-secondary/8 px-4 py-3">
+          <Icon name="family_restroom" className="text-[18px] text-secondary" />
+          <p className="flex-1 min-w-0 text-[12px] text-on-surface">
+            {filtrandoFamilia ? (
+              <>
+                Mostrando apenas as ocorrências de{" "}
+                <strong>{familiaNome || `família #${familiaId}`}</strong>.
+              </>
+            ) : (
+              <>
+                Filtro de <strong>{familiaNome || `família #${familiaId}`}</strong> desativado.
+              </>
+            )}
+          </p>
+          <button
+            type="button"
+            onClick={() => setFamiliaAtiva((v) => !v)}
+            className="shrink-0 text-[11px] font-bold uppercase tracking-mono-tight text-secondary hover:underline"
+          >
+            {filtrandoFamilia ? "Ver todas" : "Voltar ao filtro"}
+          </button>
+        </div>
       )}
 
       {/* filtros fixos: permanecem visíveis durante a leitura da lista */}

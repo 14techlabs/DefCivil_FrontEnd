@@ -1,3 +1,4 @@
+// DefCivil_FrontEnd/app/components/Primitives.tsx
 "use client";
 
 import { Fragment, type ReactNode } from "react";
@@ -250,12 +251,26 @@ export function KPI({
           />
         )}
       </div>
-      <div>
-        <div className="flex items-baseline gap-1.5">
-          <span className={`font-headline font-black text-5xl tracking-tighter ${t.value}`}>
+      <div className="min-w-0">
+        <div className="flex items-baseline gap-1.5 min-w-0">
+          {/* O tamanho acompanha o comprimento do valor: um número curto ("12")
+              fica em text-5xl, mas um monetário longo ("R$ 1.234.567,89") em
+              text-5xl estoura o card, que tem overflow-hidden. */}
+          <span
+            className={`font-headline font-black tracking-tighter break-words min-w-0 ${t.value} ${
+              String(value).length > 13
+                ? "text-2xl"
+                : String(value).length > 9
+                  ? "text-3xl"
+                  : String(value).length > 6
+                    ? "text-4xl"
+                    : "text-5xl"
+            }`}
+            title={typeof value === "string" || typeof value === "number" ? String(value) : undefined}
+          >
             {value}
           </span>
-          {unit && <span className="text-sm font-bold text-slate-400">{unit}</span>}
+          {unit && <span className="text-sm font-bold text-slate-400 shrink-0">{unit}</span>}
         </div>
         {sub && (
           <p className="text-[11px] text-on-surface-variant mt-1 font-medium">{sub}</p>

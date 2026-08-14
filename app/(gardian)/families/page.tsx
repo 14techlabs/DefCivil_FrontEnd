@@ -4,6 +4,7 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { Btn, Chip, Icon, KPI, MetaTag } from "@/app/components/Primitives";
 import { useGardian } from "@/app/components/GardianContext";
+import Link from "next/link";
 import { api } from "@/app/services/Api";
 import { CreateFamilyModal } from "@/app/components/CreateFamilyModal";
 import {
@@ -509,9 +510,20 @@ export default function FamiliesPage() {
 
                 {/* Ocorrências */}
                 <div>
-                  <MetaTag className="block mb-3">
-                    OCORRÊNCIAS DA FAMÍLIA ({familia.ocorrencias.length})
-                  </MetaTag>
+                  <div className="flex items-center justify-between gap-3 mb-3 flex-wrap">
+                    <MetaTag>
+                      OCORRÊNCIAS DA FAMÍLIA ({familia.ocorrencias.length})
+                    </MetaTag>
+                    {familia.ocorrencias.length > 0 && (
+                      <Link
+                        href={`/occurrences?familia=${familia.id}&familia_nome=${encodeURIComponent(familia.nome)}`}
+                        className="inline-flex items-center gap-1.5 text-[11px] font-bold uppercase tracking-mono-tight text-secondary hover:underline"
+                      >
+                        Abrir em Ocorrências
+                        <Icon name="arrow_forward" className="text-[14px]" />
+                      </Link>
+                    )}
+                  </div>
                   {familia.ocorrencias.length === 0 ? (
                     <p className="text-[12px] text-on-surface-variant italic">
                       Nenhuma ocorrência registrada.
@@ -519,15 +531,20 @@ export default function FamiliesPage() {
                   ) : (
                     <div className="space-y-2">
                       {familia.ocorrencias.map((oc) => (
-                        <div
+                        <Link
                           key={oc.id}
-                          className="flex items-center gap-3 p-3 rounded-lg bg-surface-container-low text-[12px]"
+                          href={`/occurrences?id=${oc.id}`}
+                          className="flex items-center gap-3 p-3 rounded-lg bg-surface-container-low hover:bg-secondary/8 text-[12px] transition-colors"
                         >
-                          <Icon name="emergency" className="text-error text-[16px]" />
-                          <span className="font-bold text-primary">#{oc.id}</span>
-                          <span className="text-on-surface truncate flex-1">{oc.titulo}</span>
+                          <Icon name="emergency" className="text-error text-[16px] shrink-0" />
+                          <span className="font-bold text-primary shrink-0">#{oc.id}</span>
+                          <span className="text-on-surface truncate flex-1 min-w-0">{oc.titulo}</span>
                           <Chip tone="neutral">{oc.status}</Chip>
-                        </div>
+                          <Icon
+                            name="chevron_right"
+                            className="text-on-surface-variant text-[16px] shrink-0"
+                          />
+                        </Link>
                       ))}
                     </div>
                   )}
