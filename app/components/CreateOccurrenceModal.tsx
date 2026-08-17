@@ -27,6 +27,17 @@ interface AnexoPendente {
   arquivo: File;
 }
 
+interface EventoOption {
+  id: number;
+  nome: string;
+  status?: string | null;
+}
+
+interface EventosResponse {
+  eventos: EventoOption[];
+  evento_vinculado_id: number | null;
+}
+
 /* ───────────── componente ───────────── */
 
 export function CreateOccurrenceModal({ open, onClose, onCreated, zonas }: Props) {
@@ -42,6 +53,11 @@ export function CreateOccurrenceModal({ open, onClose, onCreated, zonas }: Props
   const [lat, setLat] = useState("");
   const [lng, setLng] = useState("");
   const [anexos, setAnexos] = useState<AnexoPendente[]>([]);
+  const [eventos, setEventos] = useState<EventoOption[]>([]);
+  const [eventoId, setEventoId] = useState<number | null>(null);
+  const [eventoSugeridoId, setEventoSugeridoId] = useState<number | null>(null);
+  const [loadingEventos, setLoadingEventos] = useState(false);
+  const [eventosError, setEventosError] = useState(false);
 
   // shared
   const [saving, setSaving] = useState(false);
@@ -51,6 +67,7 @@ export function CreateOccurrenceModal({ open, onClose, onCreated, zonas }: Props
   // reset ao abrir
   useEffect(() => {
     if (open) {
+      let cancelled = false;
       setCategoria("geologico");
       setTitulo("");
       setStatus("em_analise");
@@ -60,9 +77,39 @@ export function CreateOccurrenceModal({ open, onClose, onCreated, zonas }: Props
       setLat("");
       setLng("");
       setAnexos([]);
+      setEventos([]);
+      setEventoId(null);
+      setEventoSugeridoId(null);
+      setLoadingEventos(true);
+      setEventosError(false);
       setSaving(false);
       setError("");
       setFieldErrors({});
+
+      void api
+        .get<EventosResponse>("/eventos/")
+        .then(({ data }) => {
+          if (cancelled) return;
+          const lista = Array.isArray(data.eventos) ? data.eventos : [];
+          const sugerido = data.evento_vinculado_id ?? null;
+          setEventos(lista);
+          setEventoSugeridoId(sugerido);
+          setEventoId(
+            sugerido !== null && lista.some((evento) => evento.id === sugerido)
+              ? sugerido
+              : null,
+          );
+        })
+        .catch(() => {
+          if (!cancelled) setEventosError(true);
+        })
+        .finally(() => {
+          if (!cancelled) setLoadingEventos(false);
+        });
+
+      return () => {
+        cancelled = true;
+      };
     }
   }, [open]);
 
@@ -137,6 +184,7 @@ export function CreateOccurrenceModal({ open, onClose, onCreated, zonas }: Props
         coordenadas: { lat: parsedLat, lng: parsedLng },
       };
       if (zonaId !== null) body.zona = zonaId;
+      if (eventoId !== null) body.evento = eventoId;
 
       const res = await api.post<{ id: number }>("/ocorrencias/", body);
       const uploads = await Promise.allSettled(
@@ -188,6 +236,56 @@ export function CreateOccurrenceModal({ open, onClose, onCreated, zonas }: Props
 
       {/* corpo compartilhado com o modal de edição */}
       <OccurrenceFormFields
+        beforeFields={
+          <div className="rounded-xl border border-outline-variant/20 bg-surface-container-lowest p-5">
+            <div className="flex items-start gap-3">
+              <span className="material-symbols-outlined mt-0.5 text-primary" aria-hidden="true">
+                event
+              </span>
+              <div className="min-w-0 flex-1">
+                <label
+                  htmlFor="occurrence-event"
+                  className="font-headline text-xs font-black uppercase tracking-[0.14em] text-primary"
+                >
+                  Evento relacionado{" "}
+                  <span className="font-medium normal-case tracking-normal text-on-surface-variant">
+                    (opcional)
+                  </span>
+                </label>
+                {eventoSugeridoId !== null && (
+                  <p className="mt-1 text-sm leading-5 text-on-surface-variant">
+                    Existe um evento com vinculação automática ativa. Ele foi selecionado como
+                    sugestão e pode ser alterado.
+                  </p>
+                )}
+                {eventosError && (
+                  <p className="mt-1 text-sm text-error">
+                    Não foi possível consultar os eventos. Você ainda pode registrar a ocorrência.
+                  </p>
+                )}
+                <select
+                  id="occurrence-event"
+                  value={eventoId ?? ""}
+                  onChange={(event) =>
+                    setEventoId(event.target.value ? Number(event.target.value) : null)
+                  }
+                  disabled={loadingEventos || eventosError}
+                  className="mt-3 w-full rounded-xl border border-outline-variant/30 bg-surface-container-low px-4 py-3 pr-10 font-body text-sm font-semibold text-on-surface outline-none focus:border-primary disabled:cursor-not-allowed disabled:opacity-60"
+                >
+                  <option value="">
+                    {loadingEventos ? "Consultando eventos…" : "Nenhum evento"}
+                  </option>
+                  {eventos.map((evento) => (
+                    <option key={evento.id} value={evento.id}>
+                      {evento.nome}
+                      {evento.id === eventoSugeridoId ? " — sugerido" : ""}
+                    </option>
+                  ))}
+                </select>
+              </div>
+            </div>
+          </div>
+        }
         categoria={categoria}
         titulo={titulo}
         status={status}

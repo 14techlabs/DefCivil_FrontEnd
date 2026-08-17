@@ -7,6 +7,7 @@ import { api } from "@/app/services/Api";
 import { CreateOccurrenceModal } from "@/app/components/CreateOccurrenceModal";
 import { EditOccurrenceModal } from "@/app/components/EditOccurrenceModal";
 import { DeleteOccurrenceModal } from "@/app/components/DeleteOccurrenceModal";
+import { ModalShell } from "@/app/components/Modals";
 import { useGardian } from "@/app/components/GardianContext";
 import {
   STATUS_OCORRENCIA_LABEL,
@@ -20,6 +21,8 @@ interface Ocorrencia {
   entidade: number;
   zona: number | null;
   autor: number | null;
+  cidadao: number | null;
+  familia: number | null;
   titulo: string;
   categoria: string;
   status: string;
@@ -36,6 +39,29 @@ interface Ocorrencia {
   created_at: string;
   anexos: unknown[];
   endereco?: string;
+  evento: number | null;
+  historico?: OcorrenciaHistorico[];
+}
+
+interface OcorrenciaHistorico {
+  id: number;
+  tipo_acao: "criacao" | "edicao" | "exclusao";
+  dados_anteriores: Record<string, unknown>;
+  dados_novos: Record<string, unknown>;
+  campos_alterados: string[];
+  criado_em: string;
+  usuario: number | null;
+}
+
+interface EventoBasic {
+  id: number;
+  nome: string;
+  status: string | null;
+  tipo: "desastre" | "mitigacao";
+}
+
+interface EventoListResponse {
+  eventos: EventoBasic[];
 }
 
 interface OcorrenciaAnexo {
@@ -61,12 +87,40 @@ interface ZonaListResponse {
   zonas: ZonaBasic[];
 }
 
+interface FamiliaBasic {
+  id: number;
+  nome: string;
+}
+
+interface FamiliaListResponse {
+  familias: FamiliaBasic[];
+}
+
+interface ChecklistBasic {
+  id: number;
+  label: string;
+}
+
 interface UsuarioInfo {
   id: number;
   user_sys: { id: number; username: string; first_name: string; email: string } | null;
   telefone: string;
   nome_anonimo: string | null;
   tipo: number;
+}
+
+function separarRelato(descricao: string): { relato: string; marcacoes: string[] } {
+  const marcador = "\n\nInformações marcadas:\n";
+  const indice = descricao.indexOf(marcador);
+  if (indice < 0) return { relato: descricao, marcacoes: [] };
+  return {
+    relato: descricao.slice(0, indice).trim(),
+    marcacoes: descricao
+      .slice(indice + marcador.length)
+      .split("\n")
+      .map((item) => item.replace(/^[-•]\s*/, "").trim())
+      .filter(Boolean),
+  };
 }
 
 // --- helpers ---
@@ -85,6 +139,39 @@ const CATEGORIA_LABEL: Record<string, string> = {
   vias_publicas: "Vias Públicas",
   produtos_perigosos: "Produtos Perigosos",
 };
+
+const CAMPO_HISTORICO_LABEL: Record<string, string> = {
+  titulo: "Título",
+  categoria: "Categoria",
+  status: "Status",
+  descricao: "Relato",
+  coordenadas: "Coordenadas",
+  endereco: "Endereço",
+  zona: "Zona",
+  zona_id: "Zona",
+  evento: "Evento",
+  evento_id: "Evento",
+  familia_id: "Família",
+  tecnico_responsavel: "Responsável",
+  tecnico_responsavel_id: "Responsável",
+  marcacoes: "Informações marcadas",
+  nivel_perigo_tecnico: "Nível de perigo técnico",
+  analise_tecnico: "Análise técnica",
+  valido_tecnico: "Validação técnica",
+};
+
+function formatHistoryValue(value: unknown): string {
+  if (value === null || value === undefined || value === "") return "Não informado";
+  if (typeof value === "boolean") return value ? "Sim" : "Não";
+  if (typeof value === "object") {
+    if ("lat" in value && "lng" in value) {
+      const coordinates = value as { lat?: unknown; lng?: unknown };
+      return `${String(coordinates.lat ?? "—")}, ${String(coordinates.lng ?? "—")}`;
+    }
+    return JSON.stringify(value);
+  }
+  return String(value);
+}
 
 const CATEGORIA_ICON: Record<string, string> = {
   geologico: "terrain",
@@ -160,12 +247,16 @@ function OccurrencesContent() {
   const [ocorrencias, setOcorrencias] = useState<Ocorrencia[]>([]);
   const [zonaLookup, setZonaLookup] = useState<Map<number, string>>(new Map());
   const [usuarioLookup, setUsuarioLookup] = useState<Map<number, string>>(new Map());
+  const [eventos, setEventos] = useState<EventoBasic[]>([]);
+  const [familiaLookup, setFamiliaLookup] = useState<Map<number, string>>(new Map());
+  const [checklistLookup, setChecklistLookup] = useState<Map<number, string>>(new Map());
   const [loading, setLoading] = useState(true);
   const [loadError, setLoadError] = useState("");
 
   // estado da ui
   const [filter, setFilter] = useState("todas");
   const [selected, setSelected] = useState<number | null>(null);
+  const [detailTab, setDetailTab] = useState<"detalhes" | "historico">("detalhes");
   const [showCreateModal, setShowCreateModal] = useState(false);
   const [showEditModal, setShowEditModal] = useState(false);
   const [showDeleteModal, setShowDeleteModal] = useState(false);
@@ -175,6 +266,10 @@ function OccurrencesContent() {
   const [statusFilter, setStatusFilter] = useState("todos");
   const [modoAgrupar, setModoAgrupar] = useState(false);
   const [marcadas, setMarcadas] = useState<number[]>([]);
+  const [showGroupModal, setShowGroupModal] = useState(false);
+  const [eventoAgrupamentoId, setEventoAgrupamentoId] = useState<number | null>(null);
+  const [agrupando, setAgrupando] = useState(false);
+  const [erroAgrupamento, setErroAgrupamento] = useState("");
 
   const fetchData = useCallback(async () => {
     setLoading(true);
@@ -190,9 +285,12 @@ function OccurrencesContent() {
           : lista[0]?.id ?? null,
       );
 
-      const [zonRes, usuRes] = await Promise.allSettled([
+      const [zonRes, usuRes, eventosRes, familiasRes, checklistRes] = await Promise.allSettled([
         api.get<ZonaListResponse>("/zonas/"),
         api.get<UsuarioInfo[]>("/usuarios/"),
+        api.get<EventoListResponse>("/eventos/"),
+        api.get<FamiliaListResponse>("/familias/"),
+        api.get<ChecklistBasic[]>("/entidades/checklist/"),
       ]);
 
       // lookup de zonas
@@ -217,11 +315,30 @@ function OccurrencesContent() {
         }
       }
       setUsuarioLookup(uLookup);
+
+      setEventos(eventosRes.status === "fulfilled" ? eventosRes.value.data.eventos ?? [] : []);
+      setFamiliaLookup(
+        new Map(
+          familiasRes.status === "fulfilled"
+            ? (familiasRes.value.data.familias ?? []).map((familia) => [familia.id, familia.nome])
+            : [],
+        ),
+      );
+      setChecklistLookup(
+        new Map(
+          checklistRes.status === "fulfilled"
+            ? (checklistRes.value.data ?? []).map((item) => [item.id, item.label])
+            : [],
+        ),
+      );
     } catch {
       setOcorrencias([]);
       setSelected(null);
       setZonaLookup(new Map());
       setUsuarioLookup(new Map());
+      setEventos([]);
+      setFamiliaLookup(new Map());
+      setChecklistLookup(new Map());
       setLoadError("Não foi possível carregar as ocorrências.");
     } finally {
       setLoading(false);
@@ -344,14 +461,54 @@ function OccurrencesContent() {
     }
   };
 
-  const agruparEmEvento = () => {
+  const abrirAgrupamento = () => {
     if (marcadas.length < 2) {
       showToast("Selecione ao menos duas ocorrências para formar um evento.", "error");
       return;
     }
-    showToast(`Evento criado com ${marcadas.length} ocorrências vinculadas.`);
-    setMarcadas([]);
-    setModoAgrupar(false);
+    if (eventos.length === 0) {
+      showToast("Nenhum evento disponível. Cadastre um evento primeiro.", "error");
+      return;
+    }
+    setEventoAgrupamentoId(null);
+    setErroAgrupamento("");
+    setShowGroupModal(true);
+  };
+
+  const confirmarAgrupamento = async () => {
+    if (eventoAgrupamentoId === null) {
+      setErroAgrupamento("Selecione o evento que receberá as ocorrências.");
+      return;
+    }
+
+    setAgrupando(true);
+    setErroAgrupamento("");
+    const resultados = await Promise.allSettled(
+      marcadas.map((id) => api.patch(`/ocorrencias/${id}/`, { evento: eventoAgrupamentoId })),
+    );
+    const idsComFalha = marcadas.filter((_, index) => resultados[index].status === "rejected");
+    const quantidadeSucesso = marcadas.length - idsComFalha.length;
+
+    if (quantidadeSucesso > 0) {
+      await fetchData();
+    }
+
+    if (idsComFalha.length === 0) {
+      showToast(
+        `${quantidadeSucesso} ocorrência${quantidadeSucesso !== 1 ? "s" : ""} vinculada${quantidadeSucesso !== 1 ? "s" : ""} ao evento.`,
+      );
+      setMarcadas([]);
+      setModoAgrupar(false);
+      setShowGroupModal(false);
+    } else {
+      setMarcadas(idsComFalha);
+      setErroAgrupamento(
+        quantidadeSucesso > 0
+          ? `${quantidadeSucesso} ocorrência(s) foram vinculadas, mas ${idsComFalha.length} falharam. Tente novamente.`
+          : "Não foi possível vincular as ocorrências ao evento. Tente novamente.",
+      );
+    }
+    setAgrupando(false);
   };
 
   const selecionada = useMemo(
@@ -361,6 +518,62 @@ function OccurrencesContent() {
       null,
     [ocorrenciasFiltradas, selected],
   );
+  const relatoSelecionado = useMemo(
+    () => (selecionada ? separarRelato(selecionada.descricao) : { relato: "", marcacoes: [] }),
+    [selecionada],
+  );
+  const historicoSelecionado = useMemo(
+    () =>
+      [...(selecionada?.historico ?? [])].sort(
+        (a, b) => new Date(b.criado_em).getTime() - new Date(a.criado_em).getTime(),
+      ),
+    [selecionada],
+  );
+
+  const formatHistoryFieldValue = (campo: string, value: unknown): string => {
+    if (value === null || value === undefined || value === "") return "Não informado";
+
+    const relationId = typeof value === "number" ? value : Number(value);
+    if (campo === "zona_id" || campo === "zona") {
+      return Number.isFinite(relationId)
+        ? zonaLookup.get(relationId) ?? "Zona não identificada"
+        : "Zona não identificada";
+    }
+    if (campo === "evento_id" || campo === "evento") {
+      return Number.isFinite(relationId)
+        ? eventos.find((evento) => evento.id === relationId)?.nome ?? "Evento não identificado"
+        : "Evento não identificado";
+    }
+    if (campo === "familia_id") {
+      return Number.isFinite(relationId)
+        ? familiaLookup.get(relationId) ?? "Família não identificada"
+        : "Família não identificada";
+    }
+    if (campo === "tecnico_responsavel_id" || campo === "tecnico_responsavel") {
+      return Number.isFinite(relationId)
+        ? usuarioLookup.get(relationId) ?? "Responsável não identificado"
+        : "Responsável não identificado";
+    }
+    if (campo === "marcacoes" && Array.isArray(value)) {
+      if (value.length === 0) return "Nenhuma";
+      return value
+        .map((item) => {
+          const itemId = Number(item);
+          return Number.isFinite(itemId)
+            ? checklistLookup.get(itemId) ?? "Informação não identificada"
+            : "Informação não identificada";
+        })
+        .join(", ");
+    }
+    if (campo === "categoria" && typeof value === "string") {
+      return CATEGORIA_LABEL[value] ?? categoriaLabel(value);
+    }
+    if (campo === "status" && typeof value === "string") {
+      return STATUS_OCORRENCIA_LABEL[value] ?? value.replaceAll("_", " ");
+    }
+
+    return formatHistoryValue(value);
+  };
 
   // contagem por categoria para as abas
   const contagem = useMemo(() => {
@@ -676,7 +889,7 @@ function OccurrencesContent() {
                   <Btn
                     variant="success"
                     icon="cyclone"
-                    onClick={agruparEmEvento}
+                    onClick={abrirAgrupamento}
                     disabled={marcadas.length < 2}
                   >
                     Agrupar ({marcadas.length})
@@ -706,7 +919,13 @@ function OccurrencesContent() {
               return (
                 <button
                   key={o.id}
-                  onClick={() => (modoAgrupar ? toggleMarcada(o.id) : setSelected(o.id))}
+                  onClick={() => {
+                    if (modoAgrupar) toggleMarcada(o.id);
+                    else {
+                      setSelected(o.id);
+                      setDetailTab("detalhes");
+                    }
+                  }}
                   className={`w-full card-tonal p-6 shadow-ambient-sm text-left relative overflow-hidden hover:shadow-ambient transition-all ${modoAgrupar && marcadas.includes(o.id)
                     ? "ring-2 ring-secondary"
                     : !modoAgrupar && selected === o.id
@@ -813,6 +1032,37 @@ function OccurrencesContent() {
                   )}
                 </div>
 
+                <div className="sticky top-0 z-10 flex border-b border-outline-variant/20 bg-white px-6 pt-3">
+                  <button
+                    type="button"
+                    onClick={() => setDetailTab("detalhes")}
+                    className={`flex flex-1 items-center justify-center gap-2 border-b-2 px-3 py-3 text-[11px] font-black uppercase tracking-mono-tight transition-colors ${
+                      detailTab === "detalhes"
+                        ? "border-secondary text-secondary"
+                        : "border-transparent text-on-surface-variant hover:text-primary"
+                    }`}
+                  >
+                    <Icon name="description" className="text-[17px]" />
+                    Detalhes
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setDetailTab("historico")}
+                    className={`flex flex-1 items-center justify-center gap-2 border-b-2 px-3 py-3 text-[11px] font-black uppercase tracking-mono-tight transition-colors ${
+                      detailTab === "historico"
+                        ? "border-secondary text-secondary"
+                        : "border-transparent text-on-surface-variant hover:text-primary"
+                    }`}
+                  >
+                    <Icon name="history" className="text-[17px]" />
+                    Histórico
+                    <span className="rounded-full bg-surface-container-high px-2 py-0.5 text-[9px] text-primary">
+                      {historicoSelecionado.length}
+                    </span>
+                  </button>
+                </div>
+
+                {detailTab === "detalhes" && (
                 <div className="p-6 space-y-6">
                   {/* endereço por extenso */}
                   <div className="card-recessed p-5">
@@ -864,8 +1114,19 @@ function OccurrencesContent() {
                   <div>
                     <MetaTag className="block mb-2">RELATO</MetaTag>
                     <p className="text-[13px] text-on-surface leading-relaxed">
-                      {selecionada.descricao}
+                      {relatoSelecionado.relato}
                     </p>
+
+                    {relatoSelecionado.marcacoes.length > 0 && (
+                      <div className="mt-4 rounded-lg bg-secondary/10 p-4">
+                        <MetaTag className="mb-2 block text-secondary">INFORMAÇÕES MARCADAS NO FORMULÁRIO</MetaTag>
+                        <div className="flex flex-wrap gap-2">
+                          {relatoSelecionado.marcacoes.map((item) => (
+                            <Chip key={item} tone="secondary" icon="check">{item}</Chip>
+                          ))}
+                        </div>
+                      </div>
+                    )}
 
                     {selecionada.autor != null && (
                       <div className="flex flex-wrap gap-4 mt-3 text-[11px] text-on-surface-variant">
@@ -880,6 +1141,21 @@ function OccurrencesContent() {
                     <span className="text-[10px] font-mono font-bold text-slate-400 mt-2 block">
                       {formatDate(selecionada.created_at)}
                     </span>
+                  </div>
+
+                  <div className="card-recessed p-5">
+                    <div className="mb-3 flex items-center gap-2">
+                      <Icon name="description" filled className="text-[18px] text-secondary" />
+                      <MetaTag>DADOS DO REGISTRO</MetaTag>
+                    </div>
+                    <div className="grid grid-cols-2 gap-3 text-[12px]">
+                      <div><MetaTag className="mb-1 block">STATUS</MetaTag><p className="font-bold text-primary">{STATUS_OCORRENCIA_LABEL[selecionada.status] ?? selecionada.status}</p></div>
+                      <div><MetaTag className="mb-1 block">CATEGORIA</MetaTag><p className="font-bold text-primary">{CATEGORIA_LABEL[selecionada.categoria] ?? selecionada.categoria}</p></div>
+                      <div><MetaTag className="mb-1 block">ORIGEM</MetaTag><p className="font-bold text-primary">{selecionada.cidadao != null && selecionada.autor == null ? "Formulário público" : "Registro interno"}</p></div>
+                      <div><MetaTag className="mb-1 block">EVENTO</MetaTag><p className="font-bold text-primary">{selecionada.evento != null ? eventos.find((evento) => evento.id === selecionada.evento)?.nome ?? `Evento #${selecionada.evento}` : "Não vinculado"}</p></div>
+                      <div><MetaTag className="mb-1 block">ZONA</MetaTag><p className="font-bold text-primary">{selecionada.zona != null ? zonaLookup.get(selecionada.zona) ?? `Zona #${selecionada.zona}` : "Não vinculada"}</p></div>
+                      <div><MetaTag className="mb-1 block">RESPONSÁVEL</MetaTag><p className="font-bold text-primary">{selecionada.tecnico_responsavel != null ? usuarioLookup.get(selecionada.tecnico_responsavel) ?? `Usuário #${selecionada.tecnico_responsavel}` : "Não atribuído"}</p></div>
+                    </div>
                   </div>
 
                   {/* analise de ia */}
@@ -1036,6 +1312,101 @@ function OccurrencesContent() {
                     )}
                   </div>
                 </div>
+                )}
+
+                {detailTab === "historico" && (
+                  <div className="p-6">
+                    <div className="mb-5 flex items-center justify-between gap-3">
+                      <div>
+                        <MetaTag className="mb-1 block">AUDITORIA</MetaTag>
+                        <h3 className="font-headline text-xl font-black tracking-tight text-primary">
+                          Histórico da ocorrência
+                        </h3>
+                      </div>
+                      <Chip tone="neutral">
+                        {historicoSelecionado.length} registro
+                        {historicoSelecionado.length !== 1 ? "s" : ""}
+                      </Chip>
+                    </div>
+
+                    {historicoSelecionado.length === 0 ? (
+                      <div className="flex flex-col items-center rounded-xl bg-surface-container-low px-5 py-10 text-center">
+                        <Icon name="history_toggle_off" className="mb-3 text-[36px] text-on-surface-variant" />
+                        <p className="text-[12px] text-on-surface-variant">
+                          Nenhuma alteração registrada para esta ocorrência.
+                        </p>
+                      </div>
+                    ) : (
+                      <div className="space-y-3">
+                        {historicoSelecionado.map((registro) => {
+                          const campos = (registro.campos_alterados ?? []).filter(
+                            (campo) => campo !== "id",
+                          );
+                          const acaoLabel =
+                            registro.tipo_acao === "criacao"
+                              ? "Ocorrência criada"
+                              : registro.tipo_acao === "exclusao"
+                                ? "Ocorrência excluída"
+                                : "Ocorrência editada";
+                          const acaoIcon =
+                            registro.tipo_acao === "criacao"
+                              ? "add_circle"
+                              : registro.tipo_acao === "exclusao"
+                                ? "delete"
+                                : "edit";
+
+                          return (
+                            <details key={registro.id} className="group rounded-xl bg-surface-container-low">
+                              <summary className="flex cursor-pointer list-none items-start gap-3 p-4">
+                                <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-white text-secondary">
+                                  <Icon name={acaoIcon} className="text-[18px]" />
+                                </span>
+                                <div className="min-w-0 flex-1">
+                                  <p className="text-[12px] font-bold text-primary">{acaoLabel}</p>
+                                  <p className="mt-1 text-[10px] font-medium text-on-surface-variant">
+                                    {formatDate(registro.criado_em)} · {registro.usuario != null
+                                      ? usuarioLookup.get(registro.usuario) ?? `Usuário #${registro.usuario}`
+                                      : "Sistema"}
+                                  </p>
+                                </div>
+                                <Icon name="expand_more" className="text-[18px] text-on-surface-variant transition-transform group-open:rotate-180" />
+                              </summary>
+
+                              <div className="border-t border-outline-variant/20 px-4 pb-4 pt-3">
+                                {campos.length === 0 ? (
+                                  <p className="text-[11px] text-on-surface-variant">
+                                    {registro.tipo_acao === "criacao"
+                                      ? "Registro inicial da ocorrência."
+                                      : "Nenhum campo alterado foi informado."}
+                                  </p>
+                                ) : (
+                                  <div className="space-y-3">
+                                    {campos.map((campo) => (
+                                      <div key={campo}>
+                                        <MetaTag className="mb-1.5 block">
+                                          {CAMPO_HISTORICO_LABEL[campo] ?? campo.replaceAll("_", " ")}
+                                        </MetaTag>
+                                        <div className="grid grid-cols-[1fr_auto_1fr] items-center gap-2 text-[11px]">
+                                          <span className="min-w-0 break-words rounded-lg bg-white p-2 text-on-surface-variant">
+                                            {formatHistoryFieldValue(campo, registro.dados_anteriores?.[campo])}
+                                          </span>
+                                          <Icon name="arrow_forward" className="text-[15px] text-secondary" />
+                                          <span className="min-w-0 break-words rounded-lg bg-secondary/10 p-2 font-semibold text-primary">
+                                            {formatHistoryFieldValue(campo, registro.dados_novos?.[campo])}
+                                          </span>
+                                        </div>
+                                      </div>
+                                    ))}
+                                  </div>
+                                )}
+                              </div>
+                            </details>
+                          );
+                        })}
+                      </div>
+                    )}
+                  </div>
+                )}
               </div>
             </aside>
           )}
@@ -1051,6 +1422,67 @@ function OccurrencesContent() {
         }}
         zonas={Array.from(zonaLookup.entries()).map(([id, nome]) => ({ id, nome }))}
       />
+
+      <ModalShell
+        open={showGroupModal}
+        onClose={() => {
+          if (!agrupando) setShowGroupModal(false);
+        }}
+        maxWidth="max-w-lg"
+      >
+        <div className="bg-surface-container-low px-8 py-6">
+          <MetaTag>VINCULAR A EVENTO</MetaTag>
+          <h2 className="mt-2 font-headline text-2xl font-black tracking-tighter text-primary">
+            Agrupar ocorrências
+          </h2>
+          <p className="mt-2 text-sm text-on-surface-variant">
+            {marcadas.length} ocorrências selecionadas
+          </p>
+        </div>
+        <div className="space-y-4 p-8">
+          <label className="block">
+            <MetaTag className="mb-2 block">Evento de destino</MetaTag>
+            <div className="relative">
+              <select
+                value={eventoAgrupamentoId ?? ""}
+                onChange={(event) => {
+                  setEventoAgrupamentoId(event.target.value ? Number(event.target.value) : null);
+                  setErroAgrupamento("");
+                }}
+                disabled={agrupando}
+                className={`w-full appearance-none rounded-lg border-none bg-surface-container-low py-3.5 pl-4 pr-12 text-sm font-bold focus:ring-2 focus:ring-secondary ${
+                  eventoAgrupamentoId === null ? "text-on-surface-variant" : "text-primary"
+                }`}
+              >
+                <option value="">Selecione um evento</option>
+                {eventos.map((evento) => (
+                  <option key={evento.id} value={evento.id}>
+                    #{evento.id} · {evento.nome}
+                  </option>
+                ))}
+              </select>
+              <Icon
+                name="keyboard_arrow_down"
+                className="pointer-events-none absolute right-4 top-1/2 -translate-y-1/2 text-[20px] text-primary"
+              />
+            </div>
+          </label>
+          {erroAgrupamento && (
+            <div role="alert" className="flex items-start gap-2 rounded-lg bg-error-container p-4 text-sm font-medium text-on-error-container">
+              <Icon name="error" filled className="shrink-0 text-[20px] text-error" />
+              <p>{erroAgrupamento}</p>
+            </div>
+          )}
+        </div>
+        <div className="flex gap-3 border-t border-outline-variant/20 px-8 py-5">
+          <Btn variant="secondary" onClick={() => setShowGroupModal(false)} disabled={agrupando} full>
+            Cancelar
+          </Btn>
+          <Btn variant="success" icon="cyclone" onClick={confirmarAgrupamento} disabled={agrupando} full>
+            {agrupando ? "Vinculando…" : "Vincular ocorrências"}
+          </Btn>
+        </div>
+      </ModalShell>
 
       {selecionada && (
         <>
