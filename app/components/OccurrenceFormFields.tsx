@@ -42,6 +42,7 @@ interface AnexoItem {
 }
 
 interface OccurrenceFormFieldsProps {
+  beforeFields?: React.ReactNode;
   // valores do formulário
   categoria: string;
   titulo: string;
@@ -75,6 +76,7 @@ interface OccurrenceFormFieldsProps {
 /* ───────────── campos compartilhados ───────────── */
 
 export function OccurrenceFormFields({
+  beforeFields,
   categoria,
   titulo,
   status,
@@ -115,6 +117,8 @@ export function OccurrenceFormFields({
           </div>
         </div>
       )}
+
+      {beforeFields}
 
       {/* categoria */}
       <div>

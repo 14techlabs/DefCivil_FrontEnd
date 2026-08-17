@@ -1,12 +1,11 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { Btn, Chip, Icon, KPI, MetaTag, SectionHeader, StatusDot, Tab } from "@/app/components/Primitives";
 import { useGardian } from "@/app/components/GardianContext";
 import {
   MOCK_ENTIDADE,
   MOCK_STATUS_HISTORICO,
-  MOCK_FORM_CONFIG,
   MOCK_CONTAS_EVENTOS,
   MOCK_DANOS_CATALOGO,
   MOCK_DANOS_REGISTROS,
@@ -20,6 +19,7 @@ import {
   type StatusCidade,
   type StatusCidadeRegistro,
 } from "@/app/data/mock";
+import { loadPublicFormConfig, savePublicFormConfig } from "@/app/lib/publicFormConfig";
 
 /* custo do evento em curso, calculado a partir dos danos catalogados */
 function custoCatalogado(eventoId: number): number {
@@ -55,7 +55,7 @@ export default function EntityPage() {
   const [tab, setTab] = useState<"status" | "formulario" | "contas">("status");
   const [entidade, setEntidade] = useState<MockEntidade>(MOCK_ENTIDADE);
   const [historico, setHistorico] = useState<StatusCidadeRegistro[]>(MOCK_STATUS_HISTORICO);
-  const [config, setConfig] = useState<ConfigFormulario>(MOCK_FORM_CONFIG);
+  const [config, setConfig] = useState<ConfigFormulario>(loadPublicFormConfig);
   const [exercicio, setExercicio] = useState<number | "todos">("todos");
 
   // rascunho da mudança de status
@@ -66,6 +66,10 @@ export default function EntityPage() {
   // rascunhos de novos itens do formulário
   const [novaCategoria, setNovaCategoria] = useState("");
   const [novoCheck, setNovoCheck] = useState("");
+
+  useEffect(() => {
+    savePublicFormConfig(config);
+  }, [config]);
 
   /* ── status da cidade ── */
 
@@ -416,6 +420,10 @@ export default function EntityPage() {
                 <p className="text-[12px] text-on-surface-variant -mt-3 max-w-2xl">
                   Configure o que a população vê e informa ao registrar uma ocorrência em
                   <span className="font-mono font-bold text-primary"> /report</span>.
+                </p>
+                <p className="mt-2 flex items-center gap-1.5 text-[11px] font-bold text-secondary">
+                  <Icon name="sync" className="text-[15px]" />
+                  Alterações aplicadas automaticamente ao formulário público neste navegador.
                 </p>
               </div>
 

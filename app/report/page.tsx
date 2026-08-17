@@ -1,15 +1,13 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { Suspense, useCallback, useEffect, useState } from "react";
 import axios from "axios";
 import dynamic from "next/dynamic";
+import { useRouter, useSearchParams } from "next/navigation";
 import { Btn, Chip, Icon, MetaTag } from "@/app/components/Primitives";
-import {
-  MOCK_ENTIDADE,
-  MOCK_FORM_CONFIG,
-  STATUS_CIDADE_META,
-} from "@/app/data/mock";
+import { MOCK_FORM_CONFIG } from "@/app/data/mock";
 import { api } from "@/app/services/Api";
+import { loadPublicFormConfig, PUBLIC_FORM_CONFIG_STORAGE_KEY } from "@/app/lib/publicFormConfig";
 
 // mapa de seleção de local publico (sem login)
 const PublicMapPicker = dynamic(
@@ -18,10 +16,51 @@ const PublicMapPicker = dynamic(
 );
 
 interface EventoPublico {
-  entidade: string;
+  id: number;
+  tipo: string;
   nome: string;
-  resumoPublico: string;
+  status: string;
+  data_inicio: string;
+  data_fim: string | null;
+  resumo_publico: string | null;
   recomendacoes: string[];
+  zonas: number[];
+}
+
+interface EntidadePublica {
+  id: number;
+  nome: string;
+}
+
+interface ChecklistPublico {
+  id: number;
+  entidade: number;
+  label: string;
+  icon: string;
+  ativo: boolean;
+  fixo: boolean;
+  ordem: number;
+}
+
+interface ReportPublicoResponse {
+  entidade: EntidadePublica;
+  checklist: ChecklistPublico[];
+  evento_ativo: EventoPublico | null;
+}
+
+interface AnexoSelecionado {
+  arquivo: File;
+  nome: string;
+  tamanho: string;
+}
+
+interface ViaCepResponse {
+  cep?: string;
+  logradouro?: string;
+  bairro?: string;
+  localidade?: string;
+  uf?: string;
+  erro?: boolean;
 }
 
 function mensagemApi(error: unknown, fallback: string): string {
@@ -73,57 +112,113 @@ function mascararTelefone(raw: string): string {
 }
 
 /* configuração vinda da tela de Entidade */
-const CONFIG = MOCK_FORM_CONFIG;
-const CHECKLIST = CONFIG.checklist.filter((c) => c.ativo);
-const CATEGORIAS = CONFIG.categorias.filter((c) => c.ativo);
+const CATEGORIA_INICIAL = MOCK_FORM_CONFIG.categorias.find((item) => item.ativo)?.id ?? "climatico";
 
-export default function PublicReportPage() {
-  const [eventosAtivos, setEventosAtivos] = useState<EventoPublico[]>([]);
+function PublicReportContent() {
+  const router = useRouter();
+  const searchParams = useSearchParams();
+  const entidadeParam = searchParams.get("entidade");
+  const entidadeId = entidadeParam && /^[1-9]\d*$/.test(entidadeParam)
+    ? Number(entidadeParam)
+    : null;
 
-  // resumo público do evento ativo (feito pelo técnico)
+  const [config, setConfig] = useState(loadPublicFormConfig);
+  const categorias = config.categorias.filter((item) => item.ativo);
+  const [entidades, setEntidades] = useState<EntidadePublica[]>([]);
+  const [carregandoEntidades, setCarregandoEntidades] = useState(true);
+  const [erroEntidades, setErroEntidades] = useState("");
+  const [tentativaEntidades, setTentativaEntidades] = useState(0);
+  const [fluxoInicial, setFluxoInicial] = useState<"atual" | "outro" | null>(null);
+  const [resolvendoEntidade, setResolvendoEntidade] = useState(false);
+  const [erroResolverEntidade, setErroResolverEntidade] = useState("");
+  const [entidadeSelecionada, setEntidadeSelecionada] = useState<EntidadePublica | null>(null);
+  const [checklist, setChecklist] = useState<ChecklistPublico[]>([]);
+  const [eventoAtivo, setEventoAtivo] = useState<EventoPublico | null>(null);
+  const [erroReport, setErroReport] = useState<{ entidadeId: number; mensagem: string } | null>(null);
+  const [tentativaReport, setTentativaReport] = useState(0);
+
   useEffect(() => {
+    const atualizar = (event: StorageEvent) => {
+      if (event.key === PUBLIC_FORM_CONFIG_STORAGE_KEY) setConfig(loadPublicFormConfig());
+    };
+    const atualizarCustom = (event: Event) => {
+      const detail = (event as CustomEvent<typeof config>).detail;
+      setConfig(detail ?? loadPublicFormConfig());
+    };
+    window.addEventListener("storage", atualizar);
+    window.addEventListener("gardian:public-form-config-changed", atualizarCustom);
+    return () => {
+      window.removeEventListener("storage", atualizar);
+      window.removeEventListener("gardian:public-form-config-changed", atualizarCustom);
+    };
+  }, []);
+
+  // Lista pública exibida antes do formulário.
+  useEffect(() => {
+    if (entidadeId !== null || fluxoInicial !== "outro") return;
     let cancelled = false;
     api
-      .get<{
-        eventos: {
-          entidade_id: number;
-          entidade: string;
-          evento: {
-            nome: string;
-            resumo_publico: string | null;
-            recomendacoes: string[] | null;
-          };
-        }[];
-      }>("/eventos/publico/ativo/")
+      .get<{ entidades: EntidadePublica[] }>("/entidades/listar-publicas/")
       .then((res) => {
         if (cancelled) return;
-        setEventosAtivos(
-          (res.data.eventos ?? []).map((item) => ({
-            entidade: item.entidade,
-            nome: item.evento.nome,
-            resumoPublico: item.evento.resumo_publico ?? "",
-            recomendacoes: item.evento.recomendacoes ?? [],
-          })),
-        );
+        setEntidades(res.data.entidades ?? []);
+        setErroEntidades("");
       })
-      .catch(() => {
-        if (!cancelled) setEventosAtivos([]);
+      .catch((error) => {
+        if (!cancelled) {
+          setEntidades([]);
+          setErroEntidades(mensagemApi(error, "Não foi possível carregar as Defesas Civis disponíveis."));
+        }
+      })
+      .finally(() => {
+        if (!cancelled) setCarregandoEntidades(false);
       });
     return () => {
       cancelled = true;
     };
-  }, []);
+  }, [entidadeId, fluxoInicial, tentativaEntidades]);
 
-  const [categoria, setCategoria] = useState(CATEGORIAS[0]?.id ?? "climatico");
+  // Checklist e evento pertencem à entidade indicada na URL.
+  useEffect(() => {
+    if (entidadeId === null) return;
+    let cancelled = false;
+
+    api
+      .get<ReportPublicoResponse>(`/entidades/${entidadeId}/report/`)
+      .then((res) => {
+        if (cancelled) return;
+        setEntidadeSelecionada(res.data.entidade);
+        setChecklist((res.data.checklist ?? []).filter((item) => item.ativo));
+        setEventoAtivo(res.data.evento_ativo ?? null);
+        setErroReport(null);
+      })
+      .catch((error) => {
+        if (cancelled) return;
+        setErroReport({
+          entidadeId,
+          mensagem: mensagemApi(error, "Não foi possível carregar o formulário desta entidade."),
+        });
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [entidadeId, tentativaReport]);
+
+  const [categoria, setCategoria] = useState(CATEGORIA_INICIAL);
+  const categoriaAtual = categorias.some((item) => item.id === categoria)
+    ? categoria
+    : categorias[0]?.id ?? "outro";
   const [descricao, setDescricao] = useState("");
-  const [checks, setChecks] = useState<Record<string, boolean>>({});
+  const [checks, setChecks] = useState<Record<number, boolean>>({});
   const [modoLocal, setModoLocal] = useState<"endereco" | "coordenada">("endereco");
   const [endereco, setEndereco] = useState("");
   const [lat, setLat] = useState("");
   const [lng, setLng] = useState("");
   const [contato, setContato] = useState("");
   const [cpf, setCpf] = useState("");
-  const [anexos, setAnexos] = useState<{ nome: string; tamanho: string }[]>([]);
+  const [anexos, setAnexos] = useState<AnexoSelecionado[]>([]);
+  const [avisoAnexos, setAvisoAnexos] = useState<string[]>([]);
   const [geoStatus, setGeoStatus] = useState<"idle" | "carregando" | "ok" | "erro">("idle");
   const [geoBuscando, setGeoBuscando] = useState(false);
   const [geoAviso, setGeoAviso] = useState("");
@@ -133,8 +228,19 @@ export default function PublicReportPage() {
   const [enviado, setEnviado] = useState(false);
   const [enviando, setEnviando] = useState(false);
   const [protocolo, setProtocolo] = useState("");
+  const [destino, setDestino] = useState<"atual" | "outro" | null>(() => {
+    const valor = searchParams.get("destino");
+    return valor === "atual" || valor === "outro" ? valor : null;
+  });
+  const [cep, setCep] = useState("");
+  const [numero, setNumero] = useState("");
+  const [cidadeDestino, setCidadeDestino] = useState("");
+  const [ufDestino, setUfDestino] = useState("");
+  const [buscandoCep, setBuscandoCep] = useState(false);
+  const [cidadeAtendida, setCidadeAtendida] = useState<boolean | null>(null);
+  const [ajusteManualDoMapa, setAjusteManualDoMapa] = useState(false);
 
-  const pegarLocalizacao = () => {
+  const pegarLocalizacao = useCallback(() => {
     if (typeof navigator === "undefined" || !navigator.geolocation) {
       setGeoStatus("erro");
       setGeoAviso("Seu navegador não suporta geolocalização. Marque o local no mapa.");
@@ -162,6 +268,73 @@ export default function PublicReportPage() {
       },
       { enableHighAccuracy: true, timeout: 10000, maximumAge: 60000 },
     );
+  }, []);
+
+  useEffect(() => {
+    if (
+      !entidadeSelecionada ||
+      entidadeSelecionada.id !== entidadeId ||
+      destino !== "atual" ||
+      (lat.trim() && lng.trim())
+    ) return;
+    const timer = window.setTimeout(pegarLocalizacao, 0);
+    return () => window.clearTimeout(timer);
+  }, [pegarLocalizacao, entidadeId, entidadeSelecionada, destino, lat, lng]);
+
+  const buscarCep = async () => {
+    const cepLimpo = cep.replace(/\D/g, "");
+    if (cepLimpo.length !== 8) {
+      setEnderecoAviso("Informe um CEP válido com 8 dígitos.");
+      return;
+    }
+    setBuscandoCep(true);
+    setEnderecoAviso("");
+    try {
+      const resposta = await fetch(`https://viacep.com.br/ws/${cepLimpo}/json/`);
+      const dados = (await resposta.json()) as ViaCepResponse;
+      if (!resposta.ok || dados.erro || !dados.localidade || !dados.uf) {
+        setEnderecoAviso("CEP não encontrado. Confira os números e tente novamente.");
+        setCidadeAtendida(null);
+        return;
+      }
+
+      setCidadeDestino(dados.localidade);
+      setUfDestino(dados.uf);
+      const partes = [dados.logradouro, numero, dados.bairro, `${dados.localidade} - ${dados.uf}`]
+        .filter(Boolean);
+      const enderecoCompleto = partes.join(", ");
+      setEndereco(enderecoCompleto);
+
+      const geo = await api.get<{
+        candidatos: { lat: number; lng: number; entidade?: string }[];
+      }>("/api/geocodificar/", { params: { endereco: enderecoCompleto } });
+      const candidato = geo.data.candidatos?.[0];
+      if (!candidato) {
+        // Um CEP pode ser válido, mas o geocodificador devolver apenas um ponto
+        // aproximado fora do polígono da entidade. Nesse caso, não concluímos que
+        // a cidade está sem cobertura: o cidadão confirma o ponto manualmente.
+        setCidadeAtendida(true);
+        setLocalEntidade("");
+        setLat("");
+        setLng("");
+        setModoLocal("coordenada");
+        setGeoStatus("idle");
+        setAjusteManualDoMapa(true);
+        return;
+      }
+      setCidadeAtendida(true);
+      setAjusteManualDoMapa(false);
+      setLocalEntidade(candidato.entidade ?? dados.localidade);
+      setLat(String(candidato.lat));
+      setLng(String(candidato.lng));
+      setModoLocal("coordenada");
+      setGeoStatus("ok");
+    } catch {
+      setEnderecoAviso("Não foi possível consultar o CEP agora. Tente novamente.");
+      setCidadeAtendida(null);
+    } finally {
+      setBuscandoCep(false);
+    }
   };
 
   const buscarEndereco = async () => {
@@ -200,13 +373,17 @@ export default function PublicReportPage() {
   };
 
   const enviar = async () => {
-    if (descricao.trim().length < CONFIG.minCaracteresDescricao) {
+    if (!entidadeSelecionada || entidadeSelecionada.id !== entidadeId) {
+      setErro("Selecione a Defesa Civil responsável antes de enviar o registro.");
+      return;
+    }
+    if (descricao.trim().length < config.minCaracteresDescricao) {
       setErro(
-        `Descreva o que está acontecendo com pelo menos ${CONFIG.minCaracteresDescricao} caracteres.`,
+        `Descreva o que está acontecendo com pelo menos ${config.minCaracteresDescricao} caracteres.`,
       );
       return;
     }
-    if (CONFIG.exigirContato && contato.replace(/\D/g, "").length < 10) {
+    if (config.exigirContato && contato.replace(/\D/g, "").length < 10) {
       setErro("Informe um telefone válido (com DDD) para prosseguir.");
       return;
     }
@@ -214,21 +391,31 @@ export default function PublicReportPage() {
       setErro("Informe um CPF válido (11 dígitos) para prosseguir.");
       return;
     }
-    if (CONFIG.exigirLocalizacao && (!lat.trim() || !lng.trim())) {
+    if (config.exigirLocalizacao && (!lat.trim() || !lng.trim())) {
       setErro("Marque o local no mapa ou use sua localização atual.");
       return;
     }
     setErro("");
     setEnviando(true);
     try {
-      const res = await api.post<{ protocolo: string }>("/ocorrencias/publicas/", {
-        descricao: descricao.trim(),
-        categoria,
-        cpf: cpf.replace(/\D/g, ""),
-        contato: contato.replace(/\D/g, ""),
-        endereco: endereco.trim(),
-        coordenadas: { lat: parseFloat(lat), lng: parseFloat(lng) },
-      });
+      const marcacoes = checklist.filter((item) => checks[item.id]).map((item) => item.id);
+      const formData = new FormData();
+      formData.append("entidade_id", String(entidadeSelecionada.id));
+      formData.append("descricao", descricao.trim());
+      formData.append("categoria", categoriaAtual);
+      formData.append("cpf", cpf.replace(/\D/g, ""));
+      formData.append("contato", contato.replace(/\D/g, ""));
+      formData.append("endereco", endereco.trim());
+      formData.append("coordenadas", JSON.stringify({ lat: parseFloat(lat), lng: parseFloat(lng) }));
+      formData.append("marcacoes", JSON.stringify(marcacoes));
+      formData.append("website", "");
+      for (const anexo of anexos) formData.append("anexos", anexo.arquivo);
+
+      const res = await api.post<{ protocolo: string; aviso_anexos?: string[] }>(
+        "/ocorrencias/publicas/",
+        formData,
+      );
+      setAvisoAnexos(res.data.aviso_anexos ?? []);
       setProtocolo(res.data.protocolo);
       setEnviado(true);
     } catch (error) {
@@ -240,9 +427,284 @@ export default function PublicReportPage() {
     }
   };
 
+  const trocarEntidade = () => {
+    setFluxoInicial(null);
+    setEntidadeSelecionada(null);
+    setChecklist([]);
+    setEventoAtivo(null);
+    setChecks({});
+    setDestino(null);
+    setEndereco("");
+    setLat("");
+    setLng("");
+    setCep("");
+    setNumero("");
+    setCidadeDestino("");
+    setUfDestino("");
+    setCidadeAtendida(null);
+    setLocalEntidade("");
+    setGeoStatus("idle");
+    setGeoAviso("");
+    setEnderecoAviso("");
+    setErro("");
+    router.push("/report");
+  };
+
+  const resolverEntidadeAtual = () => {
+    if (typeof navigator === "undefined" || !navigator.geolocation) {
+      setErroResolverEntidade("Seu navegador não permite consultar a localização. Escolha uma opção da lista.");
+      return;
+    }
+
+    setResolvendoEntidade(true);
+    setErroResolverEntidade("");
+    navigator.geolocation.getCurrentPosition(
+      async (posicao) => {
+        try {
+          const latitude = posicao.coords.latitude.toFixed(6);
+          const longitude = posicao.coords.longitude.toFixed(6);
+          const resposta = await api.get<{ entidade_id: number; nome: string }>(
+            "/entidades/resolver/",
+            {
+              params: {
+                lat: latitude,
+                lng: longitude,
+              },
+            },
+          );
+          setLat(latitude);
+          setLng(longitude);
+          setLocalEntidade(resposta.data.nome);
+          setDestino("atual");
+          setCidadeAtendida(true);
+          setModoLocal("coordenada");
+          setGeoStatus("ok");
+          router.push(`/report?entidade=${resposta.data.entidade_id}&destino=atual`);
+        } catch (error) {
+          setErroResolverEntidade(
+            mensagemApi(error, "Não foi possível identificar uma Defesa Civil para sua localização."),
+          );
+        } finally {
+          setResolvendoEntidade(false);
+        }
+      },
+      () => {
+        setErroResolverEntidade("Não foi possível acessar sua localização. Escolha uma opção da lista.");
+        setResolvendoEntidade(false);
+      },
+      { enableHighAccuracy: true, timeout: 10000, maximumAge: 60000 },
+    );
+  };
+
   /* ───────── confirmação ───────── */
   /* ───────── canal desativado pela entidade ───────── */
-  if (!CONFIG.ativo) {
+  if (entidadeId === null) {
+    const parametroInvalido = entidadeParam !== null;
+    return (
+      <main className="min-h-screen bg-surface">
+        <header className="bg-gradient-to-br from-primary to-primary-container text-white">
+          <div className="mx-auto max-w-3xl px-6 py-10">
+            <div className="mb-6 flex items-center gap-3">
+              <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-white/15">
+                <Icon name="shield" filled className="text-[22px] text-white" />
+              </div>
+              <div>
+                <p className="font-headline text-xl font-black leading-tight tracking-tight">GARDIAN</p>
+                <p className="text-[10px] font-bold uppercase tracking-mono text-white/60">
+                  Canal público da Defesa Civil
+                </p>
+              </div>
+            </div>
+            <h1 className="font-headline text-4xl font-black leading-tight tracking-tighter">
+              Registrar uma ocorrência
+            </h1>
+            <p className="mt-3 max-w-xl text-sm leading-relaxed text-white/75">
+              Primeiro, informe para quem e onde você deseja fazer o registro.
+            </p>
+          </div>
+        </header>
+
+        <div className="mx-auto max-w-3xl px-6 py-8">
+          {parametroInvalido && (
+            <div role="alert" className="mb-5 rounded-xl bg-error-container p-4 text-sm font-semibold text-on-error-container">
+              O endereço informado contém uma entidade inválida. Escolha uma opção abaixo.
+            </div>
+          )}
+
+          {fluxoInicial === null && (
+            <section className="card-tonal p-6 shadow-ambient-sm">
+              <h2 className="mb-4 text-sm font-bold text-primary">A ocorrência é para quem?</h2>
+              <div className="grid gap-3 sm:grid-cols-2">
+                <button
+                  type="button"
+                  onClick={() => {
+                    setFluxoInicial("atual");
+                    resolverEntidadeAtual();
+                  }}
+                  className="rounded-xl bg-surface-container-low p-5 text-left text-primary transition-all hover:bg-surface-container hover:shadow-ambient-sm"
+                >
+                  <Icon name="person_pin_circle" className="mb-3 text-[26px] text-secondary" />
+                  <span className="block text-sm font-bold">Para mim, neste local</span>
+                  <span className="mt-1 block text-xs leading-relaxed text-on-surface-variant">
+                    Usar minha localização para encontrar automaticamente a Defesa Civil responsável.
+                  </span>
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setFluxoInicial("outro")}
+                  className="rounded-xl bg-surface-container-low p-5 text-left text-primary transition-all hover:bg-surface-container hover:shadow-ambient-sm"
+                >
+                  <Icon name="group" className="mb-3 text-[26px] text-secondary" />
+                  <span className="block text-sm font-bold">Para outra pessoa ou local</span>
+                  <span className="mt-1 block text-xs leading-relaxed text-on-surface-variant">
+                    Escolher a Defesa Civil e informar o endereço onde a ocorrência aconteceu.
+                  </span>
+                </button>
+              </div>
+            </section>
+          )}
+
+          {fluxoInicial === "atual" && (
+            <section className="card-tonal p-8 text-center shadow-ambient-sm">
+              {resolvendoEntidade ? (
+                <>
+                  <Icon name="progress_activity" className="mb-3 animate-spin text-[30px] text-secondary" />
+                  <p className="text-sm font-semibold text-on-surface-variant">
+                    Identificando a Defesa Civil da sua localização…
+                  </p>
+                </>
+              ) : (
+                <>
+                  <Icon name="location_off" filled className="mb-3 text-[32px] text-error" />
+                  <p role="alert" className="text-sm font-semibold text-on-surface">
+                    {erroResolverEntidade || "Não foi possível identificar a área de atendimento."}
+                  </p>
+                  <p className="mt-2 text-xs leading-relaxed text-on-surface-variant">
+                    Você ainda pode registrar uma ocorrência para outra pessoa ou para outro local.
+                  </p>
+                  <div className="mt-5 flex flex-wrap justify-center gap-3">
+                    <Btn
+                      variant="secondary"
+                      icon="refresh"
+                      onClick={resolverEntidadeAtual}
+                      disabled={resolvendoEntidade}
+                    >
+                      Tentar novamente
+                    </Btn>
+                    <Btn variant="ghost" icon="group" onClick={() => setFluxoInicial("outro")}>
+                      Informar outro local
+                    </Btn>
+                  </div>
+                </>
+              )}
+            </section>
+          )}
+
+          {fluxoInicial === "outro" && (
+            carregandoEntidades ? (
+              <div className="card-tonal p-8 text-center shadow-ambient-sm">
+                <Icon name="progress_activity" className="mb-3 animate-spin text-[28px] text-secondary" />
+                <p className="text-sm font-semibold text-on-surface-variant">Carregando Defesas Civis…</p>
+              </div>
+            ) : erroEntidades ? (
+              <div className="card-tonal p-8 text-center shadow-ambient-sm">
+                <Icon name="error" filled className="mb-3 text-[30px] text-error" />
+                <p className="text-sm font-semibold text-on-surface">{erroEntidades}</p>
+                <div className="mt-5 flex flex-wrap justify-center gap-3">
+                  <Btn
+                    variant="secondary"
+                    icon="refresh"
+                    onClick={() => {
+                      setCarregandoEntidades(true);
+                      setErroEntidades("");
+                      setTentativaEntidades((valor) => valor + 1);
+                    }}
+                  >
+                    Tentar novamente
+                  </Btn>
+                  <Btn variant="ghost" icon="arrow_back" onClick={() => setFluxoInicial(null)}>
+                    Voltar
+                  </Btn>
+                </div>
+              </div>
+            ) : (
+              <section className="card-tonal p-6 shadow-ambient-sm">
+                <div className="mb-4 flex items-center justify-between gap-3">
+                  <h2 className="text-sm font-bold text-primary">Onde aconteceu a ocorrência?</h2>
+                  <Btn variant="ghost" icon="arrow_back" onClick={() => setFluxoInicial(null)}>
+                    Voltar
+                  </Btn>
+                </div>
+                <p className="mb-4 text-xs text-on-surface-variant">
+                  Escolha a Defesa Civil responsável pelo local da ocorrência.
+                </p>
+                <div className="grid gap-3 sm:grid-cols-2">
+                  {entidades.map((entidade) => (
+                    <button
+                      key={entidade.id}
+                      type="button"
+                      onClick={() => {
+                        setDestino("outro");
+                        router.push(`/report?entidade=${entidade.id}&destino=outro`);
+                      }}
+                      className="flex items-center gap-3 rounded-xl bg-surface-container-low p-4 text-left text-primary transition-all hover:bg-surface-container hover:shadow-ambient-sm"
+                    >
+                      <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-secondary/10">
+                        <Icon name="account_balance" className="text-[22px] text-secondary" />
+                      </span>
+                      <span className="flex-1 text-sm font-bold">{entidade.nome}</span>
+                      <Icon name="arrow_forward" className="text-[20px] text-on-surface-variant" />
+                    </button>
+                  ))}
+                </div>
+              </section>
+            )
+          )}
+        </div>
+      </main>
+    );
+  }
+
+  const carregandoReport = entidadeSelecionada?.id !== entidadeId && erroReport?.entidadeId !== entidadeId;
+  if (carregandoReport) {
+    return (
+      <main className="flex min-h-screen items-center justify-center bg-surface p-6">
+        <div className="card-tonal w-full max-w-lg p-10 text-center shadow-ambient">
+          <Icon name="progress_activity" className="mb-3 animate-spin text-[30px] text-secondary" />
+          <p className="text-sm font-semibold text-on-surface-variant">Carregando formulário…</p>
+        </div>
+      </main>
+    );
+  }
+
+  if (erroReport?.entidadeId === entidadeId) {
+    return (
+      <main className="flex min-h-screen items-center justify-center bg-surface p-6">
+        <div className="card-tonal w-full max-w-lg p-10 text-center shadow-ambient">
+          <Icon name="error" filled className="mb-3 text-[32px] text-error" />
+          <h1 className="font-headline text-2xl font-black text-primary">Formulário indisponível</h1>
+          <p className="mt-3 text-sm text-on-surface-variant">{erroReport.mensagem}</p>
+          <div className="mt-6 flex flex-wrap justify-center gap-3">
+            <Btn
+              variant="secondary"
+              icon="refresh"
+              onClick={() => {
+                setErroReport(null);
+                setTentativaReport((valor) => valor + 1);
+              }}
+            >
+              Tentar novamente
+            </Btn>
+            <Btn variant="ghost" icon="arrow_back" onClick={trocarEntidade}>
+              Escolher outra
+            </Btn>
+          </div>
+        </div>
+      </main>
+    );
+  }
+
+  if (!config.ativo) {
     return (
       <main className="min-h-screen bg-surface flex items-center justify-center p-6">
         <div className="card-tonal p-10 shadow-ambient max-w-lg w-full text-center">
@@ -253,11 +715,16 @@ export default function PublicReportPage() {
             Canal indisponível
           </h1>
           <p className="text-sm text-on-surface-variant mt-3 leading-relaxed">
-            {CONFIG.mensagemDesativado}
+            {config.mensagemDesativado}
           </p>
           <p className="text-[11px] text-on-surface-variant mt-6">
-            {MOCK_ENTIDADE.sigla} · {MOCK_ENTIDADE.telefone}
+            {entidadeSelecionada?.nome}
           </p>
+          <div className="mt-5 flex justify-center">
+            <Btn variant="ghost" icon="arrow_back" onClick={trocarEntidade}>
+              Escolher outra Defesa Civil
+            </Btn>
+          </div>
         </div>
       </main>
     );
@@ -275,7 +742,7 @@ export default function PublicReportPage() {
           </h1>
           <p className="text-sm text-on-surface-variant mt-3 leading-relaxed">
             Sua ocorrência foi encaminhada à Defesa Civil e será analisada pela equipe.
-            {eventosAtivos.length > 0 ? " Ela foi vinculada automaticamente ao evento em andamento." : ""}
+            {eventoAtivo ? " Ela foi vinculada automaticamente ao evento em andamento." : ""}
           </p>
           <div className="card-recessed p-5 mt-6">
             <MetaTag className="block mb-1">PROTOCOLO</MetaTag>
@@ -285,6 +752,14 @@ export default function PublicReportPage() {
             Em caso de risco imediato à vida, ligue <strong className="text-error">199</strong> (Defesa Civil) ou{" "}
             <strong className="text-error">193</strong> (Bombeiros).
           </p>
+          {avisoAnexos.length > 0 && (
+            <div role="alert" className="mt-5 rounded-xl bg-tertiary-container p-4 text-left text-sm text-on-tertiary-container">
+              <p className="font-bold">A ocorrência foi registrada, mas alguns anexos não foram enviados:</p>
+              <ul className="mt-2 list-disc space-y-1 pl-5">
+                {avisoAnexos.map((aviso) => <li key={aviso}>{aviso}</li>)}
+              </ul>
+            </div>
+          )}
           <div className="mt-6">
             <Btn
               variant="ghost"
@@ -299,10 +774,19 @@ export default function PublicReportPage() {
                 setContato("");
                 setCpf("");
                 setAnexos([]);
+                setAvisoAnexos([]);
                 setGeoStatus("idle");
                 setGeoAviso("");
                 setEnderecoAviso("");
                 setGeoBuscando(false);
+                setDestino(null);
+                setCidadeAtendida(null);
+                setAjusteManualDoMapa(false);
+                setCep("");
+                setNumero("");
+                setCidadeDestino("");
+                setUfDestino("");
+                window.setTimeout(pegarLocalizacao, 0);
               }}
             >
               Registrar outra ocorrência
@@ -326,48 +810,119 @@ export default function PublicReportPage() {
             <div>
               <p className="font-headline font-black text-xl leading-tight tracking-tight">GARDIAN</p>
               <p className="text-[10px] font-bold tracking-mono text-white/60 uppercase">
-                Defesa Civil · Porto Seguro/BA
+                {entidadeSelecionada?.nome}
               </p>
             </div>
           </div>
           <h1 className="font-headline font-black text-4xl tracking-tighter leading-tight">
-            {CONFIG.titulo}
+            {config.titulo}
           </h1>
-          <p className="text-white/75 text-sm mt-3 max-w-xl leading-relaxed">{CONFIG.subtitulo}</p>
+          <p className="text-white/75 text-sm mt-3 max-w-xl leading-relaxed">{config.subtitulo}</p>
+          <button
+            type="button"
+            onClick={trocarEntidade}
+            className="mt-5 inline-flex items-center gap-2 text-xs font-bold text-white/80 transition-colors hover:text-white"
+          >
+            <Icon name="swap_horiz" className="text-[17px]" />
+            Trocar Defesa Civil
+          </button>
         </div>
       </header>
 
       <div className="max-w-3xl mx-auto px-6 py-8 space-y-6">
-        {/* situação do município, definida na tela de Entidade */}
-        <section
-          className="rounded-xl p-6 text-white"
-          style={{ background: STATUS_CIDADE_META[MOCK_ENTIDADE.statusCidade].cor }}
-        >
-          <div className="flex items-center gap-2 mb-2">
-            <Icon
-              name={STATUS_CIDADE_META[MOCK_ENTIDADE.statusCidade].icon}
-              filled
-              className="text-[20px]"
-            />
-            <span className="text-[11px] font-black uppercase tracking-mono">
-              {MOCK_ENTIDADE.municipio} · Município{" "}
-              {STATUS_CIDADE_META[MOCK_ENTIDADE.statusCidade].label}
-            </span>
+        {destino !== "atual" && (
+        <section className="card-tonal p-6 shadow-ambient-sm">
+          <div className="mb-4 flex items-center gap-3">
+            <Icon name="my_location" filled className="text-[22px] text-secondary" />
+            <div>
+              <h2 className="text-sm font-bold text-primary">Onde aconteceu a ocorrência?</h2>
+              <p className="mt-1 text-sm text-on-surface-variant">
+                {destino === "outro"
+                  ? "Informe o endereço onde a ocorrência aconteceu."
+                  : "Escolha para qual local deseja registrar."}
+              </p>
+            </div>
           </div>
-          <p className="text-[13px] leading-relaxed text-white/90">{MOCK_ENTIDADE.mensagemPublica}</p>
+          {destino === null && (
+          <div className="grid gap-3 sm:grid-cols-2">
+            <button type="button" onClick={() => { setDestino("atual"); setCidadeAtendida(true); pegarLocalizacao(); }} className="rounded-xl bg-surface-container-low p-4 text-left text-primary transition-all hover:bg-surface-container">
+              <Icon name="near_me" className="mb-2 text-[22px]" />
+              <span className="block text-sm font-bold">Neste local</span>
+              <span className="mt-1 block text-xs opacity-75">Usar a localização do navegador</span>
+            </button>
+            <button type="button" onClick={() => { setDestino("outro"); setCidadeAtendida(null); setAjusteManualDoMapa(false); }} className="rounded-xl bg-surface-container-low p-4 text-left text-primary transition-all hover:bg-surface-container">
+              <Icon name="location_city" className="mb-2 text-[22px]" />
+              <span className="block text-sm font-bold">Outro local ou outra pessoa</span>
+              <span className="mt-1 block text-xs opacity-75">Buscar o endereço pelo CEP</span>
+            </button>
+          </div>
+          )}
+          {destino === "outro" && (
+            <div className="mt-5 rounded-xl bg-surface-container-low p-4">
+              <MetaTag className="mb-2 block">ENDEREÇO DA OCORRÊNCIA</MetaTag>
+              <div className="grid gap-3 sm:grid-cols-[1fr_120px_auto]">
+                <input value={cep} onChange={(event) => setCep(event.target.value.replace(/\D/g, "").slice(0, 8))} placeholder="CEP (8 dígitos)" inputMode="numeric" className="rounded-lg bg-white px-4 py-3 text-sm font-medium outline-none focus:ring-2 focus:ring-secondary" />
+                <input value={numero} onChange={(event) => setNumero(event.target.value)} placeholder="Número" className="rounded-lg bg-white px-4 py-3 text-sm font-medium outline-none focus:ring-2 focus:ring-secondary" />
+                <Btn variant="secondary" icon="search" onClick={buscarCep}>{buscandoCep ? "Buscando…" : "Buscar CEP"}</Btn>
+              </div>
+              {enderecoAviso && <p className="mt-2 text-xs font-bold text-error">{enderecoAviso}</p>}
+              {cidadeAtendida === true && cidadeDestino && !ajusteManualDoMapa && <p className="mt-3 text-xs font-bold text-secondary">Gardian disponível em {cidadeDestino}/{ufDestino}. Confirme o ponto no mapa abaixo.</p>}
+              {ajusteManualDoMapa && (
+                <div className="mt-4 space-y-3">
+                  <div className="flex items-start gap-2 rounded-lg border border-[#E6B800] bg-[#FFF4CC] p-4 text-[#4D3D00]">
+                    <Icon name="edit_location" filled className="mt-0.5 shrink-0 text-[20px] text-[#8A6800]" />
+                    <div>
+                      <p className="text-sm font-black">Confirme o local no mapa</p>
+                      <p className="mt-1 text-xs font-semibold leading-relaxed">
+                        O CEP foi encontrado, mas o ponto automático não ficou preciso. Clique no mapa para marcar o local exato da ocorrência.
+                      </p>
+                    </div>
+                  </div>
+                  <PublicMapPicker
+                    lat={lat}
+                    lng={lng}
+                    height={300}
+                    entidadeId={entidadeSelecionada?.id}
+                    zonasDestaqueIds={eventoAtivo?.zonas}
+                    onChange={(la, ln) => {
+                      setLat(la);
+                      setLng(ln);
+                      setModoLocal("coordenada");
+                      setGeoStatus("ok");
+                      setAjusteManualDoMapa(false);
+                    }}
+                  />
+                  <p className="text-center text-xs font-semibold text-on-surface-variant">
+                    O restante do formulário será liberado depois que você marcar o ponto.
+                  </p>
+                </div>
+              )}
+            </div>
+          )}
         </section>
+        )}
 
-        {/* avisos dos eventos ativos (resumo público + recomendações) */}
-        {CONFIG.mostrarAvisoEvento &&
-          eventosAtivos.map((ev) => (
-            <section key={ev.entidade + ev.nome} className="card-tonal p-6 shadow-ambient-sm border-l-4 border-error">
+        {destino === "outro" && cidadeAtendida === false && (
+          <section className="rounded-xl border-l-4 border-error bg-error-container p-6 text-on-error-container">
+            <div className="mb-2 flex items-center gap-2"><Icon name="info" filled className="text-[20px]" /><h2 className="font-bold">Gardian ainda não está disponível em {cidadeDestino}/{ufDestino}</h2></div>
+            <p className="text-sm leading-relaxed">Entre em contato com a Defesa Civil pelo <strong>199</strong> ou com o Corpo de Bombeiros pelo <strong>193</strong>.</p>
+          </section>
+        )}
+
+        {(destino === "atual" || (destino === "outro" && cidadeAtendida === true && !ajusteManualDoMapa)) && <>
+        {/* aviso do evento ativo da entidade selecionada */}
+        {config.mostrarAvisoEvento &&
+          eventoAtivo &&
+          (eventoAtivo.resumo_publico?.trim() ||
+            eventoAtivo.recomendacoes?.some((recomendacao) => recomendacao.trim())) && (
+            <section className="card-tonal p-6 shadow-ambient-sm border-l-4 border-error">
               <div className="flex items-center gap-2 mb-3">
                 <Icon name="campaign" filled className="text-error text-[20px]" />
-                <MetaTag className="text-error">AVISO EM ANDAMENTO · {ev.entidade.toUpperCase()} · {ev.nome.toUpperCase()}</MetaTag>
+                <MetaTag className="text-error">AVISO EM ANDAMENTO · {eventoAtivo.nome.toUpperCase()}</MetaTag>
               </div>
-              <p className="text-[13px] text-on-surface leading-relaxed">{ev.resumoPublico}</p>
+              <p className="text-[13px] text-on-surface leading-relaxed">{eventoAtivo.resumo_publico}</p>
               <div className="mt-4 space-y-2">
-                {ev.recomendacoes.map((r, i) => (
+                {(eventoAtivo.recomendacoes ?? []).filter((r) => r.trim()).map((r, i) => (
                   <div key={i} className="flex items-start gap-2.5">
                     <Icon name="verified_user" filled className="text-secondary text-[16px] mt-0.5 shrink-0" />
                     <p className="text-[12px] text-on-surface-variant leading-relaxed">{r}</p>
@@ -375,25 +930,25 @@ export default function PublicReportPage() {
                 ))}
               </div>
             </section>
-          ))}
+          )}
 
         {/* tipo */}
         <section className="card-tonal p-6 shadow-ambient-sm">
           <h2 className="mb-4 text-sm font-bold text-primary">1. O que está acontecendo?</h2>
           <div className="grid grid-cols-2 md:grid-cols-4 gap-2">
-            {CATEGORIAS.map((c) => (
+            {categorias.map((c) => (
               <button
                 key={c.id}
                 type="button"
                 onClick={() => setCategoria(c.id)}
                 className={`flex min-h-32 flex-col items-center justify-center gap-2 p-4 rounded-lg transition-all ${
-                  categoria === c.id
+                  categoriaAtual === c.id
                     ? "bg-primary text-white shadow-ambient-sm"
                     : "bg-surface-container-low text-on-surface-variant hover:bg-surface-container"
                 }`}
               >
                 <span className="flex flex-col items-center justify-center gap-2">
-                  <Icon name={c.icon} filled={categoria === c.id} className="text-[24px] leading-none" />
+                  <Icon name={c.icon} filled={categoriaAtual === c.id} className="text-[24px] leading-none" />
                   <span className="text-sm font-bold text-center leading-snug">
                     {c.label}
                   </span>
@@ -423,7 +978,7 @@ export default function PublicReportPage() {
             Isso ajuda a equipe a definir a prioridade do atendimento.
           </p>
           <div className="space-y-2">
-            {CHECKLIST.map((c) => {
+            {checklist.map((c) => {
               const on = !!checks[c.id];
               return (
                 <button
@@ -538,11 +1093,14 @@ export default function PublicReportPage() {
               lat={lat}
               lng={lng}
               height={260}
+              entidadeId={entidadeSelecionada?.id}
+              zonasDestaqueIds={eventoAtivo?.zonas}
               onChange={(la, ln) => {
                 setLat(la);
                 setLng(ln);
                 setModoLocal("coordenada");
                 setGeoStatus("ok");
+                setAjusteManualDoMapa(false);
               }}
             />
             <p className="text-[11px] text-on-surface-variant mt-2">
@@ -557,7 +1115,7 @@ export default function PublicReportPage() {
         </section>
 
         {/* anexos */}
-        {CONFIG.permitirAnexos && (
+        {config.permitirAnexos && (
           <section className="card-tonal p-6 shadow-ambient-sm">
             <h2 className="mb-1 text-sm font-bold text-primary">Fotos e vídeos (opcional)</h2>
             <p className="mb-3 text-sm text-on-surface-variant">
@@ -574,6 +1132,7 @@ export default function PublicReportPage() {
                 className="hidden"
                 onChange={(e) => {
                   const arquivos = Array.from(e.target.files ?? []).map((f) => ({
+                    arquivo: f,
                     nome: f.name,
                     tamanho:
                       f.size > 1024 * 1024
@@ -613,10 +1172,10 @@ export default function PublicReportPage() {
         {/* contato */}
         <section className="card-tonal p-6 shadow-ambient-sm">
           <h2 className="mb-1 text-sm font-bold text-primary">
-            5. Contato {CONFIG.exigirContato ? "(obrigatório)" : "(opcional)"}
+            5. Contato {config.exigirContato ? "(obrigatório)" : "(opcional)"}
           </h2>
           <p className="mb-3 text-sm text-on-surface-variant">
-            {CONFIG.exigirContato
+            {config.exigirContato
               ? "Informe um telefone para que a equipe possa confirmar os detalhes do registro."
               : "O CPF é obrigatório para identificar o registro. O telefone é opcional e permite que a equipe entre em contato."}
           </p>
@@ -634,7 +1193,7 @@ export default function PublicReportPage() {
           />
 
           <label htmlFor="report-telefone" className="mb-1.5 block text-sm font-semibold text-primary">
-            Telefone {CONFIG.exigirContato ? "(obrigatório)" : "(opcional)"}
+            Telefone {config.exigirContato ? "(obrigatório)" : "(opcional)"}
           </label>
           <input
             id="report-telefone"
@@ -660,15 +1219,33 @@ export default function PublicReportPage() {
         )}
 
         <div className="flex flex-col sm:flex-row gap-3 pb-12">
-          <Btn variant="primary" icon="send" full onClick={enviar}>
+          <Btn variant="primary" icon="send" full onClick={enviar} disabled={enviando}>
             {enviando ? "Enviando…" : "Enviar registro"}
           </Btn>
         </div>
 
         <p className="text-[13px] text-on-surface-variant text-center -mt-8 pb-8">
-          Emergência com risco à vida: ligue {CONFIG.telefonesEmergencia}.
+          Emergência com risco à vida: ligue {config.telefonesEmergencia}.
         </p>
+        </>}
       </div>
     </main>
+  );
+}
+
+export default function PublicReportPage() {
+  return (
+    <Suspense
+      fallback={
+        <main className="flex min-h-screen items-center justify-center bg-surface p-6">
+          <div className="card-tonal w-full max-w-lg p-10 text-center shadow-ambient">
+            <Icon name="progress_activity" className="mb-3 animate-spin text-[30px] text-secondary" />
+            <p className="text-sm font-semibold text-on-surface-variant">Carregando formulário…</p>
+          </div>
+        </main>
+      }
+    >
+      <PublicReportContent />
+    </Suspense>
   );
 }
