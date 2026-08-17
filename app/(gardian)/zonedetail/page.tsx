@@ -532,7 +532,7 @@ function ZoneDetailContent() {
           </section>
         )}
 
-        {/* Mapa de eventos e ocorrências da zona */}
+        {/* Mapa de eventos e ocorrências da zona (Não funciona)
         <section className="col-span-12 card-tonal p-7 shadow-ambient-sm">
           <SectionHeader
             overline="LOCALIZAÇÃO DOS REGISTROS"
@@ -545,6 +545,7 @@ function ZoneDetailContent() {
           />
           <PointsMap points={pontosZona} height={440} />
         </section>
+        */}
       </div>
 
       {showEditModal && (

@@ -1,7 +1,14 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
+import dynamic from "next/dynamic";
 import { Btn, Chip, Icon, KPI, MetaTag, SectionHeader, StatusDot, Tab } from "@/app/components/Primitives";
+import { ModalShell } from "@/app/components/Modals";
+import { api } from "@/app/services/Api";
+import {
+  PontoApoioFormModal,
+  type Apoio,
+} from "@/app/components/PontoApoioFormModal";
 import { useGardian } from "@/app/components/GardianContext";
 import {
   MOCK_ENTIDADE,
@@ -49,10 +56,22 @@ const STATUS_PRESTACAO_TONE: Record<
   aprovada: "secondary",
 };
 
+const PointsMap = dynamic(
+  () => import("@/app/components/PointsMap").then((m) => m.PointsMap),
+  {
+    ssr: false,
+    loading: () => (
+      <div className="flex items-center justify-center rounded-xl bg-surface-container-low h-[440px]">
+        <span className="text-xs text-on-surface-variant font-medium">carregando mapa…</span>
+      </div>
+    ),
+  },
+);
+
 export default function EntityPage() {
   const { showToast } = useGardian();
 
-  const [tab, setTab] = useState<"status" | "formulario" | "contas">("status");
+  const [tab, setTab] = useState<"status" | "formulario" | "contas" | "apoios">("status");
   const [entidade, setEntidade] = useState<MockEntidade>(MOCK_ENTIDADE);
   const [historico, setHistorico] = useState<StatusCidadeRegistro[]>(MOCK_STATUS_HISTORICO);
   const [config, setConfig] = useState<ConfigFormulario>(loadPublicFormConfig);
@@ -66,6 +85,51 @@ export default function EntityPage() {
   // rascunhos de novos itens do formulário
   const [novaCategoria, setNovaCategoria] = useState("");
   const [novoCheck, setNovoCheck] = useState("");
+
+  // pontos de apoio
+  const [pontos, setPontos] = useState<Apoio[]>([]);
+  const [pontosLoading, setPontosLoading] = useState(true);
+  const [pontoFormOpen, setPontoFormOpen] = useState(false);
+  const [pontoEditando, setPontoEditando] = useState<Apoio | null>(null);
+  const [pontoExcluindo, setPontoExcluindo] = useState<Apoio | null>(null);
+
+  /* ── pontos de apoio ── */
+
+  const fetchPontos = useCallback(() => {
+    let cancelled = false;
+    setPontosLoading(true);
+    api
+      .get<Apoio[]>("/apoios/")
+      .then((res) => {
+        if (!cancelled) setPontos(res.data);
+      })
+      .catch(() => {
+        if (!cancelled) setPontos([]);
+      })
+      .finally(() => {
+        if (!cancelled) setPontosLoading(false);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  useEffect(() => {
+    const timer = window.setTimeout(() => fetchPontos(), 0);
+    return () => window.clearTimeout(timer);
+  }, [fetchPontos]);
+
+  const excluirPonto = async (ponto: Apoio) => {
+    try {
+      await api.delete(`/apoios/${ponto.id}/`);
+      setPontos((prev) => prev.filter((p) => p.id !== ponto.id));
+      showToast("Ponto de apoio excluído.");
+    } catch {
+      showToast("Erro ao excluir ponto de apoio.", "error");
+    } finally {
+      setPontoExcluindo(null);
+    }
+  };
 
   useEffect(() => {
     savePublicFormConfig(config);
@@ -241,6 +305,9 @@ export default function EntityPage() {
         <Tab active={tab === "contas"} onClick={() => setTab("contas")} icon="account_balance">
           Prestação de Contas
         </Tab>
+        <Tab active={tab === "apoios"} onClick={() => setTab("apoios")} icon="home_work">
+          Pontos de Apoio
+        </Tab>
       </div>
 
       {/* ─────────── SITUAÇÃO DO MUNICÍPIO ─────────── */}
@@ -266,9 +333,8 @@ export default function EntityPage() {
                     key={k}
                     type="button"
                     onClick={() => setNovoStatus(k)}
-                    className={`p-5 rounded-xl text-left transition-all ${
-                      selecionado ? "text-white shadow-ambient" : "card-recessed hover:shadow-ambient-sm"
-                    }`}
+                    className={`p-5 rounded-xl text-left transition-all ${selecionado ? "text-white shadow-ambient" : "card-recessed hover:shadow-ambient-sm"
+                      }`}
                     style={selecionado ? { background: meta.cor } : undefined}
                   >
                     <div className="flex items-center justify-between mb-3">
@@ -280,9 +346,8 @@ export default function EntityPage() {
                       />
                       {atual && (
                         <span
-                          className={`text-[9px] font-black uppercase tracking-mono px-2 py-1 rounded ${
-                            selecionado ? "bg-white/20 text-white" : "bg-surface-container text-on-surface-variant"
-                          }`}
+                          className={`text-[9px] font-black uppercase tracking-mono px-2 py-1 rounded ${selecionado ? "bg-white/20 text-white" : "bg-surface-container text-on-surface-variant"
+                            }`}
                         >
                           ATUAL
                         </span>
@@ -295,9 +360,8 @@ export default function EntityPage() {
                       {meta.label}
                     </p>
                     <p
-                      className={`text-[11px] leading-relaxed mt-1.5 ${
-                        selecionado ? "text-white/80" : "text-on-surface-variant"
-                      }`}
+                      className={`text-[11px] leading-relaxed mt-1.5 ${selecionado ? "text-white/80" : "text-on-surface-variant"
+                        }`}
                     >
                       {meta.descricao}
                     </p>
@@ -449,14 +513,12 @@ export default function EntityPage() {
                       );
                     }}
                     aria-label="Ativar ou desativar o formulário"
-                    className={`relative w-12 h-7 rounded-full transition-colors shrink-0 ${
-                      config.ativo ? "bg-secondary" : "bg-slate-300"
-                    }`}
+                    className={`relative w-12 h-7 rounded-full transition-colors shrink-0 ${config.ativo ? "bg-secondary" : "bg-slate-300"
+                      }`}
                   >
                     <span
-                      className={`absolute top-1 w-5 h-5 rounded-full bg-white shadow transition-all ${
-                        config.ativo ? "left-6" : "left-1"
-                      }`}
+                      className={`absolute top-1 w-5 h-5 rounded-full bg-white shadow transition-all ${config.ativo ? "left-6" : "left-1"
+                        }`}
                     />
                   </button>
                 </div>
@@ -543,9 +605,8 @@ export default function EntityPage() {
                         key={r.id}
                         type="button"
                         onClick={() => setConfig((c) => ({ ...c, [r.id]: !ligado }))}
-                        className={`w-full flex items-center gap-3 p-3.5 rounded-lg text-left transition-all ${
-                          ligado ? "bg-secondary/10 ring-1 ring-secondary/40" : "bg-surface-container-low"
-                        }`}
+                        className={`w-full flex items-center gap-3 p-3.5 rounded-lg text-left transition-all ${ligado ? "bg-secondary/10 ring-1 ring-secondary/40" : "bg-surface-container-low"
+                          }`}
                       >
                         <Icon
                           name={ligado ? "toggle_on" : "toggle_off"}
@@ -628,9 +689,8 @@ export default function EntityPage() {
                     {config[sec.grupo].map((item) => (
                       <div
                         key={item.id}
-                        className={`flex items-center gap-3 p-3.5 rounded-lg transition-all ${
-                          item.ativo ? "bg-surface-container-low" : "bg-surface-container-low opacity-50"
-                        }`}
+                        className={`flex items-center gap-3 p-3.5 rounded-lg transition-all ${item.ativo ? "bg-surface-container-low" : "bg-surface-container-low opacity-50"
+                          }`}
                       >
                         <button
                           type="button"
@@ -704,11 +764,10 @@ export default function EntityPage() {
             <button
               type="button"
               onClick={() => setExercicio("todos")}
-              className={`px-4 py-2.5 rounded-lg text-[11px] font-bold uppercase tracking-mono-tight transition-all ${
-                exercicio === "todos"
+              className={`px-4 py-2.5 rounded-lg text-[11px] font-bold uppercase tracking-mono-tight transition-all ${exercicio === "todos"
                   ? "bg-primary text-white shadow-ambient-sm"
                   : "bg-surface-container-high text-on-surface-variant"
-              }`}
+                }`}
             >
               Todos
             </button>
@@ -717,11 +776,10 @@ export default function EntityPage() {
                 key={ex}
                 type="button"
                 onClick={() => setExercicio(ex)}
-                className={`px-4 py-2.5 rounded-lg text-[11px] font-bold uppercase tracking-mono-tight transition-all ${
-                  exercicio === ex
+                className={`px-4 py-2.5 rounded-lg text-[11px] font-bold uppercase tracking-mono-tight transition-all ${exercicio === ex
                     ? "bg-primary text-white shadow-ambient-sm"
                     : "bg-surface-container-high text-on-surface-variant"
-                }`}
+                  }`}
               >
                 {ex}
               </button>
@@ -910,6 +968,157 @@ export default function EntityPage() {
           </p>
         </div>
       )}
+
+      {/* ─────────── PONTOS DE APOIO ─────────── */}
+      {tab === "apoios" && (
+        <div className="space-y-5">
+          {/* cabecalho */}
+          <section className="card-tonal p-7 shadow-ambient-sm">
+            <div className="flex items-start justify-between gap-6 flex-wrap">
+              <div>
+                <SectionHeader
+                  overline="ABRIGO TEMPORÁRIO"
+                  title="Pontos de Apoio"
+                />
+                <p className="text-[12px] text-on-surface-variant -mt-3 max-w-2xl">
+                  Locais onde a população em risco pode ficar temporariamente durante uma calamidade
+                  (escolas, igrejas, ginásios…).
+                </p>
+              </div>
+              <Btn
+                variant="primary"
+                icon="add"
+                onClick={() => {
+                  setPontoEditando(null);
+                  setPontoFormOpen(true);
+                }}
+              >
+                Novo ponto
+              </Btn>
+            </div>
+          </section>
+
+          <div className="grid grid-cols-12 gap-5 items-start">
+            {/* mapa com os pontos */}
+            <section className="col-span-12 lg:col-span-7 card-tonal p-4 shadow-ambient-sm">
+              <PointsMap
+                points={pontos
+                  .filter((p) => p.coordenadas)
+                  .map((p) => ({
+                    id: p.id,
+                    lat: p.coordenadas!.lat,
+                    lng: p.coordenadas!.lng,
+                    titulo: p.nome,
+                    subtitulo: p.endereco || undefined,
+                    kind: "ponto_apoio" as const,
+                  }))}
+                height={440}
+              />
+            </section>
+
+            {/* lista + CRUD */}
+            <section className="col-span-12 lg:col-span-5 space-y-3">
+              {pontosLoading ? (
+                <div className="card-recessed p-8 text-center">
+                  <p className="text-sm text-on-surface-variant font-medium">Carregando pontos…</p>
+                </div>
+              ) : pontos.length === 0 ? (
+                <div className="card-recessed p-8 text-center">
+                  <Icon name="home_work" className="text-[32px] text-on-surface-variant/60" />
+                  <p className="text-sm text-on-surface-variant font-medium mt-2">
+                    Nenhum ponto de apoio cadastrado.
+                  </p>
+                </div>
+              ) : (
+                pontos.map((p) => (
+                  <div key={p.id} className="card-recessed p-4 flex items-start gap-3">
+                    <div className="w-10 h-10 rounded-lg bg-secondary/15 flex items-center justify-center shrink-0">
+                      <Icon name="home_work" className="text-secondary text-[18px]" />
+                    </div>
+                    <div className="min-w-0 flex-1">
+                      <p className="text-[13px] font-bold text-primary leading-snug">{p.nome}</p>
+                      {p.endereco && (
+                        <p className="text-[11px] text-on-surface-variant mt-0.5 flex items-center gap-1">
+                          <Icon name="place" className="text-[13px]" /> {p.endereco}
+                        </p>
+                      )}
+                      {p.descricao && (
+                        <p className="text-[11px] text-on-surface-variant/80 mt-1 leading-snug">
+                          {p.descricao}
+                        </p>
+                      )}
+                      {p.coordenadas && (
+                        <p className="text-[10px] font-mono text-slate-400 mt-1">
+                          {p.coordenadas.lat.toFixed(4)}, {p.coordenadas.lng.toFixed(4)}
+                        </p>
+                      )}
+                    </div>
+                    <div className="flex gap-1 shrink-0">
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setPontoEditando(p);
+                          setPontoFormOpen(true);
+                        }}
+                        className="w-8 h-8 rounded-lg bg-surface-container-low hover:bg-surface-container transition-colors flex items-center justify-center"
+                        aria-label={`Editar ${p.nome}`}
+                      >
+                        <Icon name="edit" className="text-[15px] text-primary" />
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => setPontoExcluindo(p)}
+                        className="w-8 h-8 rounded-lg bg-surface-container-low hover:bg-error/15 transition-colors flex items-center justify-center"
+                        aria-label={`Excluir ${p.nome}`}
+                      >
+                        <Icon name="delete" className="text-[15px] text-red-600" />
+                      </button>
+                    </div>
+                  </div>
+                ))
+              )}
+            </section>
+          </div>
+        </div>
+      )}
+
+      {/* modal criar/editar ponto de apoio */}
+      <PontoApoioFormModal
+        open={pontoFormOpen}
+        ponto={pontoEditando}
+        onClose={() => setPontoFormOpen(false)}
+        onSaved={fetchPontos}
+      />
+
+      {/* confirmar exclusão */}
+      <ModalShell
+        open={pontoExcluindo !== null}
+        onClose={() => setPontoExcluindo(null)}
+        maxWidth="max-w-md"
+      >
+        <div className="p-8">
+          <MetaTag>EXCLUIR PONTO DE APOIO</MetaTag>
+          <h2 className="font-headline font-black text-xl tracking-tighter mt-2 text-primary">
+            Excluir “{pontoExcluindo?.nome}”?
+          </h2>
+          <p className="text-[12px] text-on-surface-variant mt-2">
+            Esta ação remove o ponto de apoio permanentemente.
+          </p>
+          <div className="flex gap-3 mt-6">
+            <Btn variant="secondary" onClick={() => setPontoExcluindo(null)} full>
+              Cancelar
+            </Btn>
+            <Btn
+              variant="danger"
+              icon="delete"
+              onClick={() => pontoExcluindo && excluirPonto(pontoExcluindo)}
+              full
+            >
+              Excluir
+            </Btn>
+          </div>
+        </div>
+      </ModalShell>
     </div>
   );
 }
