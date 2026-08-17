@@ -6,6 +6,7 @@ import { Btn, Chip, Icon, MetaTag, SectionHeader, StatusDot, Tab } from "@/app/c
 import { useGardian } from "@/app/components/GardianContext";
 import { api } from "@/app/services/Api";
 import { EventFormModal } from "@/app/components/EventFormModal";
+import { DeleteEventModal } from "@/app/components/DeleteEventModal";
 import { PRIORIDADE_META, type RouteStop } from "@/app/components/RouteMap";
 
 const RouteMap = dynamic(
@@ -160,10 +161,14 @@ export default function EventsPage() {
   const [paradaAtiva, setParadaAtiva] = useState<number | null>(null);
   const [showCreateModal, setShowCreateModal] = useState(false);
   const [showEditModal, setShowEditModal] = useState(false);
+  const [showDeleteModal, setShowDeleteModal] = useState(false);
   const [savingAction, setSavingAction] = useState(false);
   const [editandoPublico, setEditandoPublico] = useState(false);
   const [rascunhoResumo, setRascunhoResumo] = useState("");
   const [rascunhoRecs, setRascunhoRecs] = useState<string[]>([]);
+  const [editandoTimeline, setEditandoTimeline] = useState(false);
+  const [rascunhoTimeline, setRascunhoTimeline] = useState<TimelineItem[]>([]);
+  const [timelineError, setTimelineError] = useState("");
 
   const fetchData = useCallback(async () => {
     setLoading(true);
@@ -325,6 +330,46 @@ export default function EventsPage() {
     }
   };
 
+  const abrirEdicaoTimeline = () => {
+    if (!evento) return;
+    setRascunhoTimeline((evento.timeline ?? []).map((item) => ({ ...item })));
+    setTimelineError("");
+    setEditandoTimeline(true);
+  };
+
+  const salvarTimeline = async () => {
+    if (!evento) return;
+    const timelineLimpa = rascunhoTimeline.map((item) => ({
+      hora: item.hora.trim(),
+      titulo: item.titulo.trim(),
+      detalhe: item.detalhe.trim(),
+      nivel: item.nivel,
+    }));
+    if (timelineLimpa.some((item) => !item.hora || !item.titulo || !item.detalhe)) {
+      setTimelineError("Preencha horário, título e detalhes de todos os registros.");
+      return;
+    }
+
+    setSavingAction(true);
+    setTimelineError("");
+    try {
+      const response = await api.patch<Evento>(`/eventos/${evento.id}/`, {
+        timeline: timelineLimpa,
+      });
+      setEventos((current) =>
+        current.map((item) =>
+          item.id === evento.id ? { ...item, ...response.data, timeline: timelineLimpa } : item,
+        ),
+      );
+      setEditandoTimeline(false);
+      showToast("Timeline atualizada com sucesso.");
+    } catch {
+      setTimelineError("Não foi possível atualizar a timeline. Tente novamente.");
+    } finally {
+      setSavingAction(false);
+    }
+  };
+
   if (loading) {
     return (
       <div className="mx-auto flex min-h-[60vh] max-w-[1600px] items-center justify-center p-8">
@@ -415,7 +460,7 @@ export default function EventsPage() {
             {filteredEvents.map((item) => {
               const active = item.id === evento?.id;
               return (
-                <button key={item.id} type="button" onClick={() => setSelectedId(item.id)} className={`card-tonal relative w-full overflow-hidden p-5 text-left shadow-ambient-sm transition-all hover:shadow-ambient ${active ? "ring-2 ring-secondary" : ""}`}>
+                <button key={item.id} type="button" onClick={() => { setSelectedId(item.id); setEditandoTimeline(false); setTimelineError(""); }} className={`card-tonal relative w-full overflow-hidden p-5 text-left shadow-ambient-sm transition-all hover:shadow-ambient ${active ? "ring-2 ring-secondary" : ""}`}>
                   <span className={`absolute bottom-0 left-0 top-0 w-1 ${normalize(item.status) === "ativo" ? "bg-error" : normalize(item.status) === "monitorando" ? "bg-orange-500" : "bg-slate-300"}`} />
                   <div className="pl-3">
                     <div className="mb-2 flex items-center justify-between gap-2">
@@ -449,6 +494,7 @@ export default function EventsPage() {
                   </div>
                   <div className="flex min-w-0 flex-col gap-3">
                     <Btn variant="secondary" icon="edit" onClick={() => setShowEditModal(true)} full>Editar</Btn>
+                    <Btn variant="danger" icon="delete" onClick={() => setShowDeleteModal(true)} full>Excluir</Btn>
                     <div className="card-recessed p-4">
                       <div className="flex items-center justify-between gap-4">
                         <div><p className="text-[11px] font-black uppercase tracking-mono-tight text-primary">Vinculação automática</p><p className="mt-0.5 max-w-[180px] text-[10px] text-on-surface-variant">Configura este evento para receber novas ocorrências.</p></div>
@@ -486,8 +532,74 @@ export default function EventsPage() {
 
               {tab === "timeline" && (
                 <div className="card-tonal p-7 shadow-ambient-sm">
-                  <SectionHeader overline="CRESCIMENTO E DIMENSÃO" title="Timeline do Evento" />
-                  {(evento.timeline ?? []).length === 0 ? <p className="text-[12px] italic text-on-surface-variant">Nenhum registro na timeline.</p> : <div className="relative pl-6"><span className="absolute bottom-2 left-[7px] top-2 w-px bg-outline-variant/50" /><div className="relative space-y-5">{evento.timeline.map((item, index) => <div key={index} className="relative"><span className={`absolute -left-6 top-1 h-3.5 w-3.5 rounded-full border-2 border-white shadow ${NIVEL_DOT[item.nivel] ?? "bg-slate-400"}`} /><MetaTag className="text-secondary">{item.hora}</MetaTag><p className="mt-0.5 text-[13px] font-bold text-primary">{item.titulo}</p><p className="mt-0.5 text-[12px] leading-relaxed text-on-surface-variant">{item.detalhe}</p></div>)}</div></div>}
+                  <SectionHeader
+                    overline="CRESCIMENTO E DIMENSÃO"
+                    title="Timeline do Evento"
+                    action={
+                      editandoTimeline ? (
+                        <Btn variant="ghost" icon="close" onClick={() => { setEditandoTimeline(false); setTimelineError(""); }} disabled={savingAction}>Cancelar</Btn>
+                      ) : (
+                        <Btn variant="secondary" icon="edit" onClick={abrirEdicaoTimeline}>Editar timeline</Btn>
+                      )
+                    }
+                  />
+                  {!editandoTimeline ? (
+                    (evento.timeline ?? []).length === 0 ? (
+                      <p className="text-[12px] italic text-on-surface-variant">Nenhum registro na timeline.</p>
+                    ) : (
+                      <div className="relative pl-6">
+                        <span className="absolute bottom-2 left-[7px] top-2 w-px bg-outline-variant/50" />
+                        <div className="relative space-y-5">
+                          {evento.timeline.map((item, index) => (
+                            <div key={`${item.hora}-${item.titulo}-${index}`} className="relative">
+                              <span className={`absolute -left-6 top-1 h-3.5 w-3.5 rounded-full border-2 border-white shadow ${NIVEL_DOT[item.nivel] ?? "bg-slate-400"}`} />
+                              <MetaTag className="text-secondary">{item.hora}</MetaTag>
+                              <p className="mt-0.5 text-[13px] font-bold text-primary">{item.titulo}</p>
+                              <p className="mt-0.5 text-[12px] leading-relaxed text-on-surface-variant">{item.detalhe}</p>
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+                    )
+                  ) : (
+                    <div className="space-y-4">
+                      {rascunhoTimeline.map((item, index) => (
+                        <div key={index} className="rounded-xl bg-surface-container-low p-4">
+                          <div className="mb-3 flex items-center justify-between gap-3">
+                            <MetaTag>REGISTRO {index + 1}</MetaTag>
+                            <button type="button" onClick={() => setRascunhoTimeline((current) => current.filter((_, itemIndex) => itemIndex !== index))} disabled={savingAction} className="rounded-lg p-2 text-on-surface-variant hover:bg-error-container hover:text-error" aria-label={`Remover registro ${index + 1}`}>
+                              <Icon name="delete" className="text-[18px]" />
+                            </button>
+                          </div>
+                          <div className="grid gap-3 sm:grid-cols-[140px_1fr_170px]">
+                            <label>
+                              <MetaTag className="mb-1.5 block">Horário</MetaTag>
+                              <input type="time" value={item.hora} onChange={(event) => setRascunhoTimeline((current) => current.map((entry, itemIndex) => itemIndex === index ? { ...entry, hora: event.target.value } : entry))} disabled={savingAction} className="w-full rounded-lg border-none bg-white px-3 py-2.5 text-sm font-semibold text-primary focus:ring-2 focus:ring-secondary" />
+                            </label>
+                            <label>
+                              <MetaTag className="mb-1.5 block">Título</MetaTag>
+                              <input value={item.titulo} onChange={(event) => setRascunhoTimeline((current) => current.map((entry, itemIndex) => itemIndex === index ? { ...entry, titulo: event.target.value } : entry))} disabled={savingAction} className="w-full rounded-lg border-none bg-white px-3 py-2.5 text-sm font-semibold text-primary focus:ring-2 focus:ring-secondary" />
+                            </label>
+                            <label>
+                              <MetaTag className="mb-1.5 block">Nível</MetaTag>
+                              <select value={item.nivel} onChange={(event) => setRascunhoTimeline((current) => current.map((entry, itemIndex) => itemIndex === index ? { ...entry, nivel: event.target.value } : entry))} disabled={savingAction} className="w-full rounded-lg border-none bg-white px-3 py-2.5 text-sm font-semibold text-primary focus:ring-2 focus:ring-secondary">
+                                <option value="info">Informativo</option>
+                                <option value="atencao">Atenção</option>
+                                <option value="critico">Crítico</option>
+                              </select>
+                            </label>
+                          </div>
+                          <label className="mt-3 block">
+                            <MetaTag className="mb-1.5 block">Detalhes</MetaTag>
+                            <textarea value={item.detalhe} onChange={(event) => setRascunhoTimeline((current) => current.map((entry, itemIndex) => itemIndex === index ? { ...entry, detalhe: event.target.value } : entry))} disabled={savingAction} rows={2} className="w-full resize-none rounded-lg border-none bg-white px-3 py-2.5 text-sm font-medium text-primary focus:ring-2 focus:ring-secondary" />
+                          </label>
+                        </div>
+                      ))}
+                      <Btn variant="ghost" icon="add" onClick={() => setRascunhoTimeline((current) => [...current, { hora: "", titulo: "", detalhe: "", nivel: "info" }])} disabled={savingAction}>Adicionar registro</Btn>
+                      {timelineError && <p role="alert" className="text-sm font-semibold text-error">{timelineError}</p>}
+                      <Btn variant="success" icon="save" onClick={salvarTimeline} disabled={savingAction}>{savingAction ? "Salvando..." : "Salvar timeline"}</Btn>
+                    </div>
+                  )}
                 </div>
               )}
 
@@ -519,6 +631,18 @@ export default function EventsPage() {
 
       {showCreateModal && <EventFormModal open onClose={() => setShowCreateModal(false)} onSaved={fetchData} />}
       {showEditModal && evento && <EventFormModal open onClose={() => setShowEditModal(false)} onSaved={fetchData} evento={evento} />}
+      {showDeleteModal && evento && (
+        <DeleteEventModal
+          open
+          evento={evento}
+          onClose={() => setShowDeleteModal(false)}
+          onDeleted={() => {
+            setShowDeleteModal(false);
+            setSelectedId(null);
+            void fetchData();
+          }}
+        />
+      )}
     </div>
   );
 }
