@@ -7,6 +7,17 @@ import { useGardian } from "@/app/components/GardianContext";
 import { ADAPTABRASIL } from "@/app/data/adaptabrasil";
 import { api } from "@/app/services/Api";
 
+/** Item de composição ou fator, com a descrição do próprio AdaptaBrasil. */
+type ItemIndicador = {
+  id?: string;
+  label: string;
+  value?: number | null;
+  description?: string | null;
+  descricao_completa?: string | null;
+  faixa?: string | null;
+  ano?: number | null;
+};
+
 type GeoNode = {
   id: string;
   label: string;
@@ -22,8 +33,8 @@ type GeoNode = {
   cenario?: number | null;
   cenario_nome?: string;
   ano?: number;
-  composition?: { id: string; label: string; value: number }[];
-  factors?: { id?: string; label: string; value?: number | null }[];
+  composition?: ItemIndicador[];
+  factors?: ItemIndicador[];
 };
 
 /** Ficha geológica cadastrada em campo (GET/PUT geologia/zona/<id>/cadastro/). */
@@ -37,6 +48,15 @@ type CadastroZona = {
   observacoes: string;
 };
 
+type ComparativoZona = {
+  indice_municipal?: number | null;
+  faixa_municipal?: string | null;
+  suscetibilidade_zona?: string | null;
+  litologia?: string | null;
+  tipo_solo?: string | null;
+  declividade?: string | null;
+};
+
 type ZonaResumo = {
   id: number;
   nome: string;
@@ -44,6 +64,7 @@ type ZonaResumo = {
   status: string;
   area: unknown | null;
   cadastro: CadastroZona | null;
+  comparativo?: ComparativoZona | null;
 };
 
 type CenarioOpcao = { valor: number | null; nome: string };
@@ -146,6 +167,44 @@ function ValorExato({ value, className = "" }: { value?: number | null; classNam
   );
 }
 
+/**
+ * Detalhe do indicador em hover/foco.
+ *
+ * Usa <details>/<summary> não seria adequado aqui (a linha já é clicável para
+ * drill-down), então o painel aparece por CSS no hover do grupo e também no
+ * foco por teclado — quem navega por Tab enxerga a mesma informação.
+ */
+function DetalheIndicador({ item }: { item: ItemIndicador }) {
+  const texto = item.descricao_completa || item.description;
+  if (!texto) return null;
+  return (
+    /*
+     * O detalhe EXPANDE no fluxo, empurrando as linhas seguintes — não é um
+     * balão sobreposto. Um `absolute` seria recortado pelo container com
+     * scroll da lista de fatores, que foi o que acontecia antes: descrições
+     * longas apareciam cortadas na borda do card.
+     *
+     * A transição usa grid-template-rows 0fr→1fr, que anima até altura
+     * automática sem precisar fixar um max-height arbitrário (o que voltaria
+     * a cortar textos longos).
+     */
+    <div className="grid grid-rows-[0fr] transition-[grid-template-rows] duration-200 ease-out group-hover:grid-rows-[1fr] group-focus-within:grid-rows-[1fr]">
+      <div className="overflow-hidden">
+        <div className="mx-1 mb-1 mt-1 rounded-lg bg-primary p-3.5 text-white">
+          <p className="mb-1.5 font-mono text-[9px] font-black uppercase tracking-mono text-white/60">
+            {item.label}
+            {item.ano ? ` · ${item.ano}` : ""}
+            {item.faixa ? ` · ${item.faixa}` : ""}
+          </p>
+          <p className="whitespace-pre-line text-[11px] leading-relaxed text-white/90">
+            {texto}
+          </p>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 function LevelLegend() {
   const LEVELS = ADAPTABRASIL.LEVELS;
   return (
@@ -199,7 +258,12 @@ export default function GeologyPage() {
   // comparação entre a chave atual e a carregada — não precisamos chamar
   // setState de forma síncrona dentro do efeito, só dentro do .then/.catch.
   const [resultado, setResultado] = useState<
-    { chave: string; geo: Record<string, GeoNode>; municipio: string | null } | null
+    {
+      chave: string;
+      geo: Record<string, GeoNode>;
+      municipio: string | null;
+      zona?: ZonaResumo | null;
+    } | null
   >(null);
   const [falha, setFalha] = useState<
     { chave: string; msg: string; campoFaltante?: string } | null
@@ -253,6 +317,7 @@ export default function GeologyPage() {
   // derivados — sem setState síncrono no efeito
   const GEO = carregado ? resultado.geo : VAZIO;
   const municipio = carregado ? resultado.municipio : null;
+  const zonaResposta = carregado ? resultado.zona ?? null : null;
   const loading = aplicavel && !carregado && !falhou;
   const erro = falhou ? falha.msg : null;
   // Quando falta cadastro na entidade, a API diz QUAL campo — o aviso então
@@ -276,7 +341,7 @@ export default function GeologyPage() {
         if (cancelado) return;
         const geo = res.data?.geo;
         if (geo && Object.keys(geo).length > 0) {
-          setResultado({ chave, geo, municipio: res.data.municipio ?? null });
+          setResultado({ chave, geo, municipio: res.data.municipio ?? null, zona: res.data.zona ?? null });
           setPath([res.data.root ?? "root"]);
           if (res.data.cenarios_disponiveis?.length) {
             setCenariosDisp(res.data.cenarios_disponiveis);
@@ -436,14 +501,65 @@ export default function GeologyPage() {
         )}
 
         {zonaSelData && (
-          <div className="mt-4 flex items-start gap-3 px-4 py-3 rounded-lg bg-secondary/8">
-            <Icon name="info" className="text-secondary text-[18px] mt-0.5" />
-            <p className="text-[12px] text-secondary leading-relaxed">
-              Exibindo o recorte da zona <strong>{zonaSelData.nome}</strong>. Os índices do
-              AdaptaBrasil são medidos <strong>por município</strong>, então os valores são os
-              mesmos da entidade — o que muda é a geometria destacada no mapa e a ficha
-              geológica cadastrada para esta zona.
-            </p>
+          <div className="mt-4 space-y-3">
+            <div className="flex items-start gap-3 px-4 py-3 rounded-lg bg-secondary/8">
+              <Icon name="info" className="text-secondary text-[18px] mt-0.5" />
+              <p className="text-[12px] text-secondary leading-relaxed">
+                Recorte da zona <strong>{zonaSelData.nome}</strong>. Os índices do AdaptaBrasil
+                são medidos <strong>por município</strong>, então o valor não muda por zona — o
+                que a zona acrescenta é a caracterização levantada em campo, abaixo.
+              </p>
+            </div>
+
+            {/* Duas leituras lado a lado: o índice do município (AdaptaBrasil)
+                e a ficha da zona (levantamento da equipe). Sem isso, o filtro
+                por zona não mostraria nada de diferente. */}
+            {zonaResposta?.comparativo ? (
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                <div className="card-recessed p-4">
+                  <MetaTag className="block mb-2">ÍNDICE DO MUNICÍPIO · ADAPTABRASIL</MetaTag>
+                  <div className="flex items-baseline gap-2">
+                    <ValorExato
+                      value={zonaResposta.comparativo.indice_municipal}
+                      className="!text-2xl"
+                    />
+                    {zonaResposta.comparativo.faixa_municipal && (
+                      <Chip tone="neutral">{zonaResposta.comparativo.faixa_municipal}</Chip>
+                    )}
+                  </div>
+                </div>
+                <div className="card-recessed p-4">
+                  <MetaTag className="block mb-2">CARACTERIZAÇÃO DA ZONA · EM CAMPO</MetaTag>
+                  <div className="flex items-center gap-2 flex-wrap">
+                    <Chip
+                      tone={
+                        zonaResposta.comparativo.suscetibilidade_zona === "alta"
+                          ? "error"
+                          : zonaResposta.comparativo.suscetibilidade_zona === "media"
+                            ? "warning"
+                            : "secondary"
+                      }
+                    >
+                      SUSCETIBILIDADE {(zonaResposta.comparativo.suscetibilidade_zona ?? "—").toUpperCase()}
+                    </Chip>
+                  </div>
+                  <p className="text-[11px] text-on-surface-variant mt-2 leading-relaxed">
+                    {zonaResposta.comparativo.litologia || "—"}
+                    {zonaResposta.comparativo.tipo_solo
+                      ? ` · ${zonaResposta.comparativo.tipo_solo}`
+                      : ""}
+                    {zonaResposta.comparativo.declividade
+                      ? ` · declividade ${zonaResposta.comparativo.declividade}`
+                      : ""}
+                  </p>
+                </div>
+              </div>
+            ) : (
+              <p className="text-[11px] text-on-surface-variant italic px-1">
+                Esta zona ainda não tem caracterização geológica cadastrada — preencha na
+                seção &quot;Geologia por Zona&quot;, no fim da página.
+              </p>
+            )}
           </div>
         )}
       </header>
@@ -674,26 +790,36 @@ export default function GeologyPage() {
                 </div>
                 <div className="space-y-2">
                   {current.composition.map((c) => {
-                    const hasDrill = GEO[c.id] && !GEO[c.id].leaf;
+                    const hasDrill = c.id != null && GEO[c.id] && !GEO[c.id].leaf;
                     return (
-                      <button
-                        key={c.id}
-                        onClick={() => drillInto(c.id)}
-                        disabled={!hasDrill}
-                        className={`w-full flex items-center gap-4 p-3 rounded-lg text-left transition-all ${
-                          hasDrill
-                            ? "bg-surface-container-low hover:bg-secondary/8 cursor-pointer"
-                            : "bg-surface-container-low opacity-75 cursor-default"
-                        }`}
-                      >
-                        <Icon name="arrow_forward" className="text-secondary text-[14px]" />
-                        <span className="text-[13px] font-bold text-secondary flex-1">{c.label}</span>
-                        <MiniGauge value={c.value} />
-                        <ValorExato value={c.value} className="w-11 text-right" />
-                        {hasDrill && (
-                          <Icon name="chevron_right" className="text-on-surface-variant text-[18px]" />
-                        )}
-                      </button>
+                      <div key={c.id ?? c.label} className="group">
+                        <button
+                          onClick={() => c.id && drillInto(c.id)}
+                          disabled={!hasDrill}
+                          className={`w-full flex items-center gap-4 p-3 rounded-lg text-left transition-all ${
+                            hasDrill
+                              ? "bg-surface-container-low hover:bg-secondary/8 cursor-pointer"
+                              : "bg-surface-container-low opacity-75 cursor-default"
+                          }`}
+                        >
+                          <Icon name="arrow_forward" className="text-secondary text-[14px] shrink-0" />
+                          <span className="text-[13px] font-bold text-secondary flex-1 min-w-0 truncate">
+                            {c.label}
+                          </span>
+                          {(c.descricao_completa || c.description) && (
+                            <Icon
+                              name="info"
+                              className="text-on-surface-variant text-[14px] shrink-0 opacity-50 group-hover:opacity-100"
+                            />
+                          )}
+                          <MiniGauge value={c.value ?? 0} />
+                          <ValorExato value={c.value} className="w-11 text-right" />
+                          {hasDrill && (
+                            <Icon name="chevron_right" className="text-on-surface-variant text-[18px] shrink-0" />
+                          )}
+                        </button>
+                        <DetalheIndicador item={c} />
+                      </div>
                     );
                   })}
                 </div>
@@ -709,20 +835,35 @@ export default function GeologyPage() {
                   </h3>
                   <Chip tone="neutral">NÃO SE DECOMPÕEM</Chip>
                 </div>
-                <div className="space-y-2 max-h-[420px] overflow-y-auto pr-2">
+                <div className="space-y-2 pr-2 max-h-[520px] overflow-y-auto">
                   {current.factors.map((f, i) => (
-                    <div
-                      key={f.id ?? i}
-                      className="flex items-center gap-3 p-2.5 rounded-md hover:bg-surface-container-low"
-                    >
-                      <Icon name="expand_more" className="text-secondary text-[16px]" />
-                      <span className="text-[12px] text-secondary flex-1 leading-snug">{f.label}</span>
-                      {f.value != null ? (
-                        <MiniGauge value={f.value} />
-                      ) : (
-                        <div className="flex-1 max-w-[180px]" />
-                      )}
-                      <ValorExato value={f.value} className="w-11 text-right" />
+                    <div key={f.id ?? i} className="group">
+                      <div className="flex items-center gap-3 p-2.5 rounded-md hover:bg-surface-container-low">
+                        <Icon
+                          name="expand_more"
+                          className={`text-secondary text-[16px] shrink-0 transition-transform duration-200 ${
+                            f.descricao_completa || f.description
+                              ? "group-hover:rotate-180 group-focus-within:rotate-180"
+                              : "opacity-30"
+                          }`}
+                        />
+                        <span className="text-[12px] text-secondary flex-1 min-w-0 leading-snug">
+                          {f.label}
+                        </span>
+                        {(f.descricao_completa || f.description) && (
+                          <Icon
+                            name="info"
+                            className="text-on-surface-variant text-[14px] shrink-0 opacity-50 group-hover:opacity-100"
+                          />
+                        )}
+                        {f.value != null ? (
+                          <MiniGauge value={f.value} />
+                        ) : (
+                          <div className="flex-1 max-w-[180px]" />
+                        )}
+                        <ValorExato value={f.value} className="w-11 text-right" />
+                      </div>
+                      <DetalheIndicador item={f} />
                     </div>
                   ))}
                 </div>
