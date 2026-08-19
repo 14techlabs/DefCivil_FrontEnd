@@ -181,7 +181,7 @@ export function AreaDrawMap({ height = 420 }: { height?: number }) {
   const handleSave = async () => {
     const polygon = getDrawnPolygon();
     if (!polygon) {
-      showToast("Desenhe um polígono no mapa antes de salvar.", "error");
+      showToast("Desenhe um polígono (área) no mapa antes de salvar.", "error");
       return;
     }
 
@@ -190,16 +190,16 @@ export function AreaDrawMap({ height = 420 }: { height?: number }) {
       const nome = `Área dashboard ${new Date().toLocaleString("pt-BR")}`;
       const res = await api.post<ZonaAreaRecord>("/zonas/", {
         nome,
-        descricao: "Polígono criado no painel do dashboard",
+        descricao: "Área criada no painel do dashboard",
         tipo: "urbana",
         status: "estavel",
         area: polygon,
       });
 
       renderSavedPolygon(polygon, { id: res.data.id, nome: res.data.nome ?? nome });
-      showToast("Polígono salvo no banco de dados.");
+      showToast("Área salva com sucesso.");
     } catch {
-      showToast("Não foi possível salvar o polígono.", "error");
+      showToast("Não foi possível salvar a área.", "error");
     } finally {
       setSaving(false);
     }
@@ -214,7 +214,7 @@ export function AreaDrawMap({ height = 420 }: { height?: number }) {
         .sort((a, b) => b.id - a.id)[0];
 
       if (!latest?.area) {
-        showToast("Nenhum polígono encontrado no banco.", "error");
+        showToast("Nenhuma área salva encontrada.", "error");
         return;
       }
 
@@ -229,7 +229,7 @@ export function AreaDrawMap({ height = 420 }: { height?: number }) {
       renderSavedPolygon(latest.area, { id: latest.id, nome: latest.nome });
       showToast(`Última área carregada: ${latest.nome}`);
     } catch {
-      showToast("Não foi possível carregar o último polígono.", "error");
+      showToast("Não foi possível carregar a última área.", "error");
     } finally {
       setLoading(false);
     }
