@@ -11,50 +11,159 @@ import {
 } from "@/app/components/PontoApoioFormModal";
 import { useGardian } from "@/app/components/GardianContext";
 import {
-  MOCK_ENTIDADE,
-  MOCK_STATUS_HISTORICO,
-  MOCK_CONTAS_EVENTOS,
-  MOCK_DANOS_CATALOGO,
-  MOCK_DANOS_REGISTROS,
-  MOCK_OCORRENCIAS,
   STATUS_CIDADE_META,
-  STATUS_PRESTACAO_LABEL,
   formatBRL,
-  type ConfigFormulario,
   type ContaEvento,
-  type MockEntidade,
   type StatusCidade,
-  type StatusCidadeRegistro,
 } from "@/app/data/mock";
-import { loadPublicFormConfig, savePublicFormConfig } from "@/app/lib/publicFormConfig";
 
-/* custo do evento em curso, calculado a partir dos danos catalogados */
-function custoCatalogado(eventoId: number): number {
-  const catalogo = new Map(MOCK_DANOS_CATALOGO.map((c) => [c.id, c]));
-  const ocs = MOCK_OCORRENCIAS.filter((o) => o.evento === eventoId).map((o) => o.id);
-  return MOCK_DANOS_REGISTROS.filter((r) => ocs.includes(r.ocorrenciaId)).reduce(
-    (acc, r) =>
-      acc +
-      r.itens.reduce(
-        (a, it) => a + (catalogo.get(it.catalogoId)?.precoUnitario ?? 0) * it.quantidade,
-        0,
-      ),
-    0,
-  );
+interface EntityApiData {
+  id: number;
+  nome: string;
+  cep: string;
+  cnpj: string;
+  uf: string | null;
+  status: number | null;
+  sigla: string;
+  telefone: string;
+  email: string;
+  endereco: string;
+  mensagem_publica: string;
+  responsavel: number | null;
+  responsavel_nome: string | null;
+  cargo_responsavel: string | null;
+  status_label: string | null;
+  status_slug: StatusCidade | null;
+  status_historico: EntityStatusHistory[];
 }
 
-const custoEvento = (c: ContaEvento): number =>
-  c.custoConsolidado ?? (c.eventoId ? custoCatalogado(c.eventoId) : 0);
+interface EntityStatusHistory {
+  id: number;
+  status: number;
+  status_label: string;
+  status_slug: StatusCidade;
+  motivo: string;
+  autor: string | null;
+  criado_em: string;
+}
 
-const STATUS_PRESTACAO_TONE: Record<
-  ContaEvento["statusPrestacao"],
-  "error" | "warning" | "secondary" | "neutral"
-> = {
-  em_curso: "error",
-  em_elaboracao: "warning",
-  enviada: "warning",
-  aprovada: "secondary",
+interface ChecklistApiItem {
+  id: number;
+  label: string;
+  icon: string;
+  ativo: boolean;
+  fixo: boolean;
+  ordem: number;
+}
+
+interface EventoFinanceiro {
+  id: number;
+  nome: string;
+  tipo: string;
+  status: string | null;
+  data_inicio: string | null;
+  data_fim: string | null;
+}
+
+interface OcorrenciaFinanceira {
+  id: number;
+  evento: number | null;
+  familia: number | null;
+}
+
+interface PrestacaoApi {
+  id: number;
+  evento: number;
+  evento_nome: string;
+  evento_status: string | null;
+  exercicio: number;
+  decreto_municipal: string;
+  fonte_recurso: "proprio" | "estadual" | "federal" | "outro";
+  fonte_label: string;
+  repasse_recebido: string;
+  prazo_limite: string | null;
+  status_prestacao: "em_curso" | "em_elaboracao" | "enviada" | "aprovada";
+  status_label: string;
+  observacao: string;
+  custo: string;
+  custo_consolidado: string | null;
+  parcial: boolean;
+}
+
+type ContaEventoView = ContaEvento & {
+  custoAtual: number;
+  parcial: boolean;
+  fonteLabel: string;
+  statusLabel: string;
+  prazoIso: string;
 };
+
+interface EntidadeDraft {
+  sigla: string;
+  telefone: string;
+  email: string;
+  endereco: string;
+  responsavel: number | null;
+}
+
+interface UsuarioResponsavel {
+  id: number;
+  user_sys: { first_name: string; username: string } | null;
+  nome_anonimo: string | null;
+  telefone: string;
+}
+
+interface FormUiItem {
+  id: string;
+  label: string;
+  icon: string;
+  ativo: boolean;
+  fixo?: boolean;
+}
+
+interface FormUiConfig {
+  ativo: boolean;
+  titulo: string;
+  subtitulo: string;
+  telefonesEmergencia: string;
+  mensagemDesativado: string;
+  exigirLocalizacao: boolean;
+  permitirAnexos: boolean;
+  exigirContato: boolean;
+  mostrarAvisoEvento: boolean;
+  minCaracteresDescricao: number;
+  categorias: FormUiItem[];
+  checklist: FormUiItem[];
+}
+
+const EMPTY_FORM_CONFIG: FormUiConfig = {
+  ativo: false,
+  titulo: "",
+  subtitulo: "",
+  telefonesEmergencia: "",
+  mensagemDesativado: "",
+  exigirLocalizacao: false,
+  permitirAnexos: false,
+  exigirContato: false,
+  mostrarAvisoEvento: false,
+  minCaracteresDescricao: 0,
+  categorias: [],
+  checklist: [],
+};
+
+const STATUS_FROM_API: Record<number, StatusCidade> = {
+  0: "estavel",
+  1: "alerta",
+  2: "critico",
+};
+
+const STATUS_TO_API: Record<StatusCidade, number> = {
+  estavel: 0,
+  alerta: 1,
+  critico: 2,
+};
+
+const custoEvento = (conta: ContaEventoView): number => conta.custoAtual;
 
 const PointsMap = dynamic(
   () => import("@/app/components/PointsMap").then((m) => m.PointsMap),
@@ -69,20 +178,27 @@ const PointsMap = dynamic(
 );
 
 export default function EntityPage() {
-  const { showToast } = useGardian();
+  const { showToast, user } = useGardian();
+  const entidadeId = user?.entidade;
 
   const [tab, setTab] = useState<"status" | "formulario" | "contas" | "apoios">("status");
-  const [entidade, setEntidade] = useState<MockEntidade>(MOCK_ENTIDADE);
-  const [historico, setHistorico] = useState<StatusCidadeRegistro[]>(MOCK_STATUS_HISTORICO);
-  const [config, setConfig] = useState<ConfigFormulario>(loadPublicFormConfig);
+  const [entidade, setEntidade] = useState<EntityApiData | null>(null);
+  const [entidadeLoading, setEntidadeLoading] = useState(true);
+  const [checklist, setChecklist] = useState<ChecklistApiItem[]>([]);
+  const [config, setConfig] = useState<FormUiConfig>(EMPTY_FORM_CONFIG);
+  const [contasBackend, setContasBackend] = useState<ContaEventoView[]>([]);
   const [exercicio, setExercicio] = useState<number | "todos">("todos");
+  const [editandoFicha, setEditandoFicha] = useState(false);
+  const [fichaDraft, setFichaDraft] = useState<EntidadeDraft>({ sigla: "", telefone: "", email: "", endereco: "", responsavel: null });
+  const [responsaveis, setResponsaveis] = useState<UsuarioResponsavel[]>([]);
+  const [prestacaoEditando, setPrestacaoEditando] = useState<ContaEventoView | null>(null);
 
   // rascunho da mudança de status
-  const [novoStatus, setNovoStatus] = useState<StatusCidade>(MOCK_ENTIDADE.statusCidade);
-  const [motivo, setMotivo] = useState("");
-  const [mensagem, setMensagem] = useState(MOCK_ENTIDADE.mensagemPublica);
+  const [novoStatus, setNovoStatus] = useState<StatusCidade>("estavel");
+  const [motivoStatus, setMotivoStatus] = useState("");
+  const [mensagemPublica, setMensagemPublica] = useState("");
 
-  // rascunhos de novos itens do formulário
+  // rascunho de novo item do checklist
   const [novaCategoria, setNovaCategoria] = useState("");
   const [novoCheck, setNovoCheck] = useState("");
 
@@ -92,6 +208,99 @@ export default function EntityPage() {
   const [pontoFormOpen, setPontoFormOpen] = useState(false);
   const [pontoEditando, setPontoEditando] = useState<Apoio | null>(null);
   const [pontoExcluindo, setPontoExcluindo] = useState<Apoio | null>(null);
+
+  const fetchEntidadeEChecklist = useCallback(async () => {
+    if (!entidadeId) return;
+    setEntidadeLoading(true);
+    const [entidadeResult, checklistResult] = await Promise.allSettled([
+      api.get<EntityApiData>(`/entidades/${entidadeId}/`),
+      api.get<ChecklistApiItem[]>("/entidades/checklist/"),
+    ]);
+
+    if (entidadeResult.status === "fulfilled") {
+      const atual = entidadeResult.value.data;
+      setEntidade(atual);
+      setNovoStatus(atual.status == null ? "estavel" : STATUS_FROM_API[atual.status] ?? "estavel");
+      setMensagemPublica(atual.mensagem_publica ?? "");
+    } else {
+      setEntidade(null);
+    }
+    const checklistItems =
+      checklistResult.status === "fulfilled" ? checklistResult.value.data ?? [] : [];
+    setChecklist(checklistItems);
+    setConfig((current) => ({
+      ...current,
+      checklist: checklistItems.map((item) => ({ ...item, id: String(item.id) })),
+    }));
+    setEntidadeLoading(false);
+  }, [entidadeId]);
+
+  useEffect(() => {
+    const timer = window.setTimeout(() => void fetchEntidadeEChecklist(), 0);
+    return () => window.clearTimeout(timer);
+  }, [fetchEntidadeEChecklist]);
+
+  useEffect(() => {
+    api.get<UsuarioResponsavel[]>("/usuarios/")
+      .then((response) => setResponsaveis(response.data ?? []))
+      .catch(() => setResponsaveis([]));
+  }, []);
+
+  useEffect(() => {
+    if (!entidadeId) return;
+    let cancelled = false;
+    Promise.allSettled([
+      api.get<{ eventos: EventoFinanceiro[] }>("/eventos/"),
+      api.get<{ ocorrencias: OcorrenciaFinanceira[] }>("/ocorrencias/"),
+      api.get<{ prestacoes: PrestacaoApi[] }>("/eventos/prestacoes/"),
+    ]).then(([eventoResult, ocorrenciaResult, prestacaoResult]) => {
+      if (cancelled) return;
+      const eventos = eventoResult.status === "fulfilled" ? eventoResult.value.data.eventos ?? [] : [];
+      const ocorrencias = ocorrenciaResult.status === "fulfilled" ? ocorrenciaResult.value.data.ocorrencias ?? [] : [];
+      const prestacoes = prestacaoResult.status === "fulfilled"
+        ? prestacaoResult.value.data.prestacoes ?? []
+        : [];
+      const eventosPorId = new Map(eventos.map((evento) => [evento.id, evento]));
+      setContasBackend(
+        prestacoes.map((prestacao) => {
+          const evento = eventosPorId.get(prestacao.evento);
+          const ocorrenciasEvento = ocorrencias.filter((item) => item.evento === prestacao.evento);
+          const inicio = evento?.data_inicio ? new Date(`${evento.data_inicio}T00:00:00`) : null;
+          const fim = evento?.data_fim ? new Date(`${evento.data_fim}T00:00:00`) : null;
+          const formatarData = (data: Date | null) => data?.toLocaleDateString("pt-BR") ?? "Não informada";
+          return {
+            id: prestacao.id,
+            eventoId: prestacao.evento,
+            nome: prestacao.evento_nome,
+            tipo: evento?.tipo ?? "—",
+            periodo: `${formatarData(inicio)} — ${fim ? formatarData(fim) : prestacao.evento_status ?? "em curso"}`,
+            exercicio: prestacao.exercicio,
+            ocorrencias: ocorrenciasEvento.length,
+            familiasAtingidas: new Set(
+              ocorrenciasEvento.map((item) => item.familia).filter((id) => id != null),
+            ).size,
+            custoConsolidado: prestacao.custo_consolidado == null ? null : Number(prestacao.custo_consolidado),
+            custoAtual: Number(prestacao.custo || 0),
+            parcial: prestacao.parcial,
+            decretoMunicipal: prestacao.decreto_municipal || null,
+            fonteRecurso: prestacao.fonte_recurso,
+            fonteLabel: prestacao.fonte_label,
+            repasseRecebido: Number(prestacao.repasse_recebido || 0),
+            statusPrestacao: prestacao.status_prestacao,
+            statusLabel: prestacao.status_label,
+            prazoLimite: prestacao.prazo_limite
+              ? new Date(`${prestacao.prazo_limite}T00:00:00`).toLocaleDateString("pt-BR")
+              : "—",
+            prazoIso: prestacao.prazo_limite ?? "",
+            observacao: prestacao.observacao,
+          };
+        }),
+      );
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [entidadeId]);
 
   /* ── pontos de apoio ── */
 
@@ -131,77 +340,187 @@ export default function EntityPage() {
     }
   };
 
-  useEffect(() => {
-    savePublicFormConfig(config);
-  }, [config]);
-
   /* ── status da cidade ── */
 
-  const aplicarStatus = () => {
-    if (novoStatus === entidade.statusCidade && mensagem === entidade.mensagemPublica) {
+  const aplicarStatus = async () => {
+    if (!entidade) return;
+    const statusAtual = entidade.status == null ? null : STATUS_FROM_API[entidade.status] ?? null;
+    const statusMudou = novoStatus !== statusAtual;
+    const mensagemMudou = mensagemPublica !== entidade.mensagem_publica;
+    if (!statusMudou && !mensagemMudou) {
       showToast("Nenhuma alteração para aplicar.", "error");
       return;
     }
-    if (novoStatus !== entidade.statusCidade && !motivo.trim()) {
-      showToast("Descreva o motivo da mudança de status.", "error");
+    if (statusMudou && !motivoStatus.trim()) {
+      showToast("Informe o motivo da mudança de situação.", "error");
       return;
     }
-    if (novoStatus !== entidade.statusCidade) {
-      setHistorico((prev) => [
-        {
-          id: prev.length + 1,
-          status: novoStatus,
-          quando: new Date().toLocaleString("pt-BR", {
-            day: "2-digit",
-            month: "2-digit",
-            year: "numeric",
-            hour: "2-digit",
-            minute: "2-digit",
-          }),
-          autor: entidade.responsavel,
-          motivo: motivo.trim(),
-        },
-        ...prev,
-      ]);
+    try {
+      const response = await api.post<EntityApiData>(`/entidades/${entidade.id}/status/`, {
+        status: STATUS_TO_API[novoStatus],
+        motivo: motivoStatus.trim(),
+        mensagem_publica: mensagemPublica,
+      });
+      setEntidade(response.data);
+      setMotivoStatus("");
+      showToast(statusMudou
+        ? `Município marcado como ${STATUS_CIDADE_META[novoStatus].label.toLowerCase()}.`
+        : "Mensagem pública atualizada.");
+    } catch {
+      showToast("Não foi possível atualizar o status da entidade.", "error");
     }
-    setEntidade((e) => ({ ...e, statusCidade: novoStatus, mensagemPublica: mensagem }));
-    setMotivo("");
-    showToast(`Município marcado como ${STATUS_CIDADE_META[novoStatus].label.toLowerCase()}.`);
+  };
+
+  const abrirEdicaoFicha = () => {
+    if (!entidade) return;
+    setFichaDraft({
+      sigla: entidade.sigla ?? "",
+      telefone: entidade.telefone ?? "",
+      email: entidade.email ?? "",
+      endereco: entidade.endereco ?? "",
+      responsavel: entidade.responsavel,
+    });
+    setEditandoFicha(true);
+  };
+
+  const salvarFicha = async () => {
+    if (!entidade) return;
+    try {
+      const response = await api.patch<EntityApiData>(`/entidades/${entidade.id}/`, fichaDraft);
+      setEntidade(response.data);
+      setEditandoFicha(false);
+      showToast("Ficha da entidade atualizada.");
+    } catch {
+      showToast("Não foi possível atualizar a ficha da entidade.", "error");
+    }
+  };
+
+  const salvarPrestacao = async () => {
+    if (!prestacaoEditando) return;
+    try {
+      const response = await api.patch<PrestacaoApi>(`/eventos/prestacoes/${prestacaoEditando.id}/`, {
+        decreto_municipal: prestacaoEditando.decretoMunicipal ?? "",
+        fonte_recurso: prestacaoEditando.fonteRecurso,
+        repasse_recebido: prestacaoEditando.repasseRecebido,
+        prazo_limite: prestacaoEditando.prazoIso || null,
+        status_prestacao: prestacaoEditando.statusPrestacao,
+        observacao: prestacaoEditando.observacao,
+      });
+      const atualizada = response.data;
+      setContasBackend((atuais) => atuais.map((conta) => conta.id === atualizada.id ? {
+        ...conta,
+        decretoMunicipal: atualizada.decreto_municipal || null,
+        fonteRecurso: atualizada.fonte_recurso,
+        fonteLabel: atualizada.fonte_label,
+        repasseRecebido: Number(atualizada.repasse_recebido || 0),
+        prazoIso: atualizada.prazo_limite ?? "",
+        prazoLimite: atualizada.prazo_limite
+          ? new Date(`${atualizada.prazo_limite}T00:00:00`).toLocaleDateString("pt-BR")
+          : "—",
+        statusPrestacao: atualizada.status_prestacao,
+        statusLabel: atualizada.status_label,
+        observacao: atualizada.observacao,
+      } : conta));
+      setPrestacaoEditando(null);
+      showToast("Prestação de contas atualizada.");
+    } catch {
+      showToast("Não foi possível atualizar a prestação de contas.", "error");
+    }
   };
 
   /* ── formulário público ── */
 
-  const toggleCampo = (grupo: "categorias" | "checklist", id: string) =>
-    setConfig((c) => ({
-      ...c,
-      [grupo]: c[grupo].map((x) => (x.id === id ? { ...x, ativo: !x.ativo } : x)),
-    }));
+  const toggleChecklist = async (item: ChecklistApiItem) => {
+    try {
+      const response = await api.patch<ChecklistApiItem>(`/entidades/checklist/${item.id}/`, {
+        ativo: !item.ativo,
+      });
+      setChecklist((current) =>
+        current.map((currentItem) => currentItem.id === item.id ? response.data : currentItem),
+      );
+      setConfig((current) => ({
+        ...current,
+        checklist: current.checklist.map((currentItem) =>
+          currentItem.id === String(item.id)
+            ? { ...response.data, id: String(response.data.id) }
+            : currentItem,
+        ),
+      }));
+    } catch {
+      showToast("Não foi possível atualizar o item.", "error");
+    }
+  };
 
-  const removerCampo = (grupo: "categorias" | "checklist", id: string) =>
-    setConfig((c) => ({ ...c, [grupo]: c[grupo].filter((x) => x.id !== id) }));
+  const removerChecklist = async (item: ChecklistApiItem) => {
+    try {
+      const response = await api.delete<{ item: ChecklistApiItem }>(
+        `/entidades/checklist/${item.id}/`,
+      );
+      setChecklist((current) =>
+        current.map((currentItem) =>
+          currentItem.id === item.id ? response.data.item : currentItem,
+        ),
+      );
+      setConfig((current) => ({
+        ...current,
+        checklist: current.checklist.map((currentItem) =>
+          currentItem.id === String(item.id)
+            ? { ...response.data.item, id: String(response.data.item.id) }
+            : currentItem,
+        ),
+      }));
+    } catch {
+      showToast("Não foi possível remover o item.", "error");
+    }
+  };
 
-  const adicionarCampo = (grupo: "categorias" | "checklist") => {
-    const label = (grupo === "categorias" ? novaCategoria : novoCheck).trim();
+  const adicionarChecklist = async () => {
+    const label = novoCheck.trim();
     if (!label) {
       showToast("Escreva o texto do item antes de adicionar.", "error");
       return;
     }
-    const id = label
-      .toLowerCase()
-      .normalize("NFD")
-      .replace(/[\u0300-\u036f]/g, "")
-      .replace(/[^a-z0-9]+/g, "_")
-      .replace(/^_|_$/g, "");
-    setConfig((c) => ({
-      ...c,
-      [grupo]: [
-        ...c[grupo],
-        { id, label, icon: grupo === "categorias" ? "category" : "check_circle", ativo: true },
-      ],
-    }));
-    if (grupo === "categorias") setNovaCategoria("");
-    else setNovoCheck("");
-    showToast("Item adicionado ao formulário público.");
+    try {
+      const response = await api.post<ChecklistApiItem>("/entidades/checklist/", {
+        label,
+        icon: "check_circle",
+        ativo: true,
+        fixo: false,
+        ordem: checklist.length,
+      });
+      setChecklist((current) => [...current, response.data]);
+      setConfig((current) => ({
+        ...current,
+        checklist: [...current.checklist, { ...response.data, id: String(response.data.id) }],
+      }));
+      setNovoCheck("");
+      showToast("Item adicionado ao formulário público.");
+    } catch {
+      showToast("Não foi possível adicionar o item.", "error");
+    }
+  };
+
+  const toggleCampo = (grupo: "categorias" | "checklist", id: string) => {
+    if (grupo === "categorias") {
+      showToast("A configuração de categorias ainda não está disponível.", "error");
+      return;
+    }
+    const item = checklist.find((current) => current.id === Number(id));
+    if (item) void toggleChecklist(item);
+  };
+
+  const removerCampo = (grupo: "categorias" | "checklist", id: string) => {
+    if (grupo === "categorias") return;
+    const item = checklist.find((current) => current.id === Number(id));
+    if (item) void removerChecklist(item);
+  };
+
+  const adicionarCampo = (grupo: "categorias" | "checklist") => {
+    if (grupo === "categorias") {
+      showToast("A configuração de categorias ainda não está disponível.", "error");
+      return;
+    }
+    void adicionarChecklist();
   };
 
   /* ── prestação de contas ── */
@@ -209,9 +528,9 @@ export default function EntityPage() {
   const contas = useMemo(
     () =>
       exercicio === "todos"
-        ? MOCK_CONTAS_EVENTOS
-        : MOCK_CONTAS_EVENTOS.filter((c) => c.exercicio === exercicio),
-    [exercicio],
+        ? contasBackend
+        : contasBackend.filter((c) => c.exercicio === exercicio),
+    [contasBackend, exercicio],
   );
 
   const totais = useMemo(() => {
@@ -232,20 +551,31 @@ export default function EntityPage() {
   }, [contas]);
 
   const exercicios = useMemo(
-    () => [...new Set(MOCK_CONTAS_EVENTOS.map((c) => c.exercicio))].sort((a, b) => b - a),
-    [],
+    () => [...new Set(contasBackend.map((c) => c.exercicio))].sort((a, b) => b - a),
+    [contasBackend],
   );
 
-  const statusMeta = STATUS_CIDADE_META[entidade.statusCidade];
-  const categoriasAtivas = config.categorias.filter((c) => c.ativo).length;
-  const checksAtivos = config.checklist.filter((c) => c.ativo).length;
+  if (entidadeLoading) {
+    return <div className="p-8 text-sm text-on-surface-variant">Carregando entidade…</div>;
+  }
+
+  if (!entidade) {
+    return <div className="p-8 text-sm text-error">Não foi possível carregar a entidade.</div>;
+  }
+
+  const statusCidade = entidade.status == null ? null : STATUS_FROM_API[entidade.status] ?? null;
+  const statusMeta = statusCidade
+    ? STATUS_CIDADE_META[statusCidade]
+    : { label: "Não informado", cor: "#64748B", tone: "neutral" as const };
+  const categoriasAtivas = 0;
+  const checksAtivos = checklist.filter((item) => item.ativo).length;
 
   return (
     <div className="p-8 space-y-8 max-w-[1600px] mx-auto">
       {/* ── Cabeçalho ── */}
       <header>
         <div className="flex items-center gap-2 mb-3">
-          <MetaTag className="text-secondary">ENTIDADE · {entidade.sigla.toUpperCase()}</MetaTag>
+          <MetaTag className="text-secondary">ENTIDADE · #{entidade.id}</MetaTag>
           <span className="w-1 h-1 rounded-full bg-outline-variant" />
           <MetaTag>CNPJ {entidade.cnpj}</MetaTag>
         </div>
@@ -271,17 +601,26 @@ export default function EntityPage() {
           overline="DADOS CADASTRAIS"
           title={entidade.nome}
           action={
-            <Chip tone="primarySoft" icon="location_city">
-              {entidade.municipio}/{entidade.uf} · {entidade.populacao.toLocaleString("pt-BR")} HAB.
-            </Chip>
+            <div className="flex items-center gap-2">
+              <Chip tone="primarySoft" icon="location_city">
+                {entidade.nome}/{entidade.uf ?? "—"} · população —
+              </Chip>
+              <Btn variant="secondary" icon="edit" onClick={abrirEdicaoFicha}>Editar ficha</Btn>
+            </div>
           }
         />
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-3">
           {[
-            { icon: "badge", l: "Responsável", v: `${entidade.responsavel} — ${entidade.cargoResponsavel}` },
-            { icon: "call", l: "Telefone", v: entidade.telefone },
-            { icon: "mail", l: "E-mail", v: entidade.email },
-            { icon: "home_pin", l: "Endereço", v: entidade.endereco },
+            { icon: "short_text", l: "Sigla", v: entidade.sigla || "—" },
+            { icon: "supervisor_account", l: "Responsável", v: entidade.responsavel_nome || "—" },
+            { icon: "work", l: "Cargo do responsável", v: entidade.cargo_responsavel || "—" },
+            { icon: "call", l: "Telefone", v: entidade.telefone || "—" },
+            { icon: "mail", l: "E-mail", v: entidade.email || "—" },
+            { icon: "home_pin", l: "Endereço", v: entidade.endereco || "—" },
+            { icon: "location_on", l: "UF", v: entidade.uf || "Não informada" },
+            { icon: "markunread_mailbox", l: "CEP", v: entidade.cep || "Não informado" },
+            { icon: "badge", l: "CNPJ", v: entidade.cnpj },
+            { icon: "emergency_home", l: "Situação", v: statusMeta.label },
           ].map((it, i) => (
             <div key={i} className="card-recessed p-4 flex items-start gap-3">
               <Icon name={it.icon} className="text-secondary text-[18px] mt-0.5 shrink-0" />
@@ -319,15 +658,14 @@ export default function EntityPage() {
               title="Status da Cidade"
             />
             <p className="text-[12px] text-on-surface-variant -mt-3 mb-6 max-w-2xl">
-              O status define o regime de operação da equipe e o aviso exibido no canal público.
-              Toda mudança fica registrada com autor e motivo.
+              O status define o regime operacional cadastrado para a entidade.
             </p>
 
             <div className="grid grid-cols-1 md:grid-cols-3 gap-3 mb-6">
               {(Object.keys(STATUS_CIDADE_META) as StatusCidade[]).map((k) => {
                 const meta = STATUS_CIDADE_META[k];
                 const selecionado = novoStatus === k;
-                const atual = entidade.statusCidade === k;
+                const atual = statusCidade === k;
                 return (
                   <button
                     key={k}
@@ -370,101 +708,73 @@ export default function EntityPage() {
               })}
             </div>
 
-            {novoStatus !== entidade.statusCidade && (
-              <div className="mb-5">
-                <MetaTag className="block mb-1.5">MOTIVO DA MUDANÇA</MetaTag>
-                <textarea
-                  value={motivo}
-                  onChange={(e) => setMotivo(e.target.value)}
-                  rows={2}
-                  placeholder="Ex.: pico de ocorrências e saturação de solo acima do limiar"
-                  className="w-full bg-surface-container-low rounded-lg px-4 py-3 text-sm font-medium focus:ring-2 focus:ring-secondary outline-none resize-none"
-                />
-              </div>
-            )}
-
-            <div className="mb-5">
-              <MetaTag className="block mb-1.5">MENSAGEM EXIBIDA NO CANAL PÚBLICO</MetaTag>
-              <textarea
-                value={mensagem}
-                onChange={(e) => setMensagem(e.target.value)}
-                rows={3}
-                className="w-full bg-surface-container-low rounded-lg px-4 py-3 text-sm font-medium focus:ring-2 focus:ring-secondary outline-none resize-none"
-              />
-            </div>
-
             <div className="flex flex-wrap gap-3">
-              <Btn variant="primary" icon="publish" onClick={aplicarStatus}>
+              <Btn variant="primary" icon="publish" onClick={() => void aplicarStatus()}>
                 Aplicar status
               </Btn>
               <Btn
                 variant="ghost"
                 icon="undo"
                 onClick={() => {
-                  setNovoStatus(entidade.statusCidade);
-                  setMensagem(entidade.mensagemPublica);
-                  setMotivo("");
+                  setNovoStatus(statusCidade ?? "estavel");
                 }}
               >
                 Descartar alterações
               </Btn>
             </div>
+
+            {novoStatus !== statusCidade && (
+              <div className="mt-5">
+                <MetaTag className="mb-1.5 block">MOTIVO DA MUDANÇA</MetaTag>
+                <textarea
+                  value={motivoStatus}
+                  onChange={(event) => setMotivoStatus(event.target.value)}
+                  rows={3}
+                  placeholder="Descreva o motivo da mudança de situação"
+                  className="w-full resize-none rounded-lg bg-white px-4 py-3 text-sm font-medium text-primary outline-none focus:ring-2 focus:ring-secondary"
+                />
+              </div>
+            )}
+
+            <div className="mt-5">
+              <MetaTag className="mb-1.5 block">MENSAGEM EXIBIDA NO CANAL PÚBLICO</MetaTag>
+              <textarea
+                value={mensagemPublica}
+                onChange={(event) => setMensagemPublica(event.target.value)}
+                placeholder="Nenhuma mensagem cadastrada"
+                rows={3}
+                className="w-full resize-none rounded-lg bg-surface-container-low px-4 py-3 text-sm font-medium text-on-surface-variant"
+              />
+            </div>
           </section>
 
           <aside className="col-span-12 lg:col-span-5 space-y-5">
-            {/* pré-visualização do aviso público */}
-            <div className="card-tonal p-7 shadow-ambient-sm">
-              <SectionHeader overline="PRÉ-VISUALIZAÇÃO" title="Aviso ao Cidadão" />
-              <div
-                className="rounded-xl p-6 text-white"
-                style={{ background: STATUS_CIDADE_META[novoStatus].cor }}
-              >
-                <div className="flex items-center gap-2 mb-3">
-                  <Icon name={STATUS_CIDADE_META[novoStatus].icon} filled className="text-[20px]" />
-                  <span className="text-[11px] font-black uppercase tracking-mono">
-                    Município {STATUS_CIDADE_META[novoStatus].label}
-                  </span>
-                </div>
-                <p className="text-[13px] leading-relaxed text-white/90">{mensagem}</p>
-              </div>
-              <p className="text-[11px] text-on-surface-variant mt-4 flex items-start gap-1.5">
-                <Icon name="info" className="text-[14px] mt-0.5" />
-                Este bloco aparece no topo do formulário público em /report e na página inicial da cidade.
-              </p>
-            </div>
-
-            {/* histórico */}
             <div className="card-tonal p-7 shadow-ambient-sm">
               <SectionHeader overline="RASTREABILIDADE" title="Histórico de Status" />
-              <div className="relative pl-6">
-                <span className="absolute left-[7px] top-2 bottom-2 w-px bg-outline-variant/50" />
-                <div className="space-y-5">
-                  {historico.map((h) => {
-                    const meta = STATUS_CIDADE_META[h.status];
-                    return (
-                      <div key={h.id} className="relative">
-                        <span
-                          className="absolute -left-6 top-1 w-3.5 h-3.5 rounded-full border-2 border-white shadow"
-                          style={{ background: meta.cor }}
-                        />
-                        <div className="flex items-center gap-2 flex-wrap">
-                          <span
-                            className="text-[11px] font-black uppercase tracking-mono-tight"
-                            style={{ color: meta.cor }}
-                          >
-                            {meta.label}
-                          </span>
-                          <MetaTag>{h.quando}</MetaTag>
-                        </div>
-                        <p className="text-[12px] text-on-surface mt-1 leading-relaxed">{h.motivo}</p>
-                        <p className="text-[10px] font-bold uppercase tracking-mono-tight text-slate-400 mt-1">
-                          por {h.autor}
-                        </p>
+              {entidade.status_historico.length === 0 ? (
+                <p className="text-[12px] leading-relaxed text-on-surface-variant">
+                  Nenhuma alteração de situação foi registrada até o momento.
+                </p>
+              ) : (
+                <div className="space-y-3">
+                  {entidade.status_historico.map((registro) => (
+                    <div key={registro.id} className="card-recessed p-4">
+                      <div className="flex items-center justify-between gap-3">
+                        <Chip tone={STATUS_CIDADE_META[registro.status_slug]?.tone ?? "neutral"}>
+                          {registro.status_label}
+                        </Chip>
+                        <span className="text-[10px] font-mono text-on-surface-variant">
+                          {new Date(registro.criado_em).toLocaleString("pt-BR")}
+                        </span>
                       </div>
-                    );
-                  })}
+                      <p className="mt-2 text-[12px] font-medium text-primary">{registro.motivo}</p>
+                      <p className="mt-1 text-[10px] text-on-surface-variant">
+                        {registro.autor || "Autor não identificado"}
+                      </p>
+                    </div>
+                  ))}
                 </div>
-              </div>
+              )}
             </div>
           </aside>
         </div>
@@ -482,12 +792,11 @@ export default function EntityPage() {
                   title="Formulário Externo"
                 />
                 <p className="text-[12px] text-on-surface-variant -mt-3 max-w-2xl">
-                  Configure o que a população vê e informa ao registrar uma ocorrência em
-                  <span className="font-mono font-bold text-primary"> /report</span>.
+                  Configure as informações apresentadas à população durante o registro de uma ocorrência.
                 </p>
                 <p className="mt-2 flex items-center gap-1.5 text-[11px] font-bold text-secondary">
                   <Icon name="sync" className="text-[15px]" />
-                  Alterações aplicadas automaticamente ao formulário público neste navegador.
+                  As alterações do checklist são aplicadas automaticamente.
                 </p>
               </div>
 
@@ -495,23 +804,15 @@ export default function EntityPage() {
                 <div className="flex items-center justify-between gap-4">
                   <div>
                     <p className="text-[11px] font-black uppercase tracking-mono-tight text-primary">
-                      Canal {config.ativo ? "no ar" : "desativado"}
+                      Configuração geral indisponível
                     </p>
                     <p className="text-[10px] text-on-surface-variant mt-0.5 max-w-[170px]">
-                      {config.ativo
-                        ? "A população pode registrar ocorrências agora."
-                        : "Quem acessar verá apenas a mensagem de indisponibilidade."}
+                      Esta opção ainda não está disponível.
                     </p>
                   </div>
                   <button
                     type="button"
-                    onClick={() => {
-                      setConfig((c) => ({ ...c, ativo: !c.ativo }));
-                      showToast(
-                        config.ativo ? "Formulário público desativado." : "Formulário público reativado.",
-                        config.ativo ? "error" : "secondary",
-                      );
-                    }}
+                    disabled
                     aria-label="Ativar ou desativar o formulário"
                     className={`relative w-12 h-7 rounded-full transition-colors shrink-0 ${config.ativo ? "bg-secondary" : "bg-slate-300"
                       }`}
@@ -553,7 +854,7 @@ export default function EntityPage() {
                     <MetaTag className="block mb-1.5">TÍTULO</MetaTag>
                     <input
                       value={config.titulo}
-                      onChange={(e) => setConfig((c) => ({ ...c, titulo: e.target.value }))}
+                      disabled
                       className="w-full bg-surface-container-low rounded-lg px-4 py-2.5 text-sm font-medium focus:ring-2 focus:ring-secondary outline-none"
                     />
                   </div>
@@ -561,7 +862,7 @@ export default function EntityPage() {
                     <MetaTag className="block mb-1.5">SUBTÍTULO</MetaTag>
                     <textarea
                       value={config.subtitulo}
-                      onChange={(e) => setConfig((c) => ({ ...c, subtitulo: e.target.value }))}
+                      disabled
                       rows={2}
                       className="w-full bg-surface-container-low rounded-lg px-4 py-2.5 text-sm font-medium focus:ring-2 focus:ring-secondary outline-none resize-none"
                     />
@@ -570,9 +871,7 @@ export default function EntityPage() {
                     <MetaTag className="block mb-1.5">TELEFONES DE EMERGÊNCIA</MetaTag>
                     <input
                       value={config.telefonesEmergencia}
-                      onChange={(e) =>
-                        setConfig((c) => ({ ...c, telefonesEmergencia: e.target.value }))
-                      }
+                      disabled
                       className="w-full bg-surface-container-low rounded-lg px-4 py-2.5 text-sm font-medium focus:ring-2 focus:ring-secondary outline-none"
                     />
                   </div>
@@ -580,9 +879,7 @@ export default function EntityPage() {
                     <MetaTag className="block mb-1.5">MENSAGEM QUANDO DESATIVADO</MetaTag>
                     <textarea
                       value={config.mensagemDesativado}
-                      onChange={(e) =>
-                        setConfig((c) => ({ ...c, mensagemDesativado: e.target.value }))
-                      }
+                      disabled
                       rows={2}
                       className="w-full bg-surface-container-low rounded-lg px-4 py-2.5 text-sm font-medium focus:ring-2 focus:ring-secondary outline-none resize-none"
                     />
@@ -599,12 +896,12 @@ export default function EntityPage() {
                     { id: "exigirContato", label: "Exigir telefone de contato", icon: "call" },
                     { id: "mostrarAvisoEvento", label: "Exibir aviso do evento em andamento", icon: "campaign" },
                   ].map((r) => {
-                    const ligado = config[r.id as keyof ConfigFormulario] as boolean;
+                    const ligado = config[r.id as keyof FormUiConfig] as boolean;
                     return (
                       <button
                         key={r.id}
                         type="button"
-                        onClick={() => setConfig((c) => ({ ...c, [r.id]: !ligado }))}
+                        disabled
                         className={`w-full flex items-center gap-3 p-3.5 rounded-lg text-left transition-all ${ligado ? "bg-secondary/10 ring-1 ring-secondary/40" : "bg-surface-container-low"
                           }`}
                       >
@@ -638,9 +935,7 @@ export default function EntityPage() {
                     max={200}
                     step={10}
                     value={config.minCaracteresDescricao}
-                    onChange={(e) =>
-                      setConfig((c) => ({ ...c, minCaracteresDescricao: Number(e.target.value) }))
-                    }
+                    disabled
                     className="w-full accent-[#006A60]"
                   />
                 </div>
@@ -744,10 +1039,10 @@ export default function EntityPage() {
               <div className="flex justify-end">
                 <Btn
                   variant="primary"
-                  icon="save"
-                  onClick={() => showToast("Configuração do formulário público publicada.")}
+                  icon="cloud_done"
+                  disabled
                 >
-                  Publicar configuração
+                  Checklist salvo automaticamente
                 </Btn>
               </div>
             </section>
@@ -788,13 +1083,9 @@ export default function EntityPage() {
             <Btn
               variant="primary"
               icon="download"
-              onClick={() =>
-                showToast(
-                  `Prestação de contas (${exercicio === "todos" ? "todos os exercícios" : exercicio}) exportada.`,
-                )
-              }
+              disabled
             >
-              Exportar prestação
+              Exportação indisponível
             </Btn>
           </div>
 
@@ -808,25 +1099,25 @@ export default function EntityPage() {
               sub={`${contas.length} eventos no período`}
             />
             <KPI
-              label="Repasses Recebidos"
-              value={formatBRL(totais.repasse)}
-              icon="account_balance"
+              label="Ocorrências"
+              value={totais.ocorrencias}
+              icon="emergency"
               tone="secondary"
-              sub="Transferências e convênios"
+              sub="Vinculadas aos eventos"
             />
             <KPI
-              label="Custeado pelo Município"
-              value={formatBRL(totais.proprio)}
-              icon="savings"
+              label="Famílias Atingidas"
+              value={totais.familias}
+              icon="family_restroom"
               tone="warning"
-              sub={`${totais.custo ? Math.round((totais.proprio / totais.custo) * 100) : 0}% do total`}
+              sub="Famílias únicas vinculadas"
             />
             <KPI
-              label="Prestações Pendentes"
-              value={totais.pendentes}
-              icon="pending_actions"
-              tone={totais.pendentes > 0 ? "warning" : "secondary"}
-              sub="Não aprovadas"
+              label="Eventos"
+              value={contas.length}
+              icon="cyclone"
+              tone="secondary"
+              sub="No período selecionado"
             />
           </div>
 
@@ -850,7 +1141,6 @@ export default function EntityPage() {
                 .map((c) => {
                   const custo = custoEvento(c);
                   const maior = Math.max(...contas.map(custoEvento), 1);
-                  const pctRepasse = custo ? (c.repasseRecebido / custo) * 100 : 0;
                   return (
                     <div key={c.id} className="grid grid-cols-[1fr_auto] gap-4 items-center">
                       <div className="min-w-0">
@@ -863,21 +1153,13 @@ export default function EntityPage() {
                             className="absolute inset-y-0 left-0 rounded-full bg-error/70"
                             style={{ width: `${(custo / maior) * 100}%` }}
                           />
-                          <div
-                            className="absolute inset-y-0 left-0 rounded-full bg-secondary"
-                            style={{ width: `${((custo / maior) * pctRepasse) / 100}%` }}
-                          />
                         </div>
                       </div>
                       <div className="text-right shrink-0">
                         <p className="font-headline font-black text-lg text-primary tracking-tighter">
                           {formatBRL(custo)}
                         </p>
-                        <MetaTag>
-                          {c.repasseRecebido > 0
-                            ? `${Math.round(pctRepasse)}% COBERTO POR REPASSE`
-                            : "SEM REPASSE"}
-                        </MetaTag>
+                        <MetaTag>CUSTO CATALOGADO</MetaTag>
                       </div>
                     </div>
                   );
@@ -885,10 +1167,7 @@ export default function EntityPage() {
             </div>
             <div className="flex items-center gap-5 mt-5 pt-4 border-t border-outline-variant/20">
               <span className="flex items-center gap-1.5 text-[10px] font-bold uppercase tracking-mono-tight text-on-surface-variant">
-                <span className="w-3 h-3 rounded-sm bg-secondary" /> Coberto por repasse
-              </span>
-              <span className="flex items-center gap-1.5 text-[10px] font-bold uppercase tracking-mono-tight text-on-surface-variant">
-                <span className="w-3 h-3 rounded-sm bg-error/70" /> Custeado pelo município
+                <span className="w-3 h-3 rounded-sm bg-error/70" /> Danos catalogados
               </span>
             </div>
           </section>
@@ -906,6 +1185,7 @@ export default function EntityPage() {
                   <th className="py-3.5 pr-4 text-right"><MetaTag>REPASSE</MetaTag></th>
                   <th className="py-3.5 pr-4"><MetaTag>PRAZO</MetaTag></th>
                   <th className="py-3.5 pr-6"><MetaTag>PRESTAÇÃO</MetaTag></th>
+                  <th className="py-3.5 pr-6"><MetaTag>AÇÕES</MetaTag></th>
                 </tr>
               </thead>
               <tbody>
@@ -921,10 +1201,10 @@ export default function EntityPage() {
                     </td>
                     <td className="py-4 pr-4 max-w-[220px]">
                       <p className="text-[11px] font-bold text-primary leading-snug">
-                        {c.decretoMunicipal ?? "Sem decreto"}
+                        {c.decretoMunicipal || "—"}
                       </p>
                       <p className="text-[11px] text-on-surface-variant leading-snug mt-0.5">
-                        {c.fonteRecurso}
+                        {c.fonteLabel}
                       </p>
                     </td>
                     <td className="py-4 pr-4 text-[13px] font-mono font-bold text-on-surface text-right">
@@ -935,7 +1215,7 @@ export default function EntityPage() {
                     </td>
                     <td className="py-4 pr-4 text-[13px] font-black text-primary text-right">
                       {formatBRL(custoEvento(c))}
-                      {c.custoConsolidado === null && (
+                      {c.parcial && (
                         <span className="block text-[9px] font-bold uppercase tracking-mono-tight text-orange-600">
                           parcial
                         </span>
@@ -948,12 +1228,20 @@ export default function EntityPage() {
                       {c.prazoLimite}
                     </td>
                     <td className="py-4 pr-6">
-                      <Chip tone={STATUS_PRESTACAO_TONE[c.statusPrestacao]}>
-                        {STATUS_PRESTACAO_LABEL[c.statusPrestacao]}
-                      </Chip>
+                      <Chip tone="neutral">{c.statusLabel}</Chip>
                       <p className="text-[10px] text-on-surface-variant mt-1.5 max-w-[180px] leading-snug">
                         {c.observacao}
                       </p>
+                    </td>
+                    <td className="py-4 pr-6">
+                      <button
+                        type="button"
+                        onClick={() => setPrestacaoEditando({ ...c })}
+                        className="rounded-lg p-2 text-secondary hover:bg-surface-container-high"
+                        aria-label={`Editar prestação de ${c.nome}`}
+                      >
+                        <Icon name="edit" className="text-[18px]" />
+                      </button>
                     </td>
                   </tr>
                 ))}
@@ -1089,6 +1377,93 @@ export default function EntityPage() {
         onClose={() => setPontoFormOpen(false)}
         onSaved={fetchPontos}
       />
+
+      <ModalShell open={editandoFicha} onClose={() => setEditandoFicha(false)} maxWidth="max-w-2xl">
+        <div className="p-8">
+          <MetaTag>FICHA DA ENTIDADE</MetaTag>
+          <h2 className="mt-2 font-headline text-2xl font-black tracking-tighter text-primary">Editar dados cadastrais</h2>
+          <div className="mt-6 grid grid-cols-1 gap-4 md:grid-cols-2">
+            {([
+              ["sigla", "Sigla"],
+              ["telefone", "Telefone"],
+              ["email", "E-mail"],
+              ["endereco", "Endereço"],
+            ] as const).map(([campo, label]) => (
+              <label key={campo} className={campo === "endereco" ? "md:col-span-2" : ""}>
+                <MetaTag className="mb-1.5 block">{label.toUpperCase()}</MetaTag>
+                <input
+                  type={campo === "email" ? "email" : "text"}
+                  value={fichaDraft[campo]}
+                  onChange={(event) => setFichaDraft((atual) => ({ ...atual, [campo]: event.target.value }))}
+                  className="w-full rounded-lg bg-surface-container-low px-4 py-3 text-sm font-medium text-primary outline-none focus:ring-2 focus:ring-secondary"
+                />
+              </label>
+            ))}
+            <label className="md:col-span-2">
+              <MetaTag className="mb-1.5 block">RESPONSÁVEL</MetaTag>
+              <select
+                value={fichaDraft.responsavel ?? ""}
+                onChange={(event) => setFichaDraft((atual) => ({ ...atual, responsavel: event.target.value ? Number(event.target.value) : null }))}
+                className="w-full rounded-lg bg-surface-container-low px-4 py-3 text-sm font-medium text-primary outline-none focus:ring-2 focus:ring-secondary"
+              >
+                <option value="">Sem responsável</option>
+                {responsaveis.map((responsavel) => (
+                  <option key={responsavel.id} value={responsavel.id}>
+                    {responsavel.user_sys?.first_name || responsavel.user_sys?.username || responsavel.nome_anonimo || responsavel.telefone}
+                  </option>
+                ))}
+              </select>
+            </label>
+          </div>
+          <div className="mt-6 flex gap-3">
+            <Btn variant="secondary" onClick={() => setEditandoFicha(false)} full>Cancelar</Btn>
+            <Btn variant="primary" icon="save" onClick={() => void salvarFicha()} full>Salvar</Btn>
+          </div>
+        </div>
+      </ModalShell>
+
+      <ModalShell open={prestacaoEditando !== null} onClose={() => setPrestacaoEditando(null)} maxWidth="max-w-2xl">
+        {prestacaoEditando && (
+          <div className="p-8">
+            <MetaTag>PRESTAÇÃO DE CONTAS</MetaTag>
+            <h2 className="mt-2 font-headline text-2xl font-black tracking-tighter text-primary">{prestacaoEditando.nome}</h2>
+            <div className="mt-6 grid grid-cols-1 gap-4 md:grid-cols-2">
+              <label>
+                <MetaTag className="mb-1.5 block">DECRETO MUNICIPAL</MetaTag>
+                <input value={prestacaoEditando.decretoMunicipal ?? ""} onChange={(e) => setPrestacaoEditando((p) => p && ({ ...p, decretoMunicipal: e.target.value }))} className="w-full rounded-lg bg-surface-container-low px-4 py-3 text-sm outline-none focus:ring-2 focus:ring-secondary" />
+              </label>
+              <label>
+                <MetaTag className="mb-1.5 block">FONTE DO RECURSO</MetaTag>
+                <select value={prestacaoEditando.fonteRecurso} onChange={(e) => setPrestacaoEditando((p) => p && ({ ...p, fonteRecurso: e.target.value }))} className="w-full rounded-lg bg-surface-container-low px-4 py-3 text-sm outline-none focus:ring-2 focus:ring-secondary">
+                  <option value="proprio">Recurso próprio</option><option value="estadual">Recurso estadual</option><option value="federal">Recurso federal</option><option value="outro">Outro</option>
+                </select>
+              </label>
+              <label>
+                <MetaTag className="mb-1.5 block">REPASSE RECEBIDO</MetaTag>
+                <input type="number" min="0" step="0.01" value={prestacaoEditando.repasseRecebido} onChange={(e) => setPrestacaoEditando((p) => p && ({ ...p, repasseRecebido: Number(e.target.value) }))} className="w-full rounded-lg bg-surface-container-low px-4 py-3 text-sm outline-none focus:ring-2 focus:ring-secondary" />
+              </label>
+              <label>
+                <MetaTag className="mb-1.5 block">PRAZO LIMITE</MetaTag>
+                <input type="date" value={prestacaoEditando.prazoIso} onChange={(e) => setPrestacaoEditando((p) => p && ({ ...p, prazoIso: e.target.value }))} className="w-full rounded-lg bg-surface-container-low px-4 py-3 text-sm outline-none focus:ring-2 focus:ring-secondary" />
+              </label>
+              <label className="md:col-span-2">
+                <MetaTag className="mb-1.5 block">SITUAÇÃO</MetaTag>
+                <select value={prestacaoEditando.statusPrestacao} onChange={(e) => setPrestacaoEditando((p) => p && ({ ...p, statusPrestacao: e.target.value as ContaEvento["statusPrestacao"] }))} className="w-full rounded-lg bg-surface-container-low px-4 py-3 text-sm outline-none focus:ring-2 focus:ring-secondary">
+                  <option value="em_curso">Em curso</option><option value="em_elaboracao">Em elaboração</option><option value="enviada">Enviada</option><option value="aprovada">Aprovada</option>
+                </select>
+              </label>
+              <label className="md:col-span-2">
+                <MetaTag className="mb-1.5 block">OBSERVAÇÃO</MetaTag>
+                <textarea rows={4} value={prestacaoEditando.observacao} onChange={(e) => setPrestacaoEditando((p) => p && ({ ...p, observacao: e.target.value }))} className="w-full resize-none rounded-lg bg-surface-container-low px-4 py-3 text-sm outline-none focus:ring-2 focus:ring-secondary" />
+              </label>
+            </div>
+            <div className="mt-6 flex gap-3">
+              <Btn variant="secondary" onClick={() => setPrestacaoEditando(null)} full>Cancelar</Btn>
+              <Btn variant="primary" icon="save" onClick={() => void salvarPrestacao()} full>Salvar</Btn>
+            </div>
+          </div>
+        )}
+      </ModalShell>
 
       {/* confirmar exclusão */}
       <ModalShell
