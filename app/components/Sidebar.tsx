@@ -53,7 +53,7 @@ export function Sidebar({
               GARDIAN
             </h1>
             <p className="text-[10px] font-bold tracking-mono text-slate-500 uppercase mt-0.5">
-              Civil Defense
+              Defesa Civil
             </p>
           </div>
         </div>
@@ -67,17 +67,16 @@ export function Sidebar({
             <Link
               key={item.id}
               href={href}
-              className={`flex items-center gap-3 px-4 py-3 rounded-l-lg text-sm font-semibold tracking-tight transition-all w-full text-left ${
-                isActive
+              className={`flex items-center gap-3 px-4 py-3 rounded-l-lg text-sm font-semibold tracking-tight transition-all w-full text-left ${isActive
                   ? "bg-white text-secondary shadow-[0_8px_24px_-8px_rgba(0,106,96,0.20)]"
                   : "text-on-surface-variant hover:text-primary hover:translate-x-1"
-              }`}
+                }`}
               style={
                 isActive
                   ? {
-                      boxShadow:
-                        "inset 2px 0 0 #006A60, 0 8px 24px -8px rgba(0,106,96,0.2)",
-                    }
+                    boxShadow:
+                      "inset 2px 0 0 #006A60, 0 8px 24px -8px rgba(0,106,96,0.2)",
+                  }
                   : undefined
               }
             >
@@ -125,11 +124,10 @@ export function Sidebar({
           <button
             type="button"
             onClick={() => setMenuOpen((v) => !v)}
-            className={`shrink-0 p-1.5 rounded-lg transition-all duration-150 ${
-              menuOpen
+            className={`shrink-0 p-1.5 rounded-lg transition-all duration-150 ${menuOpen
                 ? "bg-surface-container text-secondary"
                 : "text-on-surface-variant hover:bg-surface-container hover:text-primary active:scale-90"
-            }`}
+              }`}
             aria-label="Opções da sessão"
           >
             <Icon name="more_vert" className="text-on-surface-variant text-[18px]" />
