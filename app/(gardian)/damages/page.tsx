@@ -1,18 +1,48 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { Btn, Chip, Icon, KPI, MetaTag, SectionHeader, Tab } from "@/app/components/Primitives";
 import { useGardian } from "@/app/components/GardianContext";
+import { api } from "@/app/services/Api";
 import {
   MOCK_DANOS_CATALOGO,
   MOCK_DANOS_REGISTROS,
   MOCK_OCORRENCIAS,
   MOCK_EVENTOS,
   formatBRL,
-  tecnicoNome,
-  zonaNome,
   type DanoCatalogoItem,
 } from "@/app/data/mock";
+
+interface DanoPorOcorrencia {
+  ocorrencia_id: number;
+  protocolo: string;
+  titulo: string;
+  status: string;
+  categoria: string;
+  created_at: string;
+  custo_total: string | number;
+  total_itens: number;
+  danos: Array<{
+    id: number;
+    item_nome: string;
+    categoria: string;
+    unidade: string;
+    quantidade: number;
+    valor_unitario_aplicado: string | number;
+    valor_total: string | number;
+  }>;
+}
+
+interface RelatorioOcorrenciasResponse {
+  ocorrencias: DanoPorOcorrencia[];
+  totais: {
+    custo_total: string | number;
+    total_itens: number;
+    ocorrencias_com_dano: number;
+  };
+}
+
+const KPI_VALUE_CLASS = "whitespace-nowrap text-[clamp(1.75rem,2.35vw,2.5rem)]";
 
 export default function DamagesPage() {
   const { showToast } = useGardian();
@@ -20,6 +50,30 @@ export default function DamagesPage() {
   const [tab, setTab] = useState<"ocorrencias" | "eventos" | "catalogo">("ocorrencias");
   const [catalogo, setCatalogo] = useState<DanoCatalogoItem[]>(MOCK_DANOS_CATALOGO);
   const [detalheOc, setDetalheOc] = useState<number | null>(null);
+  const [relatorioOcorrencias, setRelatorioOcorrencias] = useState<DanoPorOcorrencia[]>([]);
+  const [totaisOcorrencias, setTotaisOcorrencias] = useState<RelatorioOcorrenciasResponse["totais"]>({
+    custo_total: 0,
+    total_itens: 0,
+    ocorrencias_com_dano: 0,
+  });
+  const [carregandoOcorrencias, setCarregandoOcorrencias] = useState(true);
+
+  useEffect(() => {
+    let cancelado = false;
+    api.get<RelatorioOcorrenciasResponse>("/danos/registros/por-ocorrencia/")
+      .then((response) => {
+        if (cancelado) return;
+        setRelatorioOcorrencias(response.data.ocorrencias ?? []);
+        setTotaisOcorrencias(response.data.totais);
+      })
+      .catch(() => {
+        if (!cancelado) showToast("Não foi possível carregar o relatório de danos.", "error");
+      })
+      .finally(() => {
+        if (!cancelado) setCarregandoOcorrencias(false);
+      });
+    return () => { cancelado = true; };
+  }, [showToast]);
 
   // form da subtela de catálogo
   const [showForm, setShowForm] = useState(false);
@@ -36,16 +90,8 @@ export default function DamagesPage() {
   const custoRegistro = (itens: { catalogoId: number; quantidade: number }[]) =>
     itens.reduce((acc, it) => acc + (catalogoById.get(it.catalogoId)?.precoUnitario ?? 0) * it.quantidade, 0);
 
-  const custoTotal = useMemo(
-    () => MOCK_DANOS_REGISTROS.reduce((acc, r) => acc + custoRegistro(r.itens), 0),
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-    [catalogo],
-  );
-
-  const totalItens = useMemo(
-    () => MOCK_DANOS_REGISTROS.reduce((acc, r) => acc + r.itens.reduce((a, i) => a + i.quantidade, 0), 0),
-    [],
-  );
+  const custoTotal = Number(totaisOcorrencias.custo_total || 0);
+  const totalItens = totaisOcorrencias.total_itens;
 
   // agregação por evento
   const porEvento = useMemo(() => {
@@ -98,10 +144,17 @@ export default function DamagesPage() {
 
       {/* Indicadores gerais */}
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-5">
-        <KPI label="Valor Bruto Total" value={formatBRL(custoTotal)} icon="payments" tone="error" sub="Itens aplicados em ocorrências" />
-        <KPI label="Itens Aplicados" value={totalItens} icon="inventory_2" tone="warning" sub={`Em ${MOCK_DANOS_REGISTROS.length} registros`} />
-        <KPI label="Ocorrências c/ Danos" value={MOCK_DANOS_REGISTROS.length} icon="emergency" tone="secondary" sub="Com catalogação concluída" />
-        <KPI label="Base de Itens" value={catalogo.length} icon="database" tone="secondary" sub="Preços de referência" />
+        <KPI
+          label="Valor Bruto Total"
+          value={formatBRL(custoTotal)}
+          valueClassName={KPI_VALUE_CLASS}
+          icon="payments"
+          tone="error"
+          sub="Itens aplicados em ocorrências"
+        />
+        <KPI label="Itens Aplicados" value={totalItens} valueClassName={KPI_VALUE_CLASS} icon="inventory_2" tone="warning" sub={`Em ${totaisOcorrencias.ocorrencias_com_dano} ocorrências`} />
+        <KPI label="Ocorrências c/ Danos" value={totaisOcorrencias.ocorrencias_com_dano} valueClassName={KPI_VALUE_CLASS} icon="emergency" tone="secondary" sub="Com catalogação concluída" />
+        <KPI label="Base de Itens" value={catalogo.length} valueClassName={KPI_VALUE_CLASS} icon="database" tone="secondary" sub="Preços de referência" />
       </div>
 
       {/* Abas de visualização */}
@@ -120,15 +173,18 @@ export default function DamagesPage() {
       {/* ── Por ocorrência ── */}
       {tab === "ocorrencias" && (
         <div className="space-y-3">
-          {MOCK_DANOS_REGISTROS.map((r) => {
-            const oc = MOCK_OCORRENCIAS.find((o) => o.id === r.ocorrenciaId);
-            const custo = custoRegistro(r.itens);
-            const open = detalheOc === r.id;
+          {carregandoOcorrencias && <p className="text-sm text-on-surface-variant">Carregando danos…</p>}
+          {!carregandoOcorrencias && relatorioOcorrencias.length === 0 && (
+            <p className="text-sm text-on-surface-variant">Nenhuma ocorrência com danos catalogados.</p>
+          )}
+          {relatorioOcorrencias.map((r) => {
+            const custo = Number(r.custo_total || 0);
+            const open = detalheOc === r.ocorrencia_id;
             return (
-              <div key={r.id} className="card-tonal shadow-ambient-sm overflow-hidden">
+              <div key={r.ocorrencia_id} className="card-tonal shadow-ambient-sm overflow-hidden">
                 <button
                   type="button"
-                  onClick={() => setDetalheOc(open ? null : r.id)}
+                  onClick={() => setDetalheOc(open ? null : r.ocorrencia_id)}
                   className="w-full flex items-center gap-4 p-6 text-left"
                 >
                   <div className="w-10 h-10 rounded-lg bg-error-container flex items-center justify-center shrink-0">
@@ -136,15 +192,15 @@ export default function DamagesPage() {
                   </div>
                   <div className="flex-1 min-w-0">
                     <p className="text-[14px] font-bold text-primary truncate">
-                      #{r.ocorrenciaId} · {oc?.titulo ?? "Ocorrência"}
+                      {r.protocolo} · {r.titulo}
                     </p>
                     <p className="text-[11px] text-on-surface-variant mt-0.5">
-                      {oc ? zonaNome(oc.zona) : "—"} · Registrado por {tecnicoNome(r.registradoPor)}
+                      {r.categoria} · {new Date(r.created_at).toLocaleDateString("pt-BR")}
                     </p>
                   </div>
                   <div className="text-right shrink-0">
                     <p className="font-headline font-black text-xl text-primary tracking-tighter">{formatBRL(custo)}</p>
-                    <MetaTag>{r.itens.reduce((a, i) => a + i.quantidade, 0)} ITENS</MetaTag>
+                    <MetaTag>{r.total_itens} ITENS</MetaTag>
                   </div>
                   <Icon name={open ? "expand_less" : "expand_more"} className="text-on-surface-variant text-[20px]" />
                 </button>
@@ -153,15 +209,13 @@ export default function DamagesPage() {
                   <div className="px-6 pb-6 border-t border-outline-variant/20 pt-4">
                     <MetaTag className="block mb-3">ITENS CATALOGADOS NA OCORRÊNCIA</MetaTag>
                     <div className="space-y-2">
-                      {r.itens.map((it, i) => {
-                        const c = catalogoById.get(it.catalogoId);
-                        if (!c) return null;
+                      {r.danos.map((it) => {
                         return (
-                          <div key={i} className="flex items-center gap-3 p-3 rounded-lg bg-surface-container-low text-[12px]">
+                          <div key={it.id} className="flex items-center gap-3 p-3 rounded-lg bg-surface-container-low text-[12px]">
                             <Icon name="inventory_2" className="text-secondary text-[16px]" />
-                            <span className="font-bold text-primary flex-1">{c.nome}</span>
-                            <span className="text-on-surface-variant">{it.quantidade} {c.unidade} × {formatBRL(c.precoUnitario)}</span>
-                            <span className="font-black text-primary w-24 text-right">{formatBRL(it.quantidade * c.precoUnitario)}</span>
+                            <span className="font-bold text-primary flex-1">{it.item_nome}</span>
+                            <span className="text-on-surface-variant">{it.quantidade} {it.unidade} × {formatBRL(Number(it.valor_unitario_aplicado))}</span>
+                            <span className="font-black text-primary w-24 text-right">{formatBRL(Number(it.valor_total))}</span>
                           </div>
                         );
                       })}
