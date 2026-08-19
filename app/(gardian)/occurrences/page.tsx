@@ -40,6 +40,8 @@ interface Ocorrencia {
   anexos: unknown[];
   endereco?: string;
   evento: number | null;
+  custo_danos: string | null;
+  total_itens_danos: number | null;
   historico?: OcorrenciaHistorico[];
 }
 
@@ -76,6 +78,23 @@ interface OcorrenciaAnexo {
 
 interface OcorrenciaListResponse {
   ocorrencias: Ocorrencia[];
+}
+
+interface DanoOcorrencia {
+  id: number;
+  item_nome: string;
+  unidade: string;
+  categoria: string;
+  quantidade: number;
+  valor_unitario_aplicado: string | number;
+  valor_total: string | number;
+  observacoes: string;
+  created_at: string;
+}
+
+interface DanosOcorrenciaResponse {
+  danos: DanoOcorrencia[];
+  custo_total: string | number;
 }
 
 interface ZonaBasic {
@@ -192,10 +211,24 @@ function categoriaLabel(categoria: string): string {
     .join(" ");
 }
 
-function statusToneFor(status: string): "error" | "warning" | "secondary" {
+function tituloOcorrencia(ocorrencia: Pick<Ocorrencia, "titulo" | "categoria">): string {
+  const tituloAutomatico = ocorrencia.titulo.match(/^Ocorrência\s*[—-]\s*(.+)$/i);
+  if (tituloAutomatico?.[1]?.trim().toLowerCase() === ocorrencia.categoria.toLowerCase()) {
+    return `Ocorrência — ${categoriaLabel(ocorrencia.categoria)}`;
+  }
+  return ocorrencia.titulo;
+}
+
+function statusToneFor(
+  status: string,
+): "error" | "warning" | "secondary" | "info" | "progress" {
   const s = status.toLowerCase();
-  if (s === "critico" || s === "alta_prioridade" || s === "r4" || s === "r3") return "error";
-  if (s === "atencao" || s === "risco_moderado" || s === "r2") return "warning";
+  if (s === "alta_prioridade" || s === "critico" || s === "r4" || s === "r3") return "error";
+  if (s === "aguardando" || s === "atencao" || s === "risco_moderado" || s === "r2") {
+    return "warning";
+  }
+  if (s === "em_analise") return "info";
+  if (s === "em_andamento") return "progress";
   return "secondary";
 }
 
@@ -203,6 +236,8 @@ function statusAccentClass(status: string): string {
   const tone = statusToneFor(status);
   if (tone === "error") return "bg-error";
   if (tone === "warning") return "bg-orange-500";
+  if (tone === "info") return "bg-blue-500";
+  if (tone === "progress") return "bg-violet-500";
   return "bg-secondary";
 }
 
@@ -256,6 +291,11 @@ function OccurrencesContent() {
   // estado da ui
   const [filter, setFilter] = useState("todas");
   const [selected, setSelected] = useState<number | null>(null);
+  const [ocorrenciaParaPosicionar, setOcorrenciaParaPosicionar] = useState<number | null>(null);
+  const [danosSelecionados, setDanosSelecionados] = useState<DanoOcorrencia[]>([]);
+  const [carregandoDanos, setCarregandoDanos] = useState(false);
+  const [erroDanos, setErroDanos] = useState("");
+  const [mostrarTodosDanos, setMostrarTodosDanos] = useState(false);
   const [detailTab, setDetailTab] = useState<"detalhes" | "historico">("detalhes");
   const [showCreateModal, setShowCreateModal] = useState(false);
   const [showEditModal, setShowEditModal] = useState(false);
@@ -356,9 +396,47 @@ function OccurrencesContent() {
     if (!idParam) return;
     const id = Number(idParam);
     if (!Number.isFinite(id) || !ocorrencias.some((o) => o.id === id)) return;
-    const timer = setTimeout(() => setSelected(id), 0);
+    const timer = window.setTimeout(() => {
+      setBusca("");
+      setFilter("todas");
+      setStatusFilter("todos");
+      setSelected(id);
+      setDetailTab("detalhes");
+      setOcorrenciaParaPosicionar(id);
+    }, 0);
     return () => clearTimeout(timer);
   }, [searchParams, ocorrencias]);
+
+  useEffect(() => {
+    if (selected == null) return;
+
+    let cancelado = false;
+    const timer = window.setTimeout(() => {
+      setCarregandoDanos(true);
+      setErroDanos("");
+      setMostrarTodosDanos(false);
+      api.get<DanosOcorrenciaResponse>("/danos/registros/", {
+        params: { ocorrencia: selected },
+      })
+        .then((response) => {
+          if (!cancelado) setDanosSelecionados(response.data.danos ?? []);
+        })
+        .catch(() => {
+          if (!cancelado) {
+            setDanosSelecionados([]);
+            setErroDanos("Não foi possível carregar os itens de danos.");
+          }
+        })
+        .finally(() => {
+          if (!cancelado) setCarregandoDanos(false);
+        });
+    }, 0);
+
+    return () => {
+      cancelado = true;
+      window.clearTimeout(timer);
+    };
+  }, [selected]);
 
   // agrupa categorias disponiveis a partir dos dados reais
   const categoriasDisponiveis = useMemo(() => {
@@ -368,23 +446,30 @@ function OccurrencesContent() {
 
   const ocorrenciasFiltradas = useMemo(() => {
     const termo = busca.trim().toLowerCase();
-    return ocorrencias.filter((o) => {
-      if (filter !== "todas" && o.categoria !== filter) return false;
-      if (statusFilter !== "todos" && o.status !== statusFilter) return false;
-      if (termo) {
-        const alvo = [
-          String(o.id),
-          o.titulo,
-          o.descricao,
-          o.endereco ?? "",
-          o.zona != null ? zonaLookup.get(o.zona) ?? "" : "",
-        ]
-          .join(" ")
-          .toLowerCase();
-        if (!alvo.includes(termo)) return false;
-      }
-      return true;
-    });
+    return ocorrencias
+      .filter((o) => {
+        if (filter !== "todas" && o.categoria !== filter) return false;
+        if (statusFilter !== "todos" && o.status !== statusFilter) return false;
+        if (termo) {
+          const alvo = [
+            String(o.id),
+            o.titulo,
+            o.descricao,
+            o.endereco ?? "",
+            o.zona != null ? zonaLookup.get(o.zona) ?? "" : "",
+          ]
+            .join(" ")
+            .toLowerCase();
+          if (!alvo.includes(termo)) return false;
+        }
+        return true;
+      })
+      .sort((a, b) => {
+        const prioridadeA = a.status === "alta_prioridade" ? 0 : 1;
+        const prioridadeB = b.status === "alta_prioridade" ? 0 : 1;
+        if (prioridadeA !== prioridadeB) return prioridadeA - prioridadeB;
+        return new Date(b.created_at).getTime() - new Date(a.created_at).getTime();
+      });
   }, [ocorrencias, filter, statusFilter, busca, zonaLookup]);
 
   // --- indicadores ---
@@ -394,7 +479,7 @@ function OccurrencesContent() {
       (o) => o.status === "em_analise" || o.status === "aguardando" || o.status === "alta_prioridade",
     ).length;
     const andamento = ocorrencias.filter((o) => o.status === "em_andamento").length;
-    const resolvidas = ocorrencias.filter((o) => o.status === "concluido").length;
+    const resolvidas = ocorrencias.filter((o) => o.status === "concluida").length;
 
     const porZona = new Map<number, number>();
     for (const o of ocorrencias) {
@@ -919,6 +1004,16 @@ function OccurrencesContent() {
               return (
                 <button
                   key={o.id}
+                  id={`ocorrencia-${o.id}`}
+                  ref={(elemento) => {
+                    if (!elemento || ocorrenciaParaPosicionar !== o.id) return;
+                    window.requestAnimationFrame(() => {
+                      window.requestAnimationFrame(() => {
+                        elemento.scrollIntoView({ behavior: "smooth", block: "center" });
+                        setOcorrenciaParaPosicionar(null);
+                      });
+                    });
+                  }}
                   onClick={() => {
                     if (modoAgrupar) toggleMarcada(o.id);
                     else {
@@ -926,7 +1021,7 @@ function OccurrencesContent() {
                       setDetailTab("detalhes");
                     }
                   }}
-                  className={`w-full card-tonal p-6 shadow-ambient-sm text-left relative overflow-hidden hover:shadow-ambient transition-all ${modoAgrupar && marcadas.includes(o.id)
+                  className={`w-full scroll-mt-36 card-tonal p-6 shadow-ambient-sm text-left relative overflow-hidden hover:shadow-ambient transition-all ${modoAgrupar && marcadas.includes(o.id)
                     ? "ring-2 ring-secondary"
                     : !modoAgrupar && selected === o.id
                       ? "ring-2 ring-secondary"
@@ -955,7 +1050,7 @@ function OccurrencesContent() {
                       <MetaTag>{formatDate(o.created_at)}</MetaTag>
                     </div>
                     <h3 className="font-headline font-bold text-lg text-primary mb-2">
-                      {o.titulo}
+                      {tituloOcorrencia(o)}
                     </h3>
                     {o.endereco && (
                       <p className="text-[12px] text-on-surface-variant mb-2 flex items-start gap-1.5">
@@ -1022,7 +1117,7 @@ function OccurrencesContent() {
                     </div>
                   </div>
                   <h2 className="font-headline font-black text-2xl tracking-tighter mt-3">
-                    {selecionada.titulo}
+                    {tituloOcorrencia(selecionada)}
                   </h2>
                   {selecionada.zona != null && (
                     <p className="text-white/70 text-xs mt-2 flex items-center gap-1.5">
@@ -1155,6 +1250,89 @@ function OccurrencesContent() {
                       <div><MetaTag className="mb-1 block">EVENTO</MetaTag><p className="font-bold text-primary">{selecionada.evento != null ? eventos.find((evento) => evento.id === selecionada.evento)?.nome ?? `Evento #${selecionada.evento}` : "Não vinculado"}</p></div>
                       <div><MetaTag className="mb-1 block">ZONA</MetaTag><p className="font-bold text-primary">{selecionada.zona != null ? zonaLookup.get(selecionada.zona) ?? `Zona #${selecionada.zona}` : "Não vinculada"}</p></div>
                       <div><MetaTag className="mb-1 block">RESPONSÁVEL</MetaTag><p className="font-bold text-primary">{selecionada.tecnico_responsavel != null ? usuarioLookup.get(selecionada.tecnico_responsavel) ?? `Usuário #${selecionada.tecnico_responsavel}` : "Não atribuído"}</p></div>
+                    </div>
+                  </div>
+
+                  <div className="card-recessed p-5">
+                    <div className="mb-3 flex items-center gap-2">
+                      <Icon name="payments" filled className="text-[18px] text-secondary" />
+                      <MetaTag>DANOS E CUSTOS</MetaTag>
+                    </div>
+                    <div className="grid grid-cols-2 gap-3">
+                      <div className="rounded-lg bg-white p-3">
+                        <MetaTag className="mb-1 block">CUSTO DOS DANOS</MetaTag>
+                        <p className="font-headline text-lg font-black text-primary">
+                          {Number(selecionada.custo_danos || 0).toLocaleString("pt-BR", {
+                            style: "currency",
+                            currency: "BRL",
+                          })}
+                        </p>
+                      </div>
+                      <div className="rounded-lg bg-white p-3">
+                        <MetaTag className="mb-1 block">ITENS REGISTRADOS</MetaTag>
+                        <p className="font-headline text-lg font-black text-primary">
+                          {selecionada.total_itens_danos ?? 0}
+                        </p>
+                      </div>
+                    </div>
+
+                    <div className="mt-4 border-t border-outline-variant/20 pt-4">
+                      <MetaTag className="mb-3 block">ITENS DE DANOS</MetaTag>
+
+                      {carregandoDanos ? (
+                        <p className="text-xs text-on-surface-variant">Carregando itens…</p>
+                      ) : erroDanos ? (
+                        <p className="text-xs font-semibold text-error">{erroDanos}</p>
+                      ) : danosSelecionados.length === 0 ? (
+                        <p className="text-xs text-on-surface-variant">
+                          Nenhum item de dano foi registrado nesta ocorrência.
+                        </p>
+                      ) : (
+                        <div className="space-y-2">
+                          {(mostrarTodosDanos ? danosSelecionados : danosSelecionados.slice(0, 4)).map((dano) => (
+                            <div key={dano.id} className="rounded-lg bg-white p-3">
+                              <div className="flex items-start justify-between gap-3">
+                                <div className="min-w-0 flex-1">
+                                  <p className="truncate text-[12px] font-bold text-primary">
+                                    {dano.item_nome}
+                                  </p>
+                                  <p className="mt-0.5 text-[10px] text-on-surface-variant">
+                                    {categoriaLabel(dano.categoria)} · {formatDate(dano.created_at)}
+                                  </p>
+                                </div>
+                                <p className="shrink-0 text-[12px] font-black text-primary">
+                                  {Number(dano.valor_total || 0).toLocaleString("pt-BR", {
+                                    style: "currency",
+                                    currency: "BRL",
+                                  })}
+                                </p>
+                              </div>
+                              <p className="mt-2 text-[11px] text-on-surface-variant">
+                                {dano.quantidade} {dano.unidade} × {Number(dano.valor_unitario_aplicado || 0).toLocaleString("pt-BR", {
+                                  style: "currency",
+                                  currency: "BRL",
+                                })}
+                              </p>
+                              {dano.observacoes && (
+                                <p className="mt-2 rounded-md bg-surface-container-low px-3 py-2 text-[11px] leading-relaxed text-on-surface-variant">
+                                  {dano.observacoes}
+                                </p>
+                              )}
+                            </div>
+                          ))}
+
+                          {danosSelecionados.length > 4 && (
+                            <button
+                              type="button"
+                              onClick={() => setMostrarTodosDanos((atual) => !atual)}
+                              className="flex w-full items-center justify-center gap-1.5 rounded-lg px-3 py-2 text-[10px] font-bold uppercase tracking-mono-tight text-secondary transition-colors hover:bg-secondary/10"
+                            >
+                              {mostrarTodosDanos ? "Mostrar menos" : `Ver todos os ${danosSelecionados.length} itens`}
+                              <Icon name={mostrarTodosDanos ? "expand_less" : "expand_more"} className="text-[16px]" />
+                            </button>
+                          )}
+                        </div>
+                      )}
                     </div>
                   </div>
 
