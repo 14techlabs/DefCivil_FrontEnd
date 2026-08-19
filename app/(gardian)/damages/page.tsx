@@ -44,6 +44,17 @@ interface RelatorioOcorrenciasResponse {
 
 const KPI_VALUE_CLASS = "whitespace-nowrap text-[clamp(1.75rem,2.35vw,2.5rem)]";
 
+function formatarCategoria(categoria: string): string {
+  return categoria
+    .replaceAll("_", " ")
+    .split(" ")
+    .filter(Boolean)
+    .map((palavra) =>
+      palavra[0].toLocaleUpperCase("pt-BR") + palavra.slice(1).toLocaleLowerCase("pt-BR"),
+    )
+    .join(" ");
+}
+
 export default function DamagesPage() {
   const { showToast } = useGardian();
 
@@ -195,7 +206,7 @@ export default function DamagesPage() {
                       {r.protocolo} · {r.titulo}
                     </p>
                     <p className="text-[11px] text-on-surface-variant mt-0.5">
-                      {r.categoria} · {new Date(r.created_at).toLocaleDateString("pt-BR")}
+                      {formatarCategoria(r.categoria)} · {new Date(r.created_at).toLocaleDateString("pt-BR")}
                     </p>
                   </div>
                   <div className="text-right shrink-0">
