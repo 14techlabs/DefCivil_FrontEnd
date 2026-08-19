@@ -1,6 +1,6 @@
 "use client";
 
-import { Suspense, useCallback, useEffect, useState } from "react";
+import { Suspense, useCallback, useEffect, useRef, useState } from "react";
 import axios from "axios";
 import dynamic from "next/dynamic";
 import { useRouter, useSearchParams } from "next/navigation";
@@ -8,6 +8,17 @@ import { Btn, Chip, Icon, MetaTag } from "@/app/components/Primitives";
 import { MOCK_FORM_CONFIG } from "@/app/data/mock";
 import { api } from "@/app/services/Api";
 import { loadPublicFormConfig, PUBLIC_FORM_CONFIG_STORAGE_KEY } from "@/app/lib/publicFormConfig";
+
+const MAXIMO_ANEXOS = 10;
+const TAMANHO_MAXIMO_ANEXOS = 50 * 1024 * 1024;
+const TIPOS_ANEXOS_PERMITIDOS = new Set([
+  "image/jpeg",
+  "image/png",
+  "image/webp",
+  "image/gif",
+  "video/mp4",
+]);
+const EXTENSOES_ANEXOS_PERMITIDAS = [".jpg", ".jpeg", ".png", ".webp", ".gif", ".mp4"];
 
 // mapa de seleção de local publico (sem login)
 const PublicMapPicker = dynamic(
@@ -65,6 +76,15 @@ interface ViaCepResponse {
 
 function mensagemApi(error: unknown, fallback: string): string {
   if (!axios.isAxiosError(error)) return fallback;
+
+  if (error.response?.status === 429) {
+    const retryAfter = Number(error.response.headers?.["retry-after"]);
+    if (Number.isFinite(retryAfter) && retryAfter > 0) {
+      const minutos = Math.max(1, Math.ceil(retryAfter / 60));
+      return `Muitas tentativas. Tente novamente em ${minutos} minutos.`;
+    }
+    return "Muitas tentativas. Aguarde alguns minutos e tente novamente.";
+  }
 
   const data = error.response?.data;
   if (data && typeof data === "object") {
@@ -228,6 +248,7 @@ function PublicReportContent() {
   const [enviado, setEnviado] = useState(false);
   const [enviando, setEnviando] = useState(false);
   const [protocolo, setProtocolo] = useState("");
+  const websiteRef = useRef<HTMLInputElement>(null);
   const [destino, setDestino] = useState<"atual" | "outro" | null>(() => {
     const valor = searchParams.get("destino");
     return valor === "atual" || valor === "outro" ? valor : null;
@@ -239,6 +260,7 @@ function PublicReportContent() {
   const [buscandoCep, setBuscandoCep] = useState(false);
   const [cidadeAtendida, setCidadeAtendida] = useState<boolean | null>(null);
   const [ajusteManualDoMapa, setAjusteManualDoMapa] = useState(false);
+  const [pontoManualMarcado, setPontoManualMarcado] = useState(false);
 
   const pegarLocalizacao = useCallback(() => {
     if (typeof navigator === "undefined" || !navigator.geolocation) {
@@ -320,6 +342,7 @@ function PublicReportContent() {
         setModoLocal("coordenada");
         setGeoStatus("idle");
         setAjusteManualDoMapa(true);
+        setPontoManualMarcado(false);
         return;
       }
       setCidadeAtendida(true);
@@ -395,6 +418,14 @@ function PublicReportContent() {
       setErro("Marque o local no mapa ou use sua localização atual.");
       return;
     }
+    if (anexos.length > MAXIMO_ANEXOS) {
+      setErro(`Você pode anexar no máximo ${MAXIMO_ANEXOS} arquivos.`);
+      return;
+    }
+    if (anexos.reduce((total, anexo) => total + anexo.arquivo.size, 0) > TAMANHO_MAXIMO_ANEXOS) {
+      setErro("O tamanho total dos arquivos não pode ultrapassar 50 MB.");
+      return;
+    }
     setErro("");
     setEnviando(true);
     try {
@@ -408,7 +439,7 @@ function PublicReportContent() {
       formData.append("endereco", endereco.trim());
       formData.append("coordenadas", JSON.stringify({ lat: parseFloat(lat), lng: parseFloat(lng) }));
       formData.append("marcacoes", JSON.stringify(marcacoes));
-      formData.append("website", "");
+      formData.append("website", websiteRef.current?.value ?? "");
       for (const anexo of anexos) formData.append("anexos", anexo.arquivo);
 
       const res = await api.post<{ protocolo: string; aviso_anexos?: string[] }>(
@@ -442,6 +473,7 @@ function PublicReportContent() {
     setCidadeDestino("");
     setUfDestino("");
     setCidadeAtendida(null);
+    setPontoManualMarcado(false);
     setLocalEntidade("");
     setGeoStatus("idle");
     setGeoAviso("");
@@ -782,6 +814,7 @@ function PublicReportContent() {
                 setDestino(null);
                 setCidadeAtendida(null);
                 setAjusteManualDoMapa(false);
+                setPontoManualMarcado(false);
                 setCep("");
                 setNumero("");
                 setCidadeDestino("");
@@ -800,6 +833,16 @@ function PublicReportContent() {
   /* ───────── formulário ───────── */
   return (
     <main className="min-h-screen bg-surface">
+      <input
+        ref={websiteRef}
+        type="text"
+        name="website"
+        defaultValue=""
+        tabIndex={-1}
+        autoComplete="off"
+        aria-hidden="true"
+        className="absolute -left-[9999px] h-px w-px overflow-hidden opacity-0"
+      />
       {/* topo */}
       <header className="bg-gradient-to-br from-primary to-primary-container text-white">
         <div className="max-w-3xl mx-auto px-6 py-10">
@@ -889,12 +932,27 @@ function PublicReportContent() {
                       setLng(ln);
                       setModoLocal("coordenada");
                       setGeoStatus("ok");
-                      setAjusteManualDoMapa(false);
+                      setPontoManualMarcado(true);
                     }}
                   />
-                  <p className="text-center text-xs font-semibold text-on-surface-variant">
-                    O restante do formulário será liberado depois que você marcar o ponto.
-                  </p>
+                  {pontoManualMarcado ? (
+                    <div className="flex flex-col items-center gap-2">
+                      <p className="text-center text-xs font-semibold text-on-surface-variant">
+                        Confira o ponto marcado antes de continuar.
+                      </p>
+                      <Btn
+                        variant="primary"
+                        icon="check_circle"
+                        onClick={() => setAjusteManualDoMapa(false)}
+                      >
+                        Confirmar este local
+                      </Btn>
+                    </div>
+                  ) : (
+                    <p className="text-center text-xs font-semibold text-on-surface-variant">
+                      Marque no mapa o local exato da ocorrência.
+                    </p>
+                  )}
                 </div>
               )}
             </div>
@@ -974,33 +1032,41 @@ function PublicReportContent() {
         {/* checklist */}
         <section className="card-tonal p-6 shadow-ambient-sm">
           <h2 className="mb-1 text-sm font-bold text-primary">3. Marque o que se aplica</h2>
-          <p className="mb-4 text-sm text-on-surface-variant">
-            Isso ajuda a equipe a definir a prioridade do atendimento.
-          </p>
-          <div className="space-y-2">
-            {checklist.map((c) => {
-              const on = !!checks[c.id];
-              return (
-                <button
-                  key={c.id}
-                  type="button"
-                  onClick={() => setChecks((v) => ({ ...v, [c.id]: !v[c.id] }))}
-                  className={`w-full flex items-center gap-3 p-3.5 rounded-lg text-left transition-all ${
-                    on ? "bg-secondary/10 ring-1 ring-secondary/40" : "bg-surface-container-low hover:bg-surface-container"
-                  }`}
-                >
-                  <Icon
-                    name={on ? "check_box" : "check_box_outline_blank"}
-                    className={`text-[20px] shrink-0 ${on ? "text-secondary" : "text-on-surface-variant"}`}
-                  />
-                  <Icon name={c.icon} className={`text-[18px] shrink-0 ${on ? "text-secondary" : "text-on-surface-variant"}`} />
-                  <span className={`text-sm font-medium ${on ? "text-primary font-bold" : "text-on-surface"}`}>
-                    {c.label}
-                  </span>
-                </button>
-              );
-            })}
-          </div>
+          {checklist.length === 0 ? (
+            <p className="mt-3 text-sm text-on-surface-variant">
+              Não há opções adicionais para marcar. Você pode continuar o preenchimento normalmente.
+            </p>
+          ) : (
+            <>
+              <p className="mb-4 text-sm text-on-surface-variant">
+                Isso ajuda a equipe a definir a prioridade do atendimento.
+              </p>
+              <div className="space-y-2">
+                {checklist.map((c) => {
+                  const on = !!checks[c.id];
+                  return (
+                    <button
+                      key={c.id}
+                      type="button"
+                      onClick={() => setChecks((v) => ({ ...v, [c.id]: !v[c.id] }))}
+                      className={`w-full flex items-center gap-3 p-3.5 rounded-lg text-left transition-all ${
+                        on ? "bg-secondary/10 ring-1 ring-secondary/40" : "bg-surface-container-low hover:bg-surface-container"
+                      }`}
+                    >
+                      <Icon
+                        name={on ? "check_box" : "check_box_outline_blank"}
+                        className={`text-[20px] shrink-0 ${on ? "text-secondary" : "text-on-surface-variant"}`}
+                      />
+                      <Icon name={c.icon} className={`text-[18px] shrink-0 ${on ? "text-secondary" : "text-on-surface-variant"}`} />
+                      <span className={`text-sm font-medium ${on ? "text-primary font-bold" : "text-on-surface"}`}>
+                        {c.label}
+                      </span>
+                    </button>
+                  );
+                })}
+              </div>
+            </>
+          )}
         </section>
 
         {/* localização */}
@@ -1042,8 +1108,7 @@ function PublicReportContent() {
                 {geoAviso || "NÃO FOI POSSÍVEL OBTER A LOCALIZAÇÃO — PREENCHA MANUALMENTE"}
               </Chip>
               <p className="text-[10px] text-on-surface-variant mb-3">
-                Dica: a geolocalização precisa de HTTPS (ou localhost). Você também pode marcar
-                o ponto no mapa.
+                Você também pode marcar o local diretamente no mapa.
               </p>
             </>
           )}
@@ -1124,14 +1189,49 @@ function PublicReportContent() {
             <label className="flex flex-col items-center justify-center gap-2 py-6 rounded-lg bg-surface-container-low border-2 border-dashed border-outline-variant/40 cursor-pointer hover:bg-surface-container transition-all">
               <Icon name="add_a_photo" className="text-secondary text-[24px]" />
               <span className="text-[12px] font-bold text-primary">Clique para anexar</span>
-              <span className="text-[10px] text-on-surface-variant">JPG, PNG ou MP4</span>
+              <span className="text-[10px] text-on-surface-variant">
+                JPG, PNG, WebP, GIF ou MP4 · até 10 arquivos e 50 MB no total
+              </span>
               <input
                 type="file"
                 multiple
-                accept="image/*,video/*"
+                accept=".jpg,.jpeg,.png,.webp,.gif,.mp4,image/jpeg,image/png,image/webp,image/gif,video/mp4"
                 className="hidden"
                 onChange={(e) => {
-                  const arquivos = Array.from(e.target.files ?? []).map((f) => ({
+                  const selecionados = Array.from(e.target.files ?? []);
+                  const formatoInvalido = selecionados.some((arquivo) => {
+                    const nome = arquivo.name.toLowerCase();
+                    return (
+                      !TIPOS_ANEXOS_PERMITIDOS.has(arquivo.type) ||
+                      !EXTENSOES_ANEXOS_PERMITIDAS.some((extensao) => nome.endsWith(extensao))
+                    );
+                  });
+
+                  if (formatoInvalido) {
+                    setErro("Formato não permitido. Envie imagens JPG, PNG, WebP ou GIF, ou vídeos MP4.");
+                    e.currentTarget.value = "";
+                    return;
+                  }
+                  if (anexos.length + selecionados.length > MAXIMO_ANEXOS) {
+                    setErro(`Você pode anexar no máximo ${MAXIMO_ANEXOS} arquivos.`);
+                    e.currentTarget.value = "";
+                    return;
+                  }
+                  const tamanhoAtual = anexos.reduce(
+                    (total, anexo) => total + anexo.arquivo.size,
+                    0,
+                  );
+                  const tamanhoSelecionado = selecionados.reduce(
+                    (total, arquivo) => total + arquivo.size,
+                    0,
+                  );
+                  if (tamanhoAtual + tamanhoSelecionado > TAMANHO_MAXIMO_ANEXOS) {
+                    setErro("O tamanho total dos arquivos não pode ultrapassar 50 MB.");
+                    e.currentTarget.value = "";
+                    return;
+                  }
+
+                  const arquivos = selecionados.map((f) => ({
                     arquivo: f,
                     nome: f.name,
                     tamanho:
@@ -1140,6 +1240,8 @@ function PublicReportContent() {
                         : `${Math.max(1, Math.round(f.size / 1024))} KB`,
                   }));
                   setAnexos((prev) => [...prev, ...arquivos]);
+                  setErro("");
+                  e.currentTarget.value = "";
                 }}
               />
             </label>
