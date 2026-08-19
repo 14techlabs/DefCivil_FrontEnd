@@ -892,6 +892,7 @@ export const STATUS_OCORRENCIA_LABEL: Record<string, string> = {
   alta_prioridade: "Alta Prioridade",
   em_andamento: "Em Andamento",
   aguardando: "Aguardando",
+  concluida: "Concluída",
   concluido: "Concluído",
 };
 

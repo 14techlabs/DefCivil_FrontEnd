@@ -9,7 +9,8 @@ export type ChipTone =
   | "error"
   | "primary"
   | "primarySoft"
-  | "info";
+  | "info"
+  | "progress";
 
 export type BarTone = "secondary" | "warning" | "error" | "primary";
 
@@ -85,6 +86,7 @@ export function Chip({
     primary: "bg-primary text-white",
     primarySoft: "bg-primary/8 text-primary",
     info: "bg-blue-100 text-blue-700",
+    progress: "bg-violet-100 text-violet-700",
   };
   return (
     <span
@@ -221,6 +223,7 @@ export function KPI({
   tone = "primary",
   icon,
   sub,
+  valueClassName,
 }: {
   label: string;
   value: ReactNode;
@@ -228,6 +231,7 @@ export function KPI({
   tone?: "primary" | "error" | "warning" | "secondary";
   icon?: string;
   sub?: string;
+  valueClassName?: string;
 }) {
   const tones: Record<string, { dot: string; value: string }> = {
     primary: { dot: "bg-secondary", value: "text-primary" },
@@ -252,7 +256,7 @@ export function KPI({
       </div>
       <div>
         <div className="flex items-baseline gap-1.5">
-          <span className={`font-headline font-black text-5xl tracking-tighter ${t.value}`}>
+          <span className={`font-headline font-black tracking-tighter ${valueClassName ?? "text-5xl"} ${t.value}`}>
             {value}
           </span>
           {unit && <span className="text-sm font-bold text-slate-400">{unit}</span>}

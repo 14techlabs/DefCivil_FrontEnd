@@ -31,6 +31,7 @@ export interface UserData {
   nome_anonimo: string | null;
   tipo: number;
   entidade: number | null;
+  cargo: number | null;
 }
 
 type GardianContextValue = {

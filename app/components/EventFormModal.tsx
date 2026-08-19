@@ -6,6 +6,27 @@ import { ModalShell } from "@/app/components/Modals";
 import { api } from "@/app/services/Api";
 import { useGardian } from "@/app/components/GardianContext";
 
+const EVENT_STATUS_OPTIONS = [
+  { value: "ativo", label: "Ativo" },
+  { value: "monitorando", label: "Monitorando" },
+  { value: "concluido", label: "Concluído" },
+  { value: "encerrado", label: "Encerrado" },
+] as const;
+
+function apiErrorMessage(data: unknown): string | null {
+  if (!data || typeof data !== "object") return null;
+
+  for (const value of Object.values(data)) {
+    if (typeof value === "string" && value.trim()) return value;
+    if (Array.isArray(value)) {
+      const message = value.find((item): item is string => typeof item === "string");
+      if (message) return message;
+    }
+  }
+
+  return null;
+}
+
 export interface EventoFormData {
   id: number;
   nome: string;
@@ -71,10 +92,13 @@ export function EventFormModal({ open, onClose, onSaved, evento }: Props) {
       onSaved();
       onClose();
     } catch (err: unknown) {
-      const requestError = err as { response?: { status?: number } };
+      const requestError = err as { response?: { status?: number; data?: unknown } };
       const responseStatus = requestError.response?.status;
       if (responseStatus === 400) {
-        setError("Dados inválidos. Verifique os campos informados.");
+        setError(
+          apiErrorMessage(requestError.response?.data) ??
+            "Dados inválidos. Verifique os campos informados.",
+        );
       } else if (responseStatus === 403) {
         setError("Você não tem permissão para salvar este evento.");
       } else if (responseStatus === 404) {
@@ -130,12 +154,20 @@ export function EventFormModal({ open, onClose, onSaved, evento }: Props) {
           </div>
           <div>
             <MetaTag className="mb-2 block">Status</MetaTag>
-            <input
+            <select
               value={status}
               onChange={(event) => setStatus(event.target.value)}
-              placeholder="Ex.: ativo"
-              className="w-full rounded-lg border-none bg-surface-container-low px-4 py-3 text-sm font-medium text-primary focus:ring-2 focus:ring-secondary"
-            />
+              className="w-full rounded-lg border-none bg-surface-container-low px-4 py-3 text-sm font-bold text-primary focus:ring-2 focus:ring-secondary"
+            >
+              {status && !EVENT_STATUS_OPTIONS.some((option) => option.value === status) && (
+                <option value={status}>{status}</option>
+              )}
+              {EVENT_STATUS_OPTIONS.map((option) => (
+                <option key={option.value} value={option.value}>
+                  {option.label}
+                </option>
+              ))}
+            </select>
           </div>
         </div>
 
