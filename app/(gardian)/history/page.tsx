@@ -7,10 +7,10 @@ import {
   MOCK_HIST_PREVISOES_TEMPO,
   MOCK_HIST_PREVISOES_IA,
   MOCK_HIST_ACOES_EQUIPE,
-  STATUS_OCORRENCIA_LABEL,
   tecnicoNome,
   zonaNome,
 } from "@/app/data/mock";
+import { getOccurrenceStatusMeta } from "@/app/lib/occurrenceStatus";
 
 const CATEGORIA_LABEL: Record<string, string> = {
   geologico: "Geológico",
@@ -87,8 +87,8 @@ export default function HistoryPage() {
                     <td className="py-3.5 pr-4 text-[12px] text-on-surface">{o.tecnico_responsavel ? tecnicoNome(o.tecnico_responsavel) : "—"}</td>
                     <td className="py-3.5 pr-4 text-[11px] font-mono font-bold text-slate-400">{formatDate(o.created_at)}</td>
                     <td className="py-3.5 pr-6">
-                      <Chip tone={o.status === "concluido" ? "secondary" : o.status === "em_andamento" || o.status === "alta_prioridade" ? "error" : "warning"}>
-                        {STATUS_OCORRENCIA_LABEL[o.status] ?? o.status}
+                      <Chip tone={getOccurrenceStatusMeta(o.status).tone}>
+                        {getOccurrenceStatusMeta(o.status).label}
                       </Chip>
                     </td>
                   </tr>

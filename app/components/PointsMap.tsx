@@ -5,6 +5,7 @@ import maplibregl from "maplibre-gl";
 import { createMap, addBoundaryLayer } from "@/app/lib/mapShared";
 import { api } from "@/app/services/Api";
 import { useGardian } from "@/app/components/GardianContext";
+import { getOccurrenceStatusMeta } from "@/app/lib/occurrenceStatus";
 import "maplibre-gl/dist/maplibre-gl.css";
 
 /* ────────────── Types ────────────── */
@@ -15,7 +16,14 @@ export interface MapPoint {
   lng: number;
   titulo: string;
   subtitulo?: string;
-  kind: "ocorrencia_aberta" | "ocorrencia_andamento" | "ocorrencia_concluida" | "evento" | "ponto_apoio";
+  kind:
+    | "ocorrencia_alta_prioridade"
+    | "ocorrencia_aguardando"
+    | "ocorrencia_em_analise"
+    | "ocorrencia_em_andamento"
+    | "ocorrencia_concluida"
+    | "evento"
+    | "ponto_apoio";
   tecnicoNoLocal?: string | null;
 }
 
@@ -31,9 +39,11 @@ const KIND_META: Record<
   MapPoint["kind"],
   { label: string; color: string; icon: string }
 > = {
-  ocorrencia_aberta: { label: "Em aberto", color: "#C2570B", icon: "emergency" },
-  ocorrencia_andamento: { label: "Em andamento", color: "#BA1A1A", icon: "engineering" },
-  ocorrencia_concluida: { label: "Concluídas", color: "#006A60", icon: "check_circle" },
+  ocorrencia_alta_prioridade: { ...getOccurrenceStatusMeta("alta_prioridade"), icon: "priority_high" },
+  ocorrencia_aguardando: { ...getOccurrenceStatusMeta("aguardando"), icon: "hourglass_top" },
+  ocorrencia_em_analise: { ...getOccurrenceStatusMeta("em_analise"), icon: "search" },
+  ocorrencia_em_andamento: { ...getOccurrenceStatusMeta("em_andamento"), icon: "engineering" },
+  ocorrencia_concluida: { ...getOccurrenceStatusMeta("concluida"), icon: "check_circle" },
   evento: { label: "Eventos", color: "#1D4ED8", icon: "cyclone" },
   ponto_apoio: { label: "Pontos de apoio", color: "#7C4DFF", icon: "home_work" },
 };
@@ -47,8 +57,10 @@ export function PointsMap({ points, height = 420, showFilters = true }: PointsMa
   const { user } = useGardian();
 
   const [visible, setVisible] = useState<Record<MapPoint["kind"], boolean>>({
-    ocorrencia_aberta: true,
-    ocorrencia_andamento: true,
+    ocorrencia_alta_prioridade: true,
+    ocorrencia_aguardando: true,
+    ocorrencia_em_analise: true,
+    ocorrencia_em_andamento: true,
     ocorrencia_concluida: true,
     evento: true,
     ponto_apoio: true,

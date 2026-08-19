@@ -4,6 +4,7 @@ import { useEffect, useMemo, useState } from "react";
 import { Chip, Icon, KPI, MetaTag, SectionHeader, StatusDot } from "@/app/components/Primitives";
 import { useGardian } from "@/app/components/GardianContext";
 import { api } from "@/app/services/Api";
+import { getOccurrenceStatusMeta } from "@/app/lib/occurrenceStatus";
 
 interface ProfileOccurrenceHistory {
   id: number;
@@ -23,14 +24,6 @@ interface ProfileOccurrence {
   created_at: string;
   historico?: ProfileOccurrenceHistory[];
 }
-
-const STATUS_LABEL: Record<string, string> = {
-  em_analise: "Em Análise",
-  alta_prioridade: "Alta Prioridade",
-  aguardando: "Aguardando",
-  em_andamento: "Em Andamento",
-  concluida: "Concluída",
-};
 
 const CARGO_LABEL: Record<number, string> = {
   1: "Coordenador",
@@ -200,11 +193,11 @@ export default function ProfilePage() {
           <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
             {agindo.map((o) => (
               <div key={o.id} className="card-tonal p-6 shadow-ambient-sm relative overflow-hidden">
-                <span className="absolute top-0 left-0 bottom-0 w-1 bg-error" />
+                <span className={`absolute top-0 left-0 bottom-0 w-1 ${getOccurrenceStatusMeta(o.status).accentClass}`} />
                 <div className="pl-3">
                   <div className="flex items-center justify-between mb-2">
                     <span className="text-[10px] font-mono uppercase tracking-mono font-bold text-slate-400">#{o.id}</span>
-                    <Chip tone="error">{STATUS_LABEL[o.status] ?? o.status.replaceAll("_", " ")}</Chip>
+                    <Chip tone={getOccurrenceStatusMeta(o.status).tone}>{getOccurrenceStatusMeta(o.status).label}</Chip>
                   </div>
                   <h3 className="font-headline font-bold text-[15px] text-primary">{o.titulo}</h3>
                   <p className="text-[11px] text-on-surface-variant mt-1.5 flex items-center gap-1.5">
@@ -271,8 +264,8 @@ export default function ProfilePage() {
                   </td>
                   <td className="py-4 pr-5 text-[11px] font-mono font-bold text-slate-500">{formatDate(o.created_at)}</td>
                   <td className="py-4 pr-6">
-                    <Chip tone={o.status === "concluida" ? "secondary" : "warning"}>
-                      {STATUS_LABEL[o.status] ?? o.status.replaceAll("_", " ")}
+                    <Chip tone={getOccurrenceStatusMeta(o.status).tone}>
+                      {getOccurrenceStatusMeta(o.status).label}
                     </Chip>
                   </td>
                 </tr>

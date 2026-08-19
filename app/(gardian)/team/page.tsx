@@ -7,9 +7,9 @@ import {
   MOCK_TECNICOS,
   MOCK_OCORRENCIAS,
   MOCK_ZONAS,
-  STATUS_OCORRENCIA_LABEL,
   zonaNome,
 } from "@/app/data/mock";
+import { getOccurrenceStatusMeta } from "@/app/lib/occurrenceStatus";
 
 const CATEGORIA_LABEL: Record<string, string> = {
   geologico: "Geológico",
@@ -208,8 +208,8 @@ export default function TeamPage() {
                       <td className="py-3.5 pr-4 text-[12px] text-on-surface-variant">{zonaNome(o.zona)}</td>
                       <td className="py-3.5 pr-4"><Chip tone="neutral">{CATEGORIA_LABEL[o.categoria] ?? o.categoria}</Chip></td>
                       <td className="py-3.5">
-                        <Chip tone={o.status === "concluido" ? "secondary" : o.status === "em_andamento" || o.status === "alta_prioridade" ? "error" : "warning"}>
-                          {STATUS_OCORRENCIA_LABEL[o.status] ?? o.status}
+                        <Chip tone={getOccurrenceStatusMeta(o.status).tone}>
+                          {getOccurrenceStatusMeta(o.status).label}
                         </Chip>
                       </td>
                     </tr>

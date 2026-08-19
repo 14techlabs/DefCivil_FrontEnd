@@ -3,6 +3,7 @@
 import { useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import maplibregl from "maplibre-gl";
+import { getOccurrenceStatusMeta } from "@/app/lib/occurrenceStatus";
 import { createMap, addBoundaryLayer, getMultiPolygonCenter } from "@/app/lib/mapShared";
 import { api } from "@/app/services/Api";
 import { useGardian } from "@/app/components/GardianContext";
@@ -54,10 +55,7 @@ const CATEGORIA_ICON: Record<string, string> = {
 };
 
 function ocorrenciaColor(status: string): string {
-  const s = status.toLowerCase();
-  if (s === "critico" || s === "alta_prioridade" || s === "r4" || s === "r3") return "#BA1A1A";
-  if (s === "atencao" || s === "risco_moderado" || s === "r2") return "#C2570B";
-  return "#006A60";
+  return getOccurrenceStatusMeta(status).color;
 }
 
 function isDegenerateRing(ring: number[][]): boolean {
@@ -74,7 +72,7 @@ function escapeHtml(value: string): string {
 }
 
 function popupOcorrenciaHtml(o: MonitoringOcorrencia, color: string): string {
-  const status = escapeHtml((o.status ?? "").toUpperCase());
+  const status = escapeHtml(getOccurrenceStatusMeta(o.status).label.toUpperCase());
   const titulo = escapeHtml(o.titulo ?? "");
   const categoria = escapeHtml(CATEGORIA_LABEL[o.categoria] ?? o.categoria);
   const coords = o.coordenadas

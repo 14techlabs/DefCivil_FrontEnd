@@ -9,10 +9,8 @@ import { EditOccurrenceModal } from "@/app/components/EditOccurrenceModal";
 import { DeleteOccurrenceModal } from "@/app/components/DeleteOccurrenceModal";
 import { ModalShell } from "@/app/components/Modals";
 import { useGardian } from "@/app/components/GardianContext";
-import {
-  STATUS_OCORRENCIA_LABEL,
-  googleMapsUrl,
-} from "@/app/data/mock";
+import { googleMapsUrl } from "@/app/data/mock";
+import { getOccurrenceStatusMeta } from "@/app/lib/occurrenceStatus";
 
 // --- tipos da resposta da api ---
 
@@ -219,26 +217,15 @@ function tituloOcorrencia(ocorrencia: Pick<Ocorrencia, "titulo" | "categoria">):
   return ocorrencia.titulo;
 }
 
-function statusToneFor(
-  status: string,
-): "error" | "warning" | "secondary" | "info" | "progress" {
-  const s = status.toLowerCase();
-  if (s === "alta_prioridade" || s === "critico" || s === "r4" || s === "r3") return "error";
-  if (s === "aguardando" || s === "atencao" || s === "risco_moderado" || s === "r2") {
-    return "warning";
-  }
-  if (s === "em_analise") return "info";
-  if (s === "em_andamento") return "progress";
-  return "secondary";
+function statusAccentClass(status: string): string {
+  return getOccurrenceStatusMeta(status).accentClass;
 }
 
-function statusAccentClass(status: string): string {
-  const tone = statusToneFor(status);
-  if (tone === "error") return "bg-error";
-  if (tone === "warning") return "bg-orange-500";
-  if (tone === "info") return "bg-blue-500";
-  if (tone === "progress") return "bg-violet-500";
-  return "bg-secondary";
+function riskToneFor(value?: string | null): "error" | "warning" | "secondary" {
+  const normalized = value?.toLowerCase();
+  if (normalized === "r4" || normalized === "r3") return "error";
+  if (normalized === "r2") return "warning";
+  return "secondary";
 }
 
 function formatDate(iso: string): string {
@@ -654,7 +641,7 @@ function OccurrencesContent() {
       return CATEGORIA_LABEL[value] ?? categoriaLabel(value);
     }
     if (campo === "status" && typeof value === "string") {
-      return STATUS_OCORRENCIA_LABEL[value] ?? value.replaceAll("_", " ");
+      return getOccurrenceStatusMeta(value).label;
     }
 
     return formatHistoryValue(value);
@@ -874,7 +861,7 @@ function OccurrencesContent() {
             >
               {statusDisponiveis.map((st) => (
                 <option key={st} value={st}>
-                  {st === "todos" ? "Todos os Status" : STATUS_OCORRENCIA_LABEL[st] ?? st}
+                  {st === "todos" ? "Todos os Status" : getOccurrenceStatusMeta(st).label}
                 </option>
               ))}
             </select>
@@ -1043,8 +1030,8 @@ function OccurrencesContent() {
                         <span className="text-[10px] font-mono uppercase tracking-mono font-bold text-slate-400">
                           #{o.id}
                         </span>
-                        <Chip tone={statusToneFor(o.status)}>
-                          {(STATUS_OCORRENCIA_LABEL[o.status] ?? o.status.replaceAll("_", " ")).toUpperCase()}
+                        <Chip tone={getOccurrenceStatusMeta(o.status).tone}>
+                          {getOccurrenceStatusMeta(o.status).label.toUpperCase()}
                         </Chip>
                       </div>
                       <MetaTag>{formatDate(o.created_at)}</MetaTag>
@@ -1244,7 +1231,12 @@ function OccurrencesContent() {
                       <MetaTag>DADOS DO REGISTRO</MetaTag>
                     </div>
                     <div className="grid grid-cols-2 gap-3 text-[12px]">
-                      <div><MetaTag className="mb-1 block">STATUS</MetaTag><p className="font-bold text-primary">{STATUS_OCORRENCIA_LABEL[selecionada.status] ?? selecionada.status}</p></div>
+                      <div>
+                        <MetaTag className="mb-1 block">STATUS</MetaTag>
+                        <Chip tone={getOccurrenceStatusMeta(selecionada.status).tone}>
+                          {getOccurrenceStatusMeta(selecionada.status).label}
+                        </Chip>
+                      </div>
                       <div><MetaTag className="mb-1 block">CATEGORIA</MetaTag><p className="font-bold text-primary">{CATEGORIA_LABEL[selecionada.categoria] ?? selecionada.categoria}</p></div>
                       <div><MetaTag className="mb-1 block">ORIGEM</MetaTag><p className="font-bold text-primary">{selecionada.cidadao != null && selecionada.autor == null ? "Formulário público" : "Registro interno"}</p></div>
                       <div><MetaTag className="mb-1 block">EVENTO</MetaTag><p className="font-bold text-primary">{selecionada.evento != null ? eventos.find((evento) => evento.id === selecionada.evento)?.nome ?? `Evento #${selecionada.evento}` : "Não vinculado"}</p></div>
@@ -1358,7 +1350,7 @@ function OccurrencesContent() {
 
                       <div className="flex flex-wrap gap-2">
                         {selecionada.nivel_perigo_ia && (
-                          <Chip tone={statusToneFor(selecionada.nivel_perigo_ia)}>
+                          <Chip tone={riskToneFor(selecionada.nivel_perigo_ia)}>
                             {selecionada.nivel_perigo_ia}
                           </Chip>
                         )}
@@ -1405,7 +1397,7 @@ function OccurrencesContent() {
 
                       <div className="flex flex-wrap gap-2">
                         {selecionada.nivel_perigo_tecnico && (
-                          <Chip tone={statusToneFor(selecionada.nivel_perigo_tecnico)}>
+                          <Chip tone={riskToneFor(selecionada.nivel_perigo_tecnico)}>
                             {selecionada.nivel_perigo_tecnico}
                           </Chip>
                         )}
@@ -1566,11 +1558,19 @@ function OccurrencesContent() {
                                         </MetaTag>
                                         <div className="grid grid-cols-[1fr_auto_1fr] items-center gap-2 text-[11px]">
                                           <span className="min-w-0 break-words rounded-lg bg-white p-2 text-on-surface-variant">
-                                            {formatHistoryFieldValue(campo, registro.dados_anteriores?.[campo])}
+                                            {campo === "status" && typeof registro.dados_anteriores?.[campo] === "string" ? (
+                                              <Chip tone={getOccurrenceStatusMeta(registro.dados_anteriores[campo] as string).tone}>
+                                                {getOccurrenceStatusMeta(registro.dados_anteriores[campo] as string).label}
+                                              </Chip>
+                                            ) : formatHistoryFieldValue(campo, registro.dados_anteriores?.[campo])}
                                           </span>
                                           <Icon name="arrow_forward" className="text-[15px] text-secondary" />
                                           <span className="min-w-0 break-words rounded-lg bg-secondary/10 p-2 font-semibold text-primary">
-                                            {formatHistoryFieldValue(campo, registro.dados_novos?.[campo])}
+                                            {campo === "status" && typeof registro.dados_novos?.[campo] === "string" ? (
+                                              <Chip tone={getOccurrenceStatusMeta(registro.dados_novos[campo] as string).tone}>
+                                                {getOccurrenceStatusMeta(registro.dados_novos[campo] as string).label}
+                                              </Chip>
+                                            ) : formatHistoryFieldValue(campo, registro.dados_novos?.[campo])}
                                           </span>
                                         </div>
                                       </div>

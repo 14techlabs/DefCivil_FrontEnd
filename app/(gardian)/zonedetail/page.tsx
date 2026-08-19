@@ -15,6 +15,7 @@ import {
   zonaNome as zonaNomeMock,
 } from "@/app/data/mock";
 import type { MapPoint } from "@/app/components/PointsMap";
+import { getOccurrenceStatusMeta } from "@/app/lib/occurrenceStatus";
 
 const PointsMap = dynamic(
   () => import("@/app/components/PointsMap").then((m) => m.PointsMap),
@@ -27,6 +28,11 @@ const PointsMap = dynamic(
     ),
   },
 );
+
+function occurrencePointKind(status: string): MapPoint["kind"] {
+  const key = getOccurrenceStatusMeta(status).key;
+  return key === "desconhecido" ? "ocorrencia_em_analise" : `ocorrencia_${key}`;
+}
 
 const ZoneMap = dynamic(
   () => import("@/app/components/ZoneMap").then((m) => m.ZoneMap),
@@ -161,12 +167,7 @@ function ZoneDetailContent() {
       lng: o.coordenadas!.lng,
       titulo: `#${o.id} · ${o.titulo}`,
       subtitulo: `${zonaNomeMock(o.zona)} — ${o.endereco}`,
-      kind:
-        o.status === "concluido"
-          ? ("ocorrencia_concluida" as const)
-          : o.status === "em_andamento" || o.status === "alta_prioridade"
-            ? ("ocorrencia_andamento" as const)
-            : ("ocorrencia_aberta" as const),
+      kind: occurrencePointKind(o.status),
       tecnicoNoLocal:
         (o.status === "em_andamento" || o.status === "alta_prioridade") && o.tecnico_responsavel
           ? tecnicoNome(o.tecnico_responsavel)
@@ -344,13 +345,12 @@ function ZoneDetailContent() {
               <div>
                 <MetaTag className="block mb-1">Status</MetaTag>
                 <p
-                  className={`font-headline font-black text-2xl tracking-tighter ${
-                    tone === "error"
+                  className={`font-headline font-black text-2xl tracking-tighter ${tone === "error"
                       ? "text-error"
                       : tone === "warning"
                         ? "text-orange-600"
                         : "text-secondary"
-                  }`}
+                    }`}
                 >
                   {STATUS_LABEL[z.status]}
                 </p>
@@ -435,11 +435,10 @@ function ZoneDetailContent() {
                 return (
                   <div
                     key={e.id}
-                    className={`p-5 rounded-lg ${
-                      concluido
+                    className={`p-5 rounded-lg ${concluido
                         ? "bg-secondary/8"
                         : "bg-warning-container/40"
-                    }`}
+                      }`}
                   >
                     <div className="flex items-center gap-3 mb-2">
                       <Icon
@@ -490,11 +489,10 @@ function ZoneDetailContent() {
                   return (
                     <div key={e.id} className="flex gap-6 pl-8 relative">
                       <div
-                        className={`absolute left-0 top-1.5 w-[15px] h-[15px] rounded-full ring-4 ring-white ${
-                          color === "primary"
+                        className={`absolute left-0 top-1.5 w-[15px] h-[15px] rounded-full ring-4 ring-white ${color === "primary"
                             ? "bg-primary"
                             : "bg-secondary"
-                        }`}
+                          }`}
                         style={{
                           boxShadow:
                             "0 0 0 1px " +
@@ -531,21 +529,6 @@ function ZoneDetailContent() {
             </div>
           </section>
         )}
-
-        {/* Mapa de eventos e ocorrências da zona (Não funciona)
-        <section className="col-span-12 card-tonal p-7 shadow-ambient-sm">
-          <SectionHeader
-            overline="LOCALIZAÇÃO DOS REGISTROS"
-            title="Eventos e Ocorrências no Território"
-            action={
-              <Chip tone="primarySoft" icon="filter_alt">
-                FILTRE PELOS CHIPS NO MAPA
-              </Chip>
-            }
-          />
-          <PointsMap points={pontosZona} height={440} />
-        </section>
-        */}
       </div>
 
       {showEditModal && (
