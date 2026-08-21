@@ -219,7 +219,6 @@ export default function DashboardPage() {
       {/* Header */}
       <header>
         <div className="flex items-center gap-2 mb-3">
-          <span className="w-1 h-1 rounded-full bg-outline-variant" />
           <MetaTag>Painel Geral · Defesa Civil</MetaTag>
           <span className="w-1 h-1 rounded-full bg-outline-variant" />
           <span className="flex items-center gap-1.5">

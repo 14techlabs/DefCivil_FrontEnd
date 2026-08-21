@@ -1,9 +1,11 @@
 "use client";
 
 import Link from "next/link";
+import Image from "next/image";
+import axios from "axios";
 import { useRouter, useSearchParams } from "next/navigation";
 import { Suspense, useEffect, useState } from "react";
-import { Btn, Icon, MetaTag } from "@/app/components/Primitives";
+import { Btn, MetaTag } from "@/app/components/Primitives";
 import { FormInput } from "@/app/components/Forminput";
 import { isAuthenticated, setSession } from "@/app/lib/session";
 import { authService } from "@/app/services/Authservice";
@@ -41,8 +43,8 @@ function LoginForm() {
       await authService.login({ email, password });
       setSession(email || "operador");
       router.push(next.startsWith("/") ? next : "/dashboard");
-    } catch (err: any) {
-      const status = err?.response?.status;
+    } catch (err: unknown) {
+      const status = axios.isAxiosError(err) ? err.response?.status : undefined;
       if (status === 400 || status === 401) {
         setError("E-mail ou senha inválidos.");
       } else {
@@ -56,7 +58,7 @@ function LoginForm() {
     <div className="min-h-screen bg-surface flex flex-col">
       <div className="bg-primary text-white/80 text-[10px] font-mono uppercase tracking-mono font-bold py-2 px-6">
         <div className="max-w-[1200px] mx-auto flex items-center justify-between">
-          <span>Defesa Civil</span>
+          <span>Gardian · Defesa Civil</span>
           <Link href="/" className="hover:text-white transition-colors">
             Voltar ao site
           </Link>
@@ -66,18 +68,15 @@ function LoginForm() {
       <div className="flex-1 flex items-center justify-center p-6">
         <div className="w-full max-w-md">
           <div className="text-center mb-8">
-            <Link href="/" className="inline-flex items-center gap-3 mb-6">
-              <div className="w-12 h-12 rounded-lg bg-primary flex items-center justify-center">
-                <Icon name="shield" filled className="text-white text-[26px]" />
-              </div>
-              <div className="text-left">
-                <p className="font-headline font-black text-2xl text-primary tracking-tight leading-none">
-                  GARDIAN
-                </p>
-                <p className="text-[10px] font-bold tracking-mono text-slate-500 uppercase">
-                  Centro de Comando
-                </p>
-              </div>
+            <Link href="/" className="mb-6 inline-flex" aria-label="GARDIAN — Defesa Civil">
+              <Image
+                src="/logo/logo_preto_sem_fundo.svg"
+                alt="GARDIAN — Defesa Civil"
+                width={514}
+                height={185}
+                preload
+                style={{ width: "292px", height: "auto", maxWidth: "100%" }}
+              />
             </Link>
             <MetaTag className="text-secondary block mb-2">ACESSO RESTRITO</MetaTag>
             <h1 className="font-headline font-black text-3xl text-primary tracking-tighter">

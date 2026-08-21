@@ -2,6 +2,7 @@
 
 import { useEffect, useRef, useState } from "react";
 import Link from "next/link";
+import Image from "next/image";
 import { GARDIAN_DATA } from "@/app/data/gardian";
 import { SCREEN_ROUTES } from "@/app/lib/navigation";
 import { Icon } from "./Primitives";
@@ -43,20 +44,15 @@ export function Sidebar({
 
   return (
     <aside className="hidden lg:flex flex-col h-screen w-64 fixed left-0 top-0 z-40 bg-surface-container-low pl-4 pr-0 py-8 gap-2">
-      <div className="px-4 mb-10">
-        <div className="flex items-center gap-3">
-          <div className="w-10 h-10 rounded-lg bg-primary flex items-center justify-center shrink-0">
-            <Icon name="shield" filled className="text-white text-[22px]" />
-          </div>
-          <div>
-            <h1 className="font-headline font-black text-xl text-primary leading-tight tracking-tight">
-              GARDIAN
-            </h1>
-            <p className="text-[10px] font-bold tracking-mono text-slate-500 uppercase mt-0.5">
-              Defesa Civil
-            </p>
-          </div>
-        </div>
+      <div className="px-4 mb-5">
+        <Image
+          src="/logo/logo_colorida_sem_fundo.svg"
+          alt="GARDIAN — Defesa Civil"
+          width={504}
+          height={184}
+          preload
+          style={{ width: "180px", height: "auto", maxWidth: "100%" }}
+        />
       </div>
 
       <nav className="flex-1 min-h-0 overflow-y-auto flex flex-col gap-1 pr-4">
