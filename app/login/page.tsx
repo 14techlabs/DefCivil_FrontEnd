@@ -75,7 +75,7 @@ function LoginForm() {
                 width={514}
                 height={185}
                 preload
-                style={{ width: "292px", height: "auto", maxWidth: "100%" }}
+                style={{ width: "240px", height: "auto", maxWidth: "100%" }}
               />
             </Link>
             <MetaTag className="text-secondary block mb-2">ACESSO RESTRITO</MetaTag>

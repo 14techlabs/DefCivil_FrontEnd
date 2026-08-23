@@ -44,14 +44,14 @@ export function Sidebar({
 
   return (
     <aside className="hidden lg:flex flex-col h-screen w-64 fixed left-0 top-0 z-40 bg-surface-container-low pl-4 pr-0 py-8 gap-2">
-      <div className="px-4 mb-5">
+      <div className="-ml-4 px-4 mb-5 flex justify-center">
         <Image
           src="/logo/logo_colorida_sem_fundo.svg"
           alt="GARDIAN — Defesa Civil"
           width={504}
           height={184}
           preload
-          style={{ width: "180px", height: "auto", maxWidth: "100%" }}
+          style={{ width: "165px", height: "auto", maxWidth: "100%" }}
         />
       </div>
 
