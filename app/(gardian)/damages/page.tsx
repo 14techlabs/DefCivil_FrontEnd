@@ -3,6 +3,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { Btn, Chip, Icon, KPI, MetaTag, SectionHeader, Tab } from "@/app/components/Primitives";
 import { useGardian } from "@/app/components/GardianContext";
+import { getOccurrenceStatusMeta } from "@/app/lib/occurrenceStatus";
 import { api } from "@/app/services/Api";
 import {
   MOCK_DANOS_CATALOGO,
@@ -53,6 +54,20 @@ function formatarCategoria(categoria: string): string {
       palavra[0].toLocaleUpperCase("pt-BR") + palavra.slice(1).toLocaleLowerCase("pt-BR"),
     )
     .join(" ");
+}
+
+function escaparHtml(valor: unknown): string {
+  return String(valor ?? "")
+    .replaceAll("&", "&amp;")
+    .replaceAll("<", "&lt;")
+    .replaceAll(">", "&gt;")
+    .replaceAll('"', "&quot;")
+    .replaceAll("'", "&#039;");
+}
+
+function formatarDataRelatorio(valor: string): string {
+  const data = new Date(valor);
+  return Number.isNaN(data.getTime()) ? "Data não informada" : data.toLocaleDateString("pt-BR");
 }
 
 export default function DamagesPage() {
@@ -131,6 +146,120 @@ export default function DamagesPage() {
     showToast("Item adicionado à base de danos.");
   };
 
+  const emitirRelatorio = () => {
+    if (carregandoOcorrencias) {
+      showToast("Aguarde o carregamento dos dados de danos.", "error");
+      return;
+    }
+    if (relatorioOcorrencias.length === 0) {
+      showToast("Não há danos catalogados para emitir o relatório.", "error");
+      return;
+    }
+
+    const janela = window.open("", "_blank");
+    if (!janela) {
+      showToast("Permita pop-ups para abrir o relatório de danos.", "error");
+      return;
+    }
+    janela.opener = null;
+
+    const agora = new Date();
+    const codigo = `DAN-${String(agora.getDate()).padStart(2, "0")}${String(agora.getMonth() + 1).padStart(2, "0")}${agora.getFullYear()}-${String(agora.getHours()).padStart(2, "0")}${String(agora.getMinutes()).padStart(2, "0")}`;
+    const logoUrl = new URL("/logo/logo_branco_sem_fundo.svg", window.location.origin).href;
+    const maiorOcorrencia = [...relatorioOcorrencias].sort(
+      (a, b) => Number(b.custo_total || 0) - Number(a.custo_total || 0),
+    )[0];
+    const categorias = new Map<string, { quantidade: number; valor: number }>();
+    for (const ocorrencia of relatorioOcorrencias) {
+      for (const dano of ocorrencia.danos) {
+        const categoria = formatarCategoria(dano.categoria || "Não classificada");
+        const atual = categorias.get(categoria) ?? { quantidade: 0, valor: 0 };
+        atual.quantidade += Number(dano.quantidade || 0);
+        atual.valor += Number(dano.valor_total || 0);
+        categorias.set(categoria, atual);
+      }
+    }
+    const categoriasOrdenadas = [...categorias.entries()].sort((a, b) => b[1].valor - a[1].valor);
+    const maiorCategoria = categoriasOrdenadas[0];
+    const percentualMaiorCategoria = custoTotal > 0 && maiorCategoria
+      ? Math.round((maiorCategoria[1].valor / custoTotal) * 100)
+      : 0;
+
+    const resumoCategorias = categoriasOrdenadas.map(([nome, dados]) => {
+      const percentual = custoTotal > 0 ? Math.max(2, (dados.valor / custoTotal) * 100) : 0;
+      return `
+        <div class="category-row">
+          <div class="category-head"><strong>${escaparHtml(nome)}</strong><span>${escaparHtml(formatBRL(dados.valor))}</span></div>
+          <div class="bar"><span style="width:${percentual.toFixed(1)}%"></span></div>
+          <small>${dados.quantidade.toLocaleString("pt-BR")} itens aplicados</small>
+        </div>`;
+    }).join("");
+
+    const blocosOcorrencias = relatorioOcorrencias.map((ocorrencia, indice) => {
+      const itens = ocorrencia.danos.map((dano) => `
+        <tr>
+          <td><strong>${escaparHtml(dano.item_nome)}</strong><br><small>${escaparHtml(formatarCategoria(dano.categoria))}</small></td>
+          <td class="center">${Number(dano.quantidade).toLocaleString("pt-BR")} ${escaparHtml(dano.unidade)}</td>
+          <td class="money">${escaparHtml(formatBRL(Number(dano.valor_unitario_aplicado)))}</td>
+          <td class="money strong">${escaparHtml(formatBRL(Number(dano.valor_total)))}</td>
+        </tr>`).join("");
+      return `
+        <section class="occurrence">
+          <div class="occurrence-head">
+            <div><span class="sequence">${String(indice + 1).padStart(2, "0")}</span></div>
+            <div class="occurrence-title">
+              <small>OCORRÊNCIA ${escaparHtml(ocorrencia.protocolo)}</small>
+              <h3>${escaparHtml(ocorrencia.titulo)}</h3>
+              <p>${escaparHtml(formatarCategoria(ocorrencia.categoria))} · Registrada em ${escaparHtml(formatarDataRelatorio(ocorrencia.created_at))} · ${escaparHtml(getOccurrenceStatusMeta(ocorrencia.status).label)}</p>
+            </div>
+            <div class="occurrence-total"><small>SUBTOTAL</small><strong>${escaparHtml(formatBRL(Number(ocorrencia.custo_total || 0)))}</strong><span>${ocorrencia.total_itens} itens</span></div>
+          </div>
+          <table>
+            <thead><tr><th>Item catalogado</th><th class="center">Quantidade</th><th class="money">Valor unitário</th><th class="money">Valor total</th></tr></thead>
+            <tbody>${itens}</tbody>
+          </table>
+        </section>`;
+    }).join("");
+
+    const html = `<!doctype html>
+<html lang="pt-BR"><head><meta charset="utf-8"><title>Relatório de Danos - ${escaparHtml(codigo)}</title>
+<style>
+  :root{--navy:#0d1b2e;--navy2:#17324d;--teal:#007d73;--mint:#dff4ef;--red:#ba1a1a;--ink:#17212b;--muted:#607080;--line:#dce4e8;--paper:#fff;--wash:#f3f7f8}
+  *{box-sizing:border-box} body{margin:0;background:#dfe7ea;color:var(--ink);font-family:Arial,Helvetica,sans-serif;-webkit-print-color-adjust:exact;print-color-adjust:exact}
+  .toolbar{position:sticky;top:0;z-index:10;display:flex;justify-content:center;gap:12px;padding:12px;background:rgba(13,27,46,.94)}
+  .toolbar button{border:0;border-radius:8px;padding:11px 18px;font-weight:700;cursor:pointer}.print{background:#17a99a;color:#fff}.close{background:#fff;color:var(--navy)}
+  .report{width:210mm;min-height:297mm;margin:24px auto;background:var(--paper);box-shadow:0 18px 60px rgba(13,27,46,.18)}
+  .hero{position:relative;overflow:hidden;background:linear-gradient(135deg,var(--navy),var(--navy2));color:#fff;padding:18mm 16mm 14mm}
+  .hero:after{content:"";position:absolute;width:100mm;height:100mm;border:22mm solid rgba(23,169,154,.12);border-radius:50%;right:-42mm;top:-53mm}
+  .brand{display:flex;align-items:center;justify-content:space-between;margin-bottom:20mm}.brand-logo{display:block;width:42mm;height:auto;max-height:18mm;object-fit:contain;object-position:left center}.doc-code{font-size:9px;color:#b8cad4;text-align:right;line-height:1.6}
+  .eyebrow{color:#64d8ca;font-size:9px;font-weight:800;letter-spacing:.2em}.hero h1{font-size:34px;line-height:1.05;margin:8px 0 10px;letter-spacing:-1.2px}.hero p{max-width:135mm;margin:0;color:#c7d6df;font-size:12px;line-height:1.6}
+  main{padding:12mm 16mm 16mm}.section-label{display:flex;align-items:center;gap:8px;color:var(--teal);font-size:9px;font-weight:800;letter-spacing:.16em;margin-bottom:6px}.section-label:before{content:"";width:18px;height:3px;background:var(--teal);border-radius:3px}h2{font-size:21px;margin:0 0 14px;color:var(--navy);letter-spacing:-.4px}
+  .metrics{display:grid;grid-template-columns:1.35fr 1fr 1fr;gap:9px;margin-top:-22mm;position:relative;z-index:2;margin-bottom:13mm}.metric{background:#fff;border:1px solid var(--line);border-radius:12px;padding:14px;box-shadow:0 6px 20px rgba(13,27,46,.08)}.metric.primary{background:var(--teal);border-color:var(--teal);color:#fff}.metric small{display:block;font-size:8px;font-weight:800;letter-spacing:.1em;color:var(--muted);margin-bottom:7px}.metric.primary small{color:#c9fff6}.metric strong{display:block;font-size:20px;letter-spacing:-.5px}.metric span{display:block;font-size:9px;color:var(--muted);margin-top:5px}.metric.primary span{color:#d8fff9}
+  .executive{display:grid;grid-template-columns:1.15fr .85fr;gap:14px;margin-bottom:13mm}.insight{background:var(--wash);border-left:4px solid var(--teal);border-radius:0 10px 10px 0;padding:15px}.insight p{font-size:11px;line-height:1.65;margin:0;color:#42515e}.insight strong{color:var(--navy)}.categories{border:1px solid var(--line);border-radius:10px;padding:13px}.category-row+.category-row{margin-top:10px}.category-head{display:flex;justify-content:space-between;font-size:9px}.category-row small{font-size:8px;color:var(--muted)}.bar{height:5px;background:#e8eff1;border-radius:5px;margin:5px 0 4px;overflow:hidden}.bar span{display:block;height:100%;background:linear-gradient(90deg,var(--teal),#40bcae);border-radius:5px}
+  .occurrence{border:1px solid var(--line);border-radius:12px;overflow:hidden;margin:0 0 10mm;break-inside:avoid}.occurrence-head{display:grid;grid-template-columns:auto 1fr auto;gap:12px;align-items:center;padding:13px;background:var(--wash)}.sequence{display:grid;place-items:center;width:32px;height:32px;border-radius:9px;background:var(--navy);color:#fff;font-size:10px;font-weight:800}.occurrence-title small,.occurrence-total small{font-size:8px;font-weight:800;letter-spacing:.1em;color:var(--teal)}.occurrence-title h3{font-size:13px;margin:3px 0;color:var(--navy)}.occurrence-title p{font-size:9px;color:var(--muted);margin:0}.occurrence-total{text-align:right}.occurrence-total strong{display:block;color:var(--red);font-size:14px;margin:3px 0}.occurrence-total span{font-size:8px;color:var(--muted)}
+  table{width:100%;border-collapse:collapse;font-size:9px}th{padding:8px 10px;background:#fff;color:var(--muted);font-size:7px;text-transform:uppercase;letter-spacing:.08em;border-bottom:1px solid var(--line)}td{padding:9px 10px;border-bottom:1px solid #edf1f3}tbody tr:last-child td{border-bottom:0}td small{color:var(--muted)}.center{text-align:center}.money{text-align:right;white-space:nowrap}.strong{font-weight:800;color:var(--navy)}
+  .method{margin-top:12mm;padding-top:6mm;border-top:1px solid var(--line);display:grid;grid-template-columns:1fr auto;gap:20px;font-size:8px;color:var(--muted);line-height:1.6}.method strong{color:var(--navy)}
+  footer{display:flex;justify-content:space-between;padding:5mm 16mm;border-top:1px solid var(--line);font-size:8px;color:var(--muted)}
+  @page{size:A4;margin:8mm}@media print{body{background:#fff}.no-print{display:none!important}.report{width:auto;min-height:auto;margin:0;box-shadow:none}.hero{padding-top:12mm}.metrics{margin-top:-18mm}.occurrence{break-inside:avoid;page-break-inside:avoid}footer{position:running(footer)}}
+</style></head><body>
+<div class="toolbar no-print"><button class="print" onclick="window.print()">Salvar ou imprimir PDF</button><button class="close" onclick="window.close()">Fechar</button></div>
+<article class="report">
+  <header class="hero"><div class="brand"><img class="brand-logo" src="${escaparHtml(logoUrl)}" alt="Gardian"><div class="doc-code">${escaparHtml(codigo)}<br>Emitido em ${escaparHtml(agora.toLocaleString("pt-BR"))}</div></div><span class="eyebrow">DOCUMENTO OPERACIONAL</span><h1>Relatório consolidado<br>de danos e custos</h1><p>Panorama financeiro e quantitativo dos danos catalogados nas ocorrências registradas no sistema.</p></header>
+  <main>
+    <div class="metrics"><div class="metric primary"><small>VALOR BRUTO CONSOLIDADO</small><strong>${escaparHtml(formatBRL(custoTotal))}</strong><span>Estimativa baseada nos valores aplicados</span></div><div class="metric"><small>ITENS APLICADOS</small><strong>${totalItens.toLocaleString("pt-BR")}</strong><span>Em todas as categorias</span></div><div class="metric"><small>OCORRÊNCIAS</small><strong>${totaisOcorrencias.ocorrencias_com_dano.toLocaleString("pt-BR")}</strong><span>Com danos catalogados</span></div></div>
+    <div class="section-label">SÍNTESE</div><h2>Resumo executivo</h2>
+    <div class="executive"><div class="insight"><p>O levantamento consolida <strong>${totalItens.toLocaleString("pt-BR")} itens</strong> em <strong>${totaisOcorrencias.ocorrencias_com_dano.toLocaleString("pt-BR")} ocorrências</strong>. A ocorrência de maior impacto financeiro é <strong>${escaparHtml(maiorOcorrencia.protocolo)} - ${escaparHtml(maiorOcorrencia.titulo)}</strong>, estimada em <strong>${escaparHtml(formatBRL(Number(maiorOcorrencia.custo_total || 0)))}</strong>. ${maiorCategoria ? `A categoria <strong>${escaparHtml(maiorCategoria[0])}</strong> concentra ${percentualMaiorCategoria}% do valor apurado.` : ""}</p></div><div class="categories">${resumoCategorias}</div></div>
+    <div class="section-label">DETALHAMENTO</div><h2>Danos por ocorrência</h2>${blocosOcorrencias}
+    <div class="method"><div><strong>Critério de apuração</strong><br>Valores calculados pela quantidade registrada multiplicada pelo valor unitário aplicado no momento da catalogação. Este documento representa uma estimativa operacional e pode sofrer revisões.</div><div><strong>Base consultada</strong><br>Gardian · Módulo Danos e Custos<br>${escaparHtml(agora.toLocaleDateString("pt-BR"))}</div></div>
+  </main><footer><span>GARDIAN · Defesa Civil</span><span>${escaparHtml(codigo)} · Documento gerado eletronicamente</span></footer>
+</article></body></html>`;
+
+    janela.document.open();
+    janela.document.write(html);
+    janela.document.close();
+    showToast("Relatório de danos preparado para impressão ou PDF.");
+  };
+
   return (
     <div className="p-8 space-y-8 max-w-[1600px] mx-auto">
       <header>
@@ -146,7 +275,7 @@ export default function DamagesPage() {
           <Btn
             variant="primary"
             icon="summarize"
-            onClick={() => showToast("Relatório de danos gerado (PDF simulado).")}
+            onClick={emitirRelatorio}
           >
             Emitir Relatório
           </Btn>
