@@ -136,6 +136,20 @@ interface FormUiConfig {
   checklist: FormUiItem[];
 }
 
+interface ConfigFormularioApi {
+  ativo: boolean;
+  titulo: string;
+  subtitulo: string;
+  telefones_emergencia: string;
+  mensagem_desativado: string;
+  exigir_localizacao: boolean;
+  permitir_anexos: boolean;
+  exigir_contato: boolean;
+  mostrar_aviso_evento: boolean;
+  min_caracteres_descricao: number;
+  categorias: FormUiItem[];
+}
+
 const EMPTY_FORM_CONFIG: FormUiConfig = {
   ativo: false,
   titulo: "",
@@ -150,6 +164,27 @@ const EMPTY_FORM_CONFIG: FormUiConfig = {
   categorias: [],
   checklist: [],
 };
+
+function normalizeFormConfig(
+  value: Partial<ConfigFormularioApi> | null | undefined,
+  checklist: FormUiItem[],
+): FormUiConfig {
+  return {
+    ativo: value?.ativo ?? EMPTY_FORM_CONFIG.ativo,
+    titulo: value?.titulo ?? "",
+    subtitulo: value?.subtitulo ?? "",
+    telefonesEmergencia: value?.telefones_emergencia ?? "",
+    mensagemDesativado: value?.mensagem_desativado ?? "",
+    exigirLocalizacao: value?.exigir_localizacao ?? EMPTY_FORM_CONFIG.exigirLocalizacao,
+    permitirAnexos: value?.permitir_anexos ?? EMPTY_FORM_CONFIG.permitirAnexos,
+    exigirContato: value?.exigir_contato ?? EMPTY_FORM_CONFIG.exigirContato,
+    mostrarAvisoEvento: value?.mostrar_aviso_evento ?? EMPTY_FORM_CONFIG.mostrarAvisoEvento,
+    minCaracteresDescricao:
+      value?.min_caracteres_descricao ?? EMPTY_FORM_CONFIG.minCaracteresDescricao,
+    categorias: Array.isArray(value?.categorias) ? value.categorias : [],
+    checklist,
+  };
+}
 
 const STATUS_FROM_API: Record<number, StatusCidade> = {
   0: "estavel",
@@ -186,6 +221,7 @@ export default function EntityPage() {
   const [entidadeLoading, setEntidadeLoading] = useState(true);
   const [checklist, setChecklist] = useState<ChecklistApiItem[]>([]);
   const [config, setConfig] = useState<FormUiConfig>(EMPTY_FORM_CONFIG);
+  const [salvandoConfig, setSalvandoConfig] = useState(false);
   const [contasBackend, setContasBackend] = useState<ContaEventoView[]>([]);
   const [exercicio, setExercicio] = useState<number | "todos">("todos");
   const [editandoFicha, setEditandoFicha] = useState(false);
@@ -212,9 +248,10 @@ export default function EntityPage() {
   const fetchEntidadeEChecklist = useCallback(async () => {
     if (!entidadeId) return;
     setEntidadeLoading(true);
-    const [entidadeResult, checklistResult] = await Promise.allSettled([
+    const [entidadeResult, checklistResult, configResult] = await Promise.allSettled([
       api.get<EntityApiData>(`/entidades/${entidadeId}/`),
       api.get<ChecklistApiItem[]>("/entidades/checklist/"),
+      api.get<ConfigFormularioApi>(`/entidades/${entidadeId}/config-formulario/`),
     ]);
 
     if (entidadeResult.status === "fulfilled") {
@@ -228,10 +265,16 @@ export default function EntityPage() {
     const checklistItems =
       checklistResult.status === "fulfilled" ? checklistResult.value.data ?? [] : [];
     setChecklist(checklistItems);
-    setConfig((current) => ({
-      ...current,
-      checklist: checklistItems.map((item) => ({ ...item, id: String(item.id) })),
+    const configFormulario = configResult.status === "fulfilled"
+      ? configResult.value.data
+      : null;
+    const checklistFormulario = checklistItems.map((item) => ({
+      ...item,
+      id: String(item.id),
     }));
+    setConfig((current) => configFormulario
+      ? normalizeFormConfig(configFormulario, checklistFormulario)
+      : { ...current, checklist: checklistFormulario });
     setEntidadeLoading(false);
   }, [entidadeId]);
 
@@ -430,6 +473,36 @@ export default function EntityPage() {
 
   /* ── formulário público ── */
 
+  const salvarConfigFormulario = async () => {
+    if (!entidadeId) return;
+    setSalvandoConfig(true);
+    try {
+      const payload: ConfigFormularioApi = {
+        ativo: config.ativo,
+        titulo: config.titulo,
+        subtitulo: config.subtitulo,
+        telefones_emergencia: config.telefonesEmergencia,
+        mensagem_desativado: config.mensagemDesativado,
+        exigir_localizacao: config.exigirLocalizacao,
+        permitir_anexos: config.permitirAnexos,
+        exigir_contato: config.exigirContato,
+        mostrar_aviso_evento: config.mostrarAvisoEvento,
+        min_caracteres_descricao: config.minCaracteresDescricao,
+        categorias: config.categorias,
+      };
+      const response = await api.patch<ConfigFormularioApi>(
+        `/entidades/${entidadeId}/config-formulario/`,
+        payload,
+      );
+      setConfig((current) => normalizeFormConfig(response.data, current.checklist));
+      showToast("Configurações do formulário atualizadas.");
+    } catch {
+      showToast("Não foi possível atualizar as configurações do formulário.", "error");
+    } finally {
+      setSalvandoConfig(false);
+    }
+  };
+
   const toggleChecklist = async (item: ChecklistApiItem) => {
     try {
       const response = await api.patch<ChecklistApiItem>(`/entidades/checklist/${item.id}/`, {
@@ -502,7 +575,12 @@ export default function EntityPage() {
 
   const toggleCampo = (grupo: "categorias" | "checklist", id: string) => {
     if (grupo === "categorias") {
-      showToast("A configuração de categorias ainda não está disponível.", "error");
+      setConfig((current) => ({
+        ...current,
+        categorias: current.categorias.map((item) =>
+          item.id === id ? { ...item, ativo: !item.ativo } : item,
+        ),
+      }));
       return;
     }
     const item = checklist.find((current) => current.id === Number(id));
@@ -510,14 +588,22 @@ export default function EntityPage() {
   };
 
   const removerCampo = (grupo: "categorias" | "checklist", id: string) => {
-    if (grupo === "categorias") return;
+    if (grupo === "categorias") {
+      setConfig((current) => ({
+        ...current,
+        categorias: current.categorias.map((item) =>
+          item.id === id ? { ...item, ativo: false } : item,
+        ),
+      }));
+      return;
+    }
     const item = checklist.find((current) => current.id === Number(id));
     if (item) void removerChecklist(item);
   };
 
   const adicionarCampo = (grupo: "categorias" | "checklist") => {
     if (grupo === "categorias") {
-      showToast("A configuração de categorias ainda não está disponível.", "error");
+      showToast("Escolha entre as categorias disponíveis.", "error");
       return;
     }
     void adicionarChecklist();
@@ -567,7 +653,7 @@ export default function EntityPage() {
   const statusMeta = statusCidade
     ? STATUS_CIDADE_META[statusCidade]
     : { label: "Não informado", cor: "#64748B", tone: "neutral" as const };
-  const categoriasAtivas = 0;
+  const categoriasAtivas = config.categorias.filter((item) => item.ativo).length;
   const checksAtivos = checklist.filter((item) => item.ativo).length;
 
   return (
@@ -803,17 +889,15 @@ export default function EntityPage() {
               <div className="card-recessed p-5 min-w-[260px]">
                 <div className="flex items-center justify-between gap-4">
                   <div>
-                    <p className="text-[11px] font-black uppercase tracking-mono-tight text-primary">
-                      Configuração geral indisponível
-                    </p>
+                    <p className="text-[11px] font-black uppercase tracking-mono-tight text-primary">Canal público</p>
                     <p className="text-[10px] text-on-surface-variant mt-0.5 max-w-[170px]">
-                      Esta opção ainda não está disponível.
+                      {config.ativo ? "Disponível para novos registros." : "Novos registros estão pausados."}
                     </p>
                   </div>
                   <button
                     type="button"
-                    disabled
                     aria-label="Ativar ou desativar o formulário"
+                    onClick={() => setConfig((current) => ({ ...current, ativo: !current.ativo }))}
                     className={`relative w-12 h-7 rounded-full transition-colors shrink-0 ${config.ativo ? "bg-secondary" : "bg-slate-300"
                       }`}
                   >
@@ -854,7 +938,7 @@ export default function EntityPage() {
                     <MetaTag className="block mb-1.5">TÍTULO</MetaTag>
                     <input
                       value={config.titulo}
-                      disabled
+                      onChange={(event) => setConfig((current) => ({ ...current, titulo: event.target.value }))}
                       className="w-full bg-surface-container-low rounded-lg px-4 py-2.5 text-sm font-medium focus:ring-2 focus:ring-secondary outline-none"
                     />
                   </div>
@@ -862,7 +946,7 @@ export default function EntityPage() {
                     <MetaTag className="block mb-1.5">SUBTÍTULO</MetaTag>
                     <textarea
                       value={config.subtitulo}
-                      disabled
+                      onChange={(event) => setConfig((current) => ({ ...current, subtitulo: event.target.value }))}
                       rows={2}
                       className="w-full bg-surface-container-low rounded-lg px-4 py-2.5 text-sm font-medium focus:ring-2 focus:ring-secondary outline-none resize-none"
                     />
@@ -871,7 +955,7 @@ export default function EntityPage() {
                     <MetaTag className="block mb-1.5">TELEFONES DE EMERGÊNCIA</MetaTag>
                     <input
                       value={config.telefonesEmergencia}
-                      disabled
+                      onChange={(event) => setConfig((current) => ({ ...current, telefonesEmergencia: event.target.value }))}
                       className="w-full bg-surface-container-low rounded-lg px-4 py-2.5 text-sm font-medium focus:ring-2 focus:ring-secondary outline-none"
                     />
                   </div>
@@ -879,7 +963,7 @@ export default function EntityPage() {
                     <MetaTag className="block mb-1.5">MENSAGEM QUANDO DESATIVADO</MetaTag>
                     <textarea
                       value={config.mensagemDesativado}
-                      disabled
+                      onChange={(event) => setConfig((current) => ({ ...current, mensagemDesativado: event.target.value }))}
                       rows={2}
                       className="w-full bg-surface-container-low rounded-lg px-4 py-2.5 text-sm font-medium focus:ring-2 focus:ring-secondary outline-none resize-none"
                     />
@@ -901,7 +985,10 @@ export default function EntityPage() {
                       <button
                         key={r.id}
                         type="button"
-                        disabled
+                        onClick={() => setConfig((current) => ({
+                          ...current,
+                          [r.id]: !ligado,
+                        }))}
                         className={`w-full flex items-center gap-3 p-3.5 rounded-lg text-left transition-all ${ligado ? "bg-secondary/10 ring-1 ring-secondary/40" : "bg-surface-container-low"
                           }`}
                       >
@@ -935,7 +1022,10 @@ export default function EntityPage() {
                     max={200}
                     step={10}
                     value={config.minCaracteresDescricao}
-                    disabled
+                    onChange={(event) => setConfig((current) => ({
+                      ...current,
+                      minCaracteresDescricao: Number(event.target.value),
+                    }))}
                     className="w-full accent-[#006A60]"
                   />
                 </div>
@@ -1019,7 +1109,7 @@ export default function EntityPage() {
                     ))}
                   </div>
 
-                  <div className="flex gap-2">
+                  {sec.grupo === "checklist" && <div className="flex gap-2">
                     <input
                       value={sec.valor}
                       onChange={(e) => sec.setValor(e.target.value)}
@@ -1032,17 +1122,18 @@ export default function EntityPage() {
                     <Btn variant="secondary" icon="add" onClick={() => adicionarCampo(sec.grupo)}>
                       Adicionar
                     </Btn>
-                  </div>
+                  </div>}
                 </div>
               ))}
 
-              <div className="flex justify-end">
+              <div className="flex justify-end gap-3">
                 <Btn
                   variant="primary"
                   icon="cloud_done"
-                  disabled
+                  onClick={() => void salvarConfigFormulario()}
+                  disabled={salvandoConfig}
                 >
-                  Checklist salvo automaticamente
+                  {salvandoConfig ? "Salvando…" : "Salvar configurações"}
                 </Btn>
               </div>
             </section>

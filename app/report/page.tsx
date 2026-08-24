@@ -3,11 +3,10 @@
 import { Suspense, useCallback, useEffect, useRef, useState } from "react";
 import axios from "axios";
 import dynamic from "next/dynamic";
+import Image from "next/image";
 import { useRouter, useSearchParams } from "next/navigation";
 import { Btn, Chip, Icon, MetaTag } from "@/app/components/Primitives";
-import { MOCK_FORM_CONFIG } from "@/app/data/mock";
 import { api } from "@/app/services/Api";
-import { loadPublicFormConfig, PUBLIC_FORM_CONFIG_STORAGE_KEY } from "@/app/lib/publicFormConfig";
 
 const MAXIMO_ANEXOS = 10;
 const TAMANHO_MAXIMO_ANEXOS = 50 * 1024 * 1024;
@@ -41,6 +40,42 @@ interface EventoPublico {
 interface EntidadePublica {
   id: number;
   nome: string;
+  mensagem_publica?: string;
+}
+
+interface CategoriaPublica {
+  id: number;
+  label: string;
+  icon: string;
+  ativo: boolean;
+}
+
+interface ConfigFormularioPublicoApi {
+  ativo: boolean;
+  titulo: string;
+  subtitulo: string;
+  mensagem_desativado: string;
+  min_caracteres_descricao: number;
+  exigir_localizacao: boolean;
+  permitir_anexos: boolean;
+  exigir_contato: boolean;
+  mostrar_aviso_evento: boolean;
+  telefones_emergencia: string;
+  categorias: CategoriaPublica[];
+}
+
+interface ConfigFormularioPublico {
+  ativo: boolean;
+  titulo: string;
+  subtitulo: string;
+  mensagemDesativado: string;
+  minCaracteresDescricao: number;
+  exigirLocalizacao: boolean;
+  permitirAnexos: boolean;
+  exigirContato: boolean;
+  mostrarAvisoEvento: boolean;
+  telefonesEmergencia: string;
+  categorias: CategoriaPublica[];
 }
 
 interface ChecklistPublico {
@@ -55,8 +90,25 @@ interface ChecklistPublico {
 
 interface ReportPublicoResponse {
   entidade: EntidadePublica;
+  config_formulario: ConfigFormularioPublicoApi;
   checklist: ChecklistPublico[];
   evento_ativo: EventoPublico | null;
+}
+
+function normalizePublicFormConfig(value: ConfigFormularioPublicoApi): ConfigFormularioPublico {
+  return {
+    ativo: value.ativo,
+    titulo: value.titulo ?? "",
+    subtitulo: value.subtitulo ?? "",
+    mensagemDesativado: value.mensagem_desativado ?? "",
+    minCaracteresDescricao: value.min_caracteres_descricao ?? 0,
+    exigirLocalizacao: value.exigir_localizacao ?? false,
+    permitirAnexos: value.permitir_anexos ?? false,
+    exigirContato: value.exigir_contato ?? false,
+    mostrarAvisoEvento: value.mostrar_aviso_evento ?? false,
+    telefonesEmergencia: value.telefones_emergencia ?? "",
+    categorias: value.categorias ?? [],
+  };
 }
 
 interface AnexoSelecionado {
@@ -131,9 +183,6 @@ function mascararTelefone(raw: string): string {
   return `(${d.slice(0, 2)}) ${d.slice(2, 7)}-${d.slice(7)}`;
 }
 
-/* configuração vinda da tela de Entidade */
-const CATEGORIA_INICIAL = MOCK_FORM_CONFIG.categorias.find((item) => item.ativo)?.id ?? "climatico";
-
 function PublicReportContent() {
   const router = useRouter();
   const searchParams = useSearchParams();
@@ -142,8 +191,8 @@ function PublicReportContent() {
     ? Number(entidadeParam)
     : null;
 
-  const [config, setConfig] = useState(loadPublicFormConfig);
-  const categorias = config.categorias.filter((item) => item.ativo);
+  const [config, setConfig] = useState<ConfigFormularioPublico | null>(null);
+  const categorias = config?.categorias.filter((item) => item.ativo) ?? [];
   const [entidades, setEntidades] = useState<EntidadePublica[]>([]);
   const [carregandoEntidades, setCarregandoEntidades] = useState(true);
   const [erroEntidades, setErroEntidades] = useState("");
@@ -156,22 +205,6 @@ function PublicReportContent() {
   const [eventoAtivo, setEventoAtivo] = useState<EventoPublico | null>(null);
   const [erroReport, setErroReport] = useState<{ entidadeId: number; mensagem: string } | null>(null);
   const [tentativaReport, setTentativaReport] = useState(0);
-
-  useEffect(() => {
-    const atualizar = (event: StorageEvent) => {
-      if (event.key === PUBLIC_FORM_CONFIG_STORAGE_KEY) setConfig(loadPublicFormConfig());
-    };
-    const atualizarCustom = (event: Event) => {
-      const detail = (event as CustomEvent<typeof config>).detail;
-      setConfig(detail ?? loadPublicFormConfig());
-    };
-    window.addEventListener("storage", atualizar);
-    window.addEventListener("gardian:public-form-config-changed", atualizarCustom);
-    return () => {
-      window.removeEventListener("storage", atualizar);
-      window.removeEventListener("gardian:public-form-config-changed", atualizarCustom);
-    };
-  }, []);
 
   // Lista pública exibida antes do formulário.
   useEffect(() => {
@@ -208,6 +241,7 @@ function PublicReportContent() {
       .then((res) => {
         if (cancelled) return;
         setEntidadeSelecionada(res.data.entidade);
+        setConfig(normalizePublicFormConfig(res.data.config_formulario));
         setChecklist((res.data.checklist ?? []).filter((item) => item.ativo));
         setEventoAtivo(res.data.evento_ativo ?? null);
         setErroReport(null);
@@ -225,10 +259,10 @@ function PublicReportContent() {
     };
   }, [entidadeId, tentativaReport]);
 
-  const [categoria, setCategoria] = useState(CATEGORIA_INICIAL);
+  const [categoria, setCategoria] = useState<number | null>(null);
   const categoriaAtual = categorias.some((item) => item.id === categoria)
     ? categoria
-    : categorias[0]?.id ?? "outro";
+    : categorias[0]?.id ?? null;
   const [descricao, setDescricao] = useState("");
   const [checks, setChecks] = useState<Record<number, boolean>>({});
   const [modoLocal, setModoLocal] = useState<"endereco" | "coordenada">("endereco");
@@ -400,6 +434,14 @@ function PublicReportContent() {
       setErro("Selecione a Defesa Civil responsável antes de enviar o registro.");
       return;
     }
+    if (!config || !config.ativo) {
+      setErro(config?.mensagemDesativado || "O canal de registro está indisponível no momento.");
+      return;
+    }
+    if (categoriaAtual === null) {
+      setErro("Selecione uma categoria para prosseguir.");
+      return;
+    }
     if (descricao.trim().length < config.minCaracteresDescricao) {
       setErro(
         `Descreva o que está acontecendo com pelo menos ${config.minCaracteresDescricao} caracteres.`,
@@ -433,7 +475,7 @@ function PublicReportContent() {
       const formData = new FormData();
       formData.append("entidade_id", String(entidadeSelecionada.id));
       formData.append("descricao", descricao.trim());
-      formData.append("categoria", categoriaAtual);
+      formData.append("categoria", String(categoriaAtual));
       formData.append("cpf", cpf.replace(/\D/g, ""));
       formData.append("contato", contato.replace(/\D/g, ""));
       formData.append("endereco", endereco.trim());
@@ -442,6 +484,7 @@ function PublicReportContent() {
       formData.append("website", websiteRef.current?.value ?? "");
       for (const anexo of anexos) formData.append("anexos", anexo.arquivo);
 
+      console.log("Categorias: ", String(categoriaAtual));
       const res = await api.post<{ protocolo: string; aviso_anexos?: string[] }>(
         "/ocorrencias/publicas/",
         formData,
@@ -450,6 +493,18 @@ function PublicReportContent() {
       setProtocolo(res.data.protocolo);
       setEnviado(true);
     } catch (error) {
+      if (axios.isAxiosError(error) && error.response?.status === 403) {
+        const payload = error.response.data as { error?: string; mensagem?: string } | undefined;
+        if (payload?.error === "canal_desativado") {
+          setConfig((atual) => atual ? {
+            ...atual,
+            ativo: false,
+            mensagemDesativado: payload.mensagem || atual.mensagemDesativado,
+          } : atual);
+          setErro(payload.mensagem || "O canal de registro está indisponível no momento.");
+          return;
+        }
+      }
       setErro(
         mensagemApi(error, "Não foi possível enviar o registro. Confira os dados e tente novamente."),
       );
@@ -461,6 +516,7 @@ function PublicReportContent() {
   const trocarEntidade = () => {
     setFluxoInicial(null);
     setEntidadeSelecionada(null);
+    setConfig(null);
     setChecklist([]);
     setEventoAtivo(null);
     setChecks({});
@@ -537,9 +593,13 @@ function PublicReportContent() {
         <header className="bg-gradient-to-br from-primary to-primary-container text-white">
           <div className="mx-auto max-w-3xl px-6 py-10">
             <div className="mb-6 flex items-center gap-3">
-              <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-white/15">
-                <Icon name="shield" filled className="text-[22px] text-white" />
-              </div>
+              <Image
+                src="/logo/logo_icone_branco_sem_fundo.svg"
+                alt=""
+                width={199}
+                height={199}
+                style={{ width: "40px", height: "40px" }}
+              />
               <div>
                 <p className="font-headline text-xl font-black leading-tight tracking-tight">GARDIAN</p>
                 <p className="text-[10px] font-bold uppercase tracking-mono text-white/60">
@@ -697,7 +757,7 @@ function PublicReportContent() {
     );
   }
 
-  const carregandoReport = entidadeSelecionada?.id !== entidadeId && erroReport?.entidadeId !== entidadeId;
+  const carregandoReport = (entidadeSelecionada?.id !== entidadeId || !config) && erroReport?.entidadeId !== entidadeId;
   if (carregandoReport) {
     return (
       <main className="flex min-h-screen items-center justify-center bg-surface p-6">
@@ -731,6 +791,17 @@ function PublicReportContent() {
               Escolher outra
             </Btn>
           </div>
+        </div>
+      </main>
+    );
+  }
+
+  if (!config) {
+    return (
+      <main className="flex min-h-screen items-center justify-center bg-surface p-6">
+        <div className="card-tonal w-full max-w-lg p-10 text-center shadow-ambient">
+          <Icon name="progress_activity" className="mb-3 animate-spin text-[30px] text-secondary" />
+          <p className="text-sm font-semibold text-on-surface-variant">Carregando formulário…</p>
         </div>
       </main>
     );
@@ -781,8 +852,8 @@ function PublicReportContent() {
             <p className="font-headline font-black text-2xl text-primary tracking-tighter">{protocolo}</p>
           </div>
           <p className="text-[12px] text-on-surface-variant mt-5">
-            Em caso de risco imediato à vida, ligue <strong className="text-error">199</strong> (Defesa Civil) ou{" "}
-            <strong className="text-error">193</strong> (Bombeiros).
+            Em caso de risco imediato à vida, ligue{" "}
+            <strong className="text-error">{config?.telefonesEmergencia || "para o serviço de emergência da sua região"}</strong>.
           </p>
           {avisoAnexos.length > 0 && (
             <div role="alert" className="mt-5 rounded-xl bg-tertiary-container p-4 text-left text-sm text-on-tertiary-container">
@@ -848,7 +919,13 @@ function PublicReportContent() {
         <div className="max-w-3xl mx-auto px-6 py-10">
           <div className="flex items-center gap-3 mb-6">
             <div className="w-10 h-10 rounded-lg bg-white/15 flex items-center justify-center">
-              <Icon name="shield" filled className="text-white text-[22px]" />
+              <Image
+                src="/logo/logo_icone_branco_sem_fundo.svg"
+                alt=""
+                width={199}
+                height={199}
+                style={{ width: "28px", height: "28px" }}
+              />
             </div>
             <div>
               <p className="font-headline font-black text-xl leading-tight tracking-tight">GARDIAN</p>
@@ -873,91 +950,101 @@ function PublicReportContent() {
       </header>
 
       <div className="max-w-3xl mx-auto px-6 py-8 space-y-6">
-        {destino !== "atual" && (
-        <section className="card-tonal p-6 shadow-ambient-sm">
-          <div className="mb-4 flex items-center gap-3">
-            <Icon name="my_location" filled className="text-[22px] text-secondary" />
-            <div>
-              <h2 className="text-sm font-bold text-primary">Onde aconteceu a ocorrência?</h2>
-              <p className="mt-1 text-sm text-on-surface-variant">
-                {destino === "outro"
-                  ? "Informe o endereço onde a ocorrência aconteceu."
-                  : "Escolha para qual local deseja registrar."}
+        {entidadeSelecionada?.mensagem_publica?.trim() && (
+          <section className="card-tonal border-l-4 border-secondary p-5 shadow-ambient-sm">
+            <div className="flex items-center gap-3">
+              <Icon name="campaign" filled className="shrink-0 text-[20px] text-secondary" />
+              <p className="text-sm leading-relaxed text-on-surface">
+                {entidadeSelecionada.mensagem_publica}
               </p>
             </div>
-          </div>
-          {destino === null && (
-          <div className="grid gap-3 sm:grid-cols-2">
-            <button type="button" onClick={() => { setDestino("atual"); setCidadeAtendida(true); pegarLocalizacao(); }} className="rounded-xl bg-surface-container-low p-4 text-left text-primary transition-all hover:bg-surface-container">
-              <Icon name="near_me" className="mb-2 text-[22px]" />
-              <span className="block text-sm font-bold">Neste local</span>
-              <span className="mt-1 block text-xs opacity-75">Usar a localização do navegador</span>
-            </button>
-            <button type="button" onClick={() => { setDestino("outro"); setCidadeAtendida(null); setAjusteManualDoMapa(false); }} className="rounded-xl bg-surface-container-low p-4 text-left text-primary transition-all hover:bg-surface-container">
-              <Icon name="location_city" className="mb-2 text-[22px]" />
-              <span className="block text-sm font-bold">Outro local ou outra pessoa</span>
-              <span className="mt-1 block text-xs opacity-75">Buscar o endereço pelo CEP</span>
-            </button>
-          </div>
-          )}
-          {destino === "outro" && (
-            <div className="mt-5 rounded-xl bg-surface-container-low p-4">
-              <MetaTag className="mb-2 block">ENDEREÇO DA OCORRÊNCIA</MetaTag>
-              <div className="grid gap-3 sm:grid-cols-[1fr_120px_auto]">
-                <input value={cep} onChange={(event) => setCep(event.target.value.replace(/\D/g, "").slice(0, 8))} placeholder="CEP (8 dígitos)" inputMode="numeric" className="rounded-lg bg-white px-4 py-3 text-sm font-medium outline-none focus:ring-2 focus:ring-secondary" />
-                <input value={numero} onChange={(event) => setNumero(event.target.value)} placeholder="Número" className="rounded-lg bg-white px-4 py-3 text-sm font-medium outline-none focus:ring-2 focus:ring-secondary" />
-                <Btn variant="secondary" icon="search" onClick={buscarCep}>{buscandoCep ? "Buscando…" : "Buscar CEP"}</Btn>
+          </section>
+        )}
+        {destino !== "atual" && (
+          <section className="card-tonal p-6 shadow-ambient-sm">
+            <div className="mb-4 flex items-center gap-3">
+              <Icon name="my_location" filled className="text-[22px] text-secondary" />
+              <div>
+                <h2 className="text-sm font-bold text-primary">Onde aconteceu a ocorrência?</h2>
+                <p className="mt-1 text-sm text-on-surface-variant">
+                  {destino === "outro"
+                    ? "Informe o endereço onde a ocorrência aconteceu."
+                    : "Escolha para qual local deseja registrar."}
+                </p>
               </div>
-              {enderecoAviso && <p className="mt-2 text-xs font-bold text-error">{enderecoAviso}</p>}
-              {cidadeAtendida === true && cidadeDestino && !ajusteManualDoMapa && <p className="mt-3 text-xs font-bold text-secondary">Gardian disponível em {cidadeDestino}/{ufDestino}. Confirme o ponto no mapa abaixo.</p>}
-              {ajusteManualDoMapa && (
-                <div className="mt-4 space-y-3">
-                  <div className="flex items-start gap-2 rounded-lg border border-[#E6B800] bg-[#FFF4CC] p-4 text-[#4D3D00]">
-                    <Icon name="edit_location" filled className="mt-0.5 shrink-0 text-[20px] text-[#8A6800]" />
-                    <div>
-                      <p className="text-sm font-black">Confirme o local no mapa</p>
-                      <p className="mt-1 text-xs font-semibold leading-relaxed">
-                        O CEP foi encontrado, mas o ponto automático não ficou preciso. Clique no mapa para marcar o local exato da ocorrência.
-                      </p>
-                    </div>
-                  </div>
-                  <PublicMapPicker
-                    lat={lat}
-                    lng={lng}
-                    height={300}
-                    entidadeId={entidadeSelecionada?.id}
-                    zonasDestaqueIds={eventoAtivo?.zonas}
-                    onChange={(la, ln) => {
-                      setLat(la);
-                      setLng(ln);
-                      setModoLocal("coordenada");
-                      setGeoStatus("ok");
-                      setPontoManualMarcado(true);
-                    }}
-                  />
-                  {pontoManualMarcado ? (
-                    <div className="flex flex-col items-center gap-2">
-                      <p className="text-center text-xs font-semibold text-on-surface-variant">
-                        Confira o ponto marcado antes de continuar.
-                      </p>
-                      <Btn
-                        variant="primary"
-                        icon="check_circle"
-                        onClick={() => setAjusteManualDoMapa(false)}
-                      >
-                        Confirmar este local
-                      </Btn>
-                    </div>
-                  ) : (
-                    <p className="text-center text-xs font-semibold text-on-surface-variant">
-                      Marque no mapa o local exato da ocorrência.
-                    </p>
-                  )}
-                </div>
-              )}
             </div>
-          )}
-        </section>
+            {destino === null && (
+              <div className="grid gap-3 sm:grid-cols-2">
+                <button type="button" onClick={() => { setDestino("atual"); setCidadeAtendida(true); pegarLocalizacao(); }} className="rounded-xl bg-surface-container-low p-4 text-left text-primary transition-all hover:bg-surface-container">
+                  <Icon name="near_me" className="mb-2 text-[22px]" />
+                  <span className="block text-sm font-bold">Neste local</span>
+                  <span className="mt-1 block text-xs opacity-75">Usar a localização do navegador</span>
+                </button>
+                <button type="button" onClick={() => { setDestino("outro"); setCidadeAtendida(null); setAjusteManualDoMapa(false); }} className="rounded-xl bg-surface-container-low p-4 text-left text-primary transition-all hover:bg-surface-container">
+                  <Icon name="location_city" className="mb-2 text-[22px]" />
+                  <span className="block text-sm font-bold">Outro local ou outra pessoa</span>
+                  <span className="mt-1 block text-xs opacity-75">Buscar o endereço pelo CEP</span>
+                </button>
+              </div>
+            )}
+            {destino === "outro" && (
+              <div className="mt-5 rounded-xl bg-surface-container-low p-4">
+                <MetaTag className="mb-2 block">ENDEREÇO DA OCORRÊNCIA</MetaTag>
+                <div className="grid gap-3 sm:grid-cols-[1fr_120px_auto]">
+                  <input value={cep} onChange={(event) => setCep(event.target.value.replace(/\D/g, "").slice(0, 8))} placeholder="CEP (8 dígitos)" inputMode="numeric" className="rounded-lg bg-white px-4 py-3 text-sm font-medium outline-none focus:ring-2 focus:ring-secondary" />
+                  <input value={numero} onChange={(event) => setNumero(event.target.value)} placeholder="Número" className="rounded-lg bg-white px-4 py-3 text-sm font-medium outline-none focus:ring-2 focus:ring-secondary" />
+                  <Btn variant="secondary" icon="search" onClick={buscarCep}>{buscandoCep ? "Buscando…" : "Buscar CEP"}</Btn>
+                </div>
+                {enderecoAviso && <p className="mt-2 text-xs font-bold text-error">{enderecoAviso}</p>}
+                {cidadeAtendida === true && cidadeDestino && !ajusteManualDoMapa && <p className="mt-3 text-xs font-bold text-secondary">Gardian disponível em {cidadeDestino}/{ufDestino}. Confirme o ponto no mapa abaixo.</p>}
+                {ajusteManualDoMapa && (
+                  <div className="mt-4 space-y-3">
+                    <div className="flex items-start gap-2 rounded-lg border border-[#E6B800] bg-[#FFF4CC] p-4 text-[#4D3D00]">
+                      <Icon name="edit_location" filled className="mt-0.5 shrink-0 text-[20px] text-[#8A6800]" />
+                      <div>
+                        <p className="text-sm font-black">Confirme o local no mapa</p>
+                        <p className="mt-1 text-xs font-semibold leading-relaxed">
+                          O CEP foi encontrado, mas o ponto automático não ficou preciso. Clique no mapa para marcar o local exato da ocorrência.
+                        </p>
+                      </div>
+                    </div>
+                    <PublicMapPicker
+                      lat={lat}
+                      lng={lng}
+                      height={300}
+                      entidadeId={entidadeSelecionada?.id}
+                      zonasDestaqueIds={eventoAtivo?.zonas}
+                      onChange={(la, ln) => {
+                        setLat(la);
+                        setLng(ln);
+                        setModoLocal("coordenada");
+                        setGeoStatus("ok");
+                        setPontoManualMarcado(true);
+                      }}
+                    />
+                    {pontoManualMarcado ? (
+                      <div className="flex flex-col items-center gap-2">
+                        <p className="text-center text-xs font-semibold text-on-surface-variant">
+                          Confira o ponto marcado antes de continuar.
+                        </p>
+                        <Btn
+                          variant="primary"
+                          icon="check_circle"
+                          onClick={() => setAjusteManualDoMapa(false)}
+                        >
+                          Confirmar este local
+                        </Btn>
+                      </div>
+                    ) : (
+                      <p className="text-center text-xs font-semibold text-on-surface-variant">
+                        Marque no mapa o local exato da ocorrência.
+                      </p>
+                    )}
+                  </div>
+                )}
+              </div>
+            )}
+          </section>
         )}
 
         {destino === "outro" && cidadeAtendida === false && (
@@ -968,367 +1055,369 @@ function PublicReportContent() {
         )}
 
         {(destino === "atual" || (destino === "outro" && cidadeAtendida === true && !ajusteManualDoMapa)) && <>
-        {/* aviso do evento ativo da entidade selecionada */}
-        {config.mostrarAvisoEvento &&
-          eventoAtivo &&
-          (eventoAtivo.resumo_publico?.trim() ||
-            eventoAtivo.recomendacoes?.some((recomendacao) => recomendacao.trim())) && (
-            <section className="card-tonal p-6 shadow-ambient-sm border-l-4 border-error">
-              <div className="flex items-center gap-2 mb-3">
-                <Icon name="campaign" filled className="text-error text-[20px]" />
-                <MetaTag className="text-error">AVISO EM ANDAMENTO · {eventoAtivo.nome.toUpperCase()}</MetaTag>
+          {/* aviso do evento ativo da entidade selecionada */}
+          {config.mostrarAvisoEvento &&
+            eventoAtivo &&
+            (eventoAtivo.resumo_publico?.trim() ||
+              eventoAtivo.recomendacoes?.some((recomendacao) => recomendacao.trim())) && (
+              <section className="card-tonal p-6 shadow-ambient-sm border-l-4 border-error">
+                <div className="flex items-center gap-2 mb-3">
+                  <Icon name="campaign" filled className="text-error text-[20px]" />
+                  <MetaTag className="text-error">AVISO EM ANDAMENTO · {eventoAtivo.nome.toUpperCase()}</MetaTag>
+                </div>
+                <p className="text-[13px] text-on-surface leading-relaxed">{eventoAtivo.resumo_publico}</p>
+                <div className="mt-4 space-y-2">
+                  {(eventoAtivo.recomendacoes ?? []).filter((r) => r.trim()).map((r, i) => (
+                    <div key={i} className="flex items-start gap-2.5">
+                      <Icon name="verified_user" filled className="text-secondary text-[16px] mt-0.5 shrink-0" />
+                      <p className="text-[12px] text-on-surface-variant leading-relaxed">{r}</p>
+                    </div>
+                  ))}
+                </div>
+              </section>
+            )}
+
+          {/* tipo */}
+          <section className="card-tonal p-6 shadow-ambient-sm">
+            <h2 className="mb-4 text-sm font-bold text-primary">1. O que está acontecendo?</h2>
+            {categorias.length === 0 ? (
+              <div role="status" className="rounded-lg bg-surface-container-low p-4 text-sm text-on-surface-variant">
+                Nenhuma categoria está disponível para registro no momento.
               </div>
-              <p className="text-[13px] text-on-surface leading-relaxed">{eventoAtivo.resumo_publico}</p>
-              <div className="mt-4 space-y-2">
-                {(eventoAtivo.recomendacoes ?? []).filter((r) => r.trim()).map((r, i) => (
-                  <div key={i} className="flex items-start gap-2.5">
-                    <Icon name="verified_user" filled className="text-secondary text-[16px] mt-0.5 shrink-0" />
-                    <p className="text-[12px] text-on-surface-variant leading-relaxed">{r}</p>
-                  </div>
-                ))}
-              </div>
-            </section>
-          )}
-
-        {/* tipo */}
-        <section className="card-tonal p-6 shadow-ambient-sm">
-          <h2 className="mb-4 text-sm font-bold text-primary">1. O que está acontecendo?</h2>
-          <div className="grid grid-cols-2 md:grid-cols-4 gap-2">
-            {categorias.map((c) => (
-              <button
-                key={c.id}
-                type="button"
-                onClick={() => setCategoria(c.id)}
-                className={`flex min-h-32 flex-col items-center justify-center gap-2 p-4 rounded-lg transition-all ${
-                  categoriaAtual === c.id
-                    ? "bg-primary text-white shadow-ambient-sm"
-                    : "bg-surface-container-low text-on-surface-variant hover:bg-surface-container"
-                }`}
-              >
-                <span className="flex flex-col items-center justify-center gap-2">
-                  <Icon name={c.icon} filled={categoriaAtual === c.id} className="text-[24px] leading-none" />
-                  <span className="text-sm font-bold text-center leading-snug">
-                    {c.label}
-                  </span>
-                </span>
-              </button>
-            ))}
-          </div>
-        </section>
-
-        {/* descrição */}
-        <section className="card-tonal p-6 shadow-ambient-sm">
-          <h2 className="mb-4 text-sm font-bold text-primary">2. Descreva a situação</h2>
-          <textarea
-            value={descricao}
-            onChange={(e) => setDescricao(e.target.value)}
-            rows={5}
-            placeholder="Ex.: a água começou a entrar no quintal por volta das 6h e já está na altura do joelho na rua..."
-            className="w-full bg-surface-container-low rounded-lg px-4 py-3 text-base font-medium text-on-surface focus:ring-2 focus:ring-secondary outline-none resize-none placeholder:text-[14px] placeholder:text-on-surface-variant/75"
-          />
-          <p className="mt-2 text-xs font-medium text-on-surface-variant">{descricao.length} caracteres</p>
-        </section>
-
-        {/* checklist */}
-        <section className="card-tonal p-6 shadow-ambient-sm">
-          <h2 className="mb-1 text-sm font-bold text-primary">3. Marque o que se aplica</h2>
-          {checklist.length === 0 ? (
-            <p className="mt-3 text-sm text-on-surface-variant">
-              Não há opções adicionais para marcar. Você pode continuar o preenchimento normalmente.
-            </p>
-          ) : (
-            <>
-              <p className="mb-4 text-sm text-on-surface-variant">
-                Isso ajuda a equipe a definir a prioridade do atendimento.
-              </p>
-              <div className="space-y-2">
-                {checklist.map((c) => {
-                  const on = !!checks[c.id];
-                  return (
-                    <button
-                      key={c.id}
-                      type="button"
-                      onClick={() => setChecks((v) => ({ ...v, [c.id]: !v[c.id] }))}
-                      className={`w-full flex items-center gap-3 p-3.5 rounded-lg text-left transition-all ${
-                        on ? "bg-secondary/10 ring-1 ring-secondary/40" : "bg-surface-container-low hover:bg-surface-container"
+            ) : (
+              <div className="grid grid-cols-2 md:grid-cols-4 gap-2">
+                {categorias.map((c) => (
+                  <button
+                    key={c.id}
+                    type="button"
+                    onClick={() => setCategoria(c.id)}
+                    className={`flex min-h-32 flex-col items-center justify-center gap-2 p-4 rounded-lg transition-all ${categoriaAtual === c.id
+                        ? "bg-primary text-white shadow-ambient-sm"
+                        : "bg-surface-container-low text-on-surface-variant hover:bg-surface-container"
                       }`}
-                    >
-                      <Icon
-                        name={on ? "check_box" : "check_box_outline_blank"}
-                        className={`text-[20px] shrink-0 ${on ? "text-secondary" : "text-on-surface-variant"}`}
-                      />
-                      <Icon name={c.icon} className={`text-[18px] shrink-0 ${on ? "text-secondary" : "text-on-surface-variant"}`} />
-                      <span className={`text-sm font-medium ${on ? "text-primary font-bold" : "text-on-surface"}`}>
+                  >
+                    <span className="flex flex-col items-center justify-center gap-2">
+                      <Icon name={c.icon} filled={categoriaAtual === c.id} className="text-[24px] leading-none" />
+                      <span className="text-sm font-bold text-center leading-snug">
                         {c.label}
                       </span>
-                    </button>
-                  );
-                })}
-              </div>
-            </>
-          )}
-        </section>
-
-        {/* localização */}
-        <section className="card-tonal p-6 shadow-ambient-sm">
-          <h2 className="mb-4 text-sm font-bold text-primary">4. Onde é?</h2>
-
-          <div className="flex flex-wrap items-center gap-2 mb-4">
-            <button
-              type="button"
-              onClick={() => setModoLocal("endereco")}
-              className={`px-4 py-2.5 rounded-lg text-[11px] font-bold uppercase tracking-mono-tight transition-all ${
-                modoLocal === "endereco" ? "bg-primary text-white" : "bg-surface-container-high text-on-surface-variant"
-              }`}
-            >
-              Endereço
-            </button>
-            <button
-              type="button"
-              onClick={() => setModoLocal("coordenada")}
-              className={`px-4 py-2.5 rounded-lg text-[11px] font-bold uppercase tracking-mono-tight transition-all ${
-                modoLocal === "coordenada" ? "bg-primary text-white" : "bg-surface-container-high text-on-surface-variant"
-              }`}
-            >
-              Coordenadas
-            </button>
-            <Btn variant="secondary" icon="my_location" onClick={pegarLocalizacao}>
-              {geoStatus === "carregando" ? "Localizando…" : "Usar minha localização"}
-            </Btn>
-          </div>
-
-          {geoStatus === "ok" && (
-            <Chip tone="secondary" icon="check" className="mb-3">
-              LOCALIZAÇÃO CAPTURADA
-            </Chip>
-          )}
-          {geoStatus === "erro" && (
-            <>
-              <Chip tone="error" icon="error" className="mb-1">
-                {geoAviso || "NÃO FOI POSSÍVEL OBTER A LOCALIZAÇÃO — PREENCHA MANUALMENTE"}
-              </Chip>
-              <p className="text-[10px] text-on-surface-variant mb-3">
-                Você também pode marcar o local diretamente no mapa.
-              </p>
-            </>
-          )}
-
-          {modoLocal === "endereco" ? (
-            <div className="space-y-2">
-              <input
-                value={endereco}
-                onChange={(e) => setEndereco(e.target.value)}
-                placeholder="Rua, número, bairro e ponto de referência"
-                className="w-full bg-surface-container-low rounded-lg px-4 py-3 text-sm font-medium focus:ring-2 focus:ring-secondary outline-none placeholder:text-[14px] placeholder:text-on-surface-variant/50"
-              />
-              <div className="flex flex-wrap items-center gap-2">
-                <Btn variant="secondary" icon="search" onClick={buscarEndereco}>
-                  {geoBuscando ? "Buscando…" : "Localizar no mapa"}
-                </Btn>
-                {enderecoAviso && (
-                  <span className="text-[11px] text-error font-bold">{enderecoAviso}</span>
-                )}
-              </div>
-            </div>
-          ) : (
-            <div className="grid grid-cols-2 gap-3">
-              <div>
-                <MetaTag className="block mb-1.5">LATITUDE</MetaTag>
-                <input
-                  value={lat}
-                  onChange={(e) => setLat(e.target.value)}
-                  placeholder="-16.440000"
-                  className="w-full bg-surface-container-low rounded-lg px-4 py-3 text-sm font-medium focus:ring-2 focus:ring-secondary outline-none placeholder:text-[14px]"
-                />
-              </div>
-              <div>
-                <MetaTag className="block mb-1.5">LONGITUDE</MetaTag>
-                <input
-                  value={lng}
-                  onChange={(e) => setLng(e.target.value)}
-                  placeholder="-39.070000"
-                  className="w-full bg-surface-container-low rounded-lg px-4 py-3 text-sm font-medium focus:ring-2 focus:ring-secondary outline-none placeholder:text-[14px]"
-                />
-              </div>
-            </div>
-          )}
-
-          <div className="mt-4">
-            <PublicMapPicker
-              lat={lat}
-              lng={lng}
-              height={260}
-              entidadeId={entidadeSelecionada?.id}
-              zonasDestaqueIds={eventoAtivo?.zonas}
-              onChange={(la, ln) => {
-                setLat(la);
-                setLng(ln);
-                setModoLocal("coordenada");
-                setGeoStatus("ok");
-                setAjusteManualDoMapa(false);
-              }}
-            />
-            <p className="text-[11px] text-on-surface-variant mt-2">
-              Arraste o marcador até o local exato do ocorrido.
-            </p>
-            {localEntidade && (
-              <p className="text-[11px] text-secondary font-bold mt-1">
-                Localização em {localEntidade}
-              </p>
-            )}
-          </div>
-        </section>
-
-        {/* anexos */}
-        {config.permitirAnexos && (
-          <section className="card-tonal p-6 shadow-ambient-sm">
-            <h2 className="mb-1 text-sm font-bold text-primary">Fotos e vídeos (opcional)</h2>
-            <p className="mb-3 text-sm text-on-surface-variant">
-              Imagens ajudam a equipe a dimensionar a situação antes de chegar ao local.
-            </p>
-            <label className="flex flex-col items-center justify-center gap-2 py-6 rounded-lg bg-surface-container-low border-2 border-dashed border-outline-variant/40 cursor-pointer hover:bg-surface-container transition-all">
-              <Icon name="add_a_photo" className="text-secondary text-[24px]" />
-              <span className="text-[12px] font-bold text-primary">Clique para anexar</span>
-              <span className="text-[10px] text-on-surface-variant">
-                JPG, PNG, WebP, GIF ou MP4 · até 10 arquivos e 50 MB no total
-              </span>
-              <input
-                type="file"
-                multiple
-                accept=".jpg,.jpeg,.png,.webp,.gif,.mp4,image/jpeg,image/png,image/webp,image/gif,video/mp4"
-                className="hidden"
-                onChange={(e) => {
-                  const selecionados = Array.from(e.target.files ?? []);
-                  const formatoInvalido = selecionados.some((arquivo) => {
-                    const nome = arquivo.name.toLowerCase();
-                    return (
-                      !TIPOS_ANEXOS_PERMITIDOS.has(arquivo.type) ||
-                      !EXTENSOES_ANEXOS_PERMITIDAS.some((extensao) => nome.endsWith(extensao))
-                    );
-                  });
-
-                  if (formatoInvalido) {
-                    setErro("Formato não permitido. Envie imagens JPG, PNG, WebP ou GIF, ou vídeos MP4.");
-                    e.currentTarget.value = "";
-                    return;
-                  }
-                  if (anexos.length + selecionados.length > MAXIMO_ANEXOS) {
-                    setErro(`Você pode anexar no máximo ${MAXIMO_ANEXOS} arquivos.`);
-                    e.currentTarget.value = "";
-                    return;
-                  }
-                  const tamanhoAtual = anexos.reduce(
-                    (total, anexo) => total + anexo.arquivo.size,
-                    0,
-                  );
-                  const tamanhoSelecionado = selecionados.reduce(
-                    (total, arquivo) => total + arquivo.size,
-                    0,
-                  );
-                  if (tamanhoAtual + tamanhoSelecionado > TAMANHO_MAXIMO_ANEXOS) {
-                    setErro("O tamanho total dos arquivos não pode ultrapassar 50 MB.");
-                    e.currentTarget.value = "";
-                    return;
-                  }
-
-                  const arquivos = selecionados.map((f) => ({
-                    arquivo: f,
-                    nome: f.name,
-                    tamanho:
-                      f.size > 1024 * 1024
-                        ? `${(f.size / (1024 * 1024)).toFixed(1).replace(".", ",")} MB`
-                        : `${Math.max(1, Math.round(f.size / 1024))} KB`,
-                  }));
-                  setAnexos((prev) => [...prev, ...arquivos]);
-                  setErro("");
-                  e.currentTarget.value = "";
-                }}
-              />
-            </label>
-
-            {anexos.length > 0 && (
-              <div className="space-y-2 mt-3">
-                {anexos.map((a, i) => (
-                  <div
-                    key={i}
-                    className="flex items-center gap-3 p-3 rounded-lg bg-surface-container-low text-[12px]"
-                  >
-                    <Icon name="image" className="text-secondary text-[18px]" />
-                    <span className="font-bold text-primary flex-1 truncate">{a.nome}</span>
-                    <span className="text-[10px] font-mono font-bold text-slate-400">{a.tamanho}</span>
-                    <button
-                      type="button"
-                      onClick={() => setAnexos((prev) => prev.filter((_, idx) => idx !== i))}
-                      className="p-1 rounded-md hover:bg-surface-container"
-                      aria-label="Remover anexo"
-                    >
-                      <Icon name="close" className="text-on-surface-variant text-[16px]" />
-                    </button>
-                  </div>
+                    </span>
+                  </button>
                 ))}
               </div>
             )}
           </section>
-        )}
 
-        {/* contato */}
-        <section className="card-tonal p-6 shadow-ambient-sm">
-          <h2 className="mb-1 text-sm font-bold text-primary">
-            5. Contato {config.exigirContato ? "(obrigatório)" : "(opcional)"}
-          </h2>
-          <p className="mb-3 text-sm text-on-surface-variant">
-            {config.exigirContato
-              ? "Informe um telefone para que a equipe possa confirmar os detalhes do registro."
-              : "O CPF é obrigatório para identificar o registro. O telefone é opcional e permite que a equipe entre em contato."}
-          </p>
-          <label htmlFor="report-cpf" className="mb-1.5 block text-sm font-semibold text-primary">
-            CPF (obrigatório)
-          </label>
-          <input
-            id="report-cpf"
-            value={cpf}
-            onChange={(e) => setCpf(mascararCpf(e.target.value))}
-            placeholder="000.000.000-00"
-            inputMode="numeric"
-            maxLength={14}
-            className="w-full bg-surface-container-low rounded-lg px-4 py-3 text-sm font-medium focus:ring-2 focus:ring-secondary outline-none placeholder:text-[14px] placeholder:text-on-surface-variant/50 mb-4"
-          />
+          {/* descrição */}
+          <section className="card-tonal p-6 shadow-ambient-sm">
+            <h2 className="mb-4 text-sm font-bold text-primary">2. Descreva a situação</h2>
+            <textarea
+              value={descricao}
+              onChange={(e) => setDescricao(e.target.value)}
+              rows={5}
+              placeholder="Ex.: a água começou a entrar no quintal por volta das 6h e já está na altura do joelho na rua..."
+              className="w-full bg-surface-container-low rounded-lg px-4 py-3 text-base font-medium text-on-surface focus:ring-2 focus:ring-secondary outline-none resize-none placeholder:text-[14px] placeholder:text-on-surface-variant/75"
+            />
+            <p className="mt-2 text-xs font-medium text-on-surface-variant">{descricao.length} caracteres</p>
+          </section>
 
-          <label htmlFor="report-telefone" className="mb-1.5 block text-sm font-semibold text-primary">
-            Telefone {config.exigirContato ? "(obrigatório)" : "(opcional)"}
-          </label>
-          <input
-            id="report-telefone"
-            value={contato}
-            onChange={(e) => setContato(mascararTelefone(e.target.value))}
-            placeholder="(73) 90000-0000"
-            type="tel"
-            inputMode="tel"
-            maxLength={14}
-            className="w-full bg-surface-container-low rounded-lg px-4 py-3 text-sm font-medium focus:ring-2 focus:ring-secondary outline-none placeholder:text-[14px] placeholder:text-on-surface-variant/50"
-          />
-        </section>
+          {/* checklist */}
+          <section className="card-tonal p-6 shadow-ambient-sm">
+            <h2 className="mb-1 text-sm font-bold text-primary">3. Marque o que se aplica</h2>
+            {checklist.length === 0 ? (
+              <p className="mt-3 text-sm text-on-surface-variant">
+                Não há opções adicionais para marcar. Você pode continuar o preenchimento normalmente.
+              </p>
+            ) : (
+              <>
+                <p className="mb-4 text-sm text-on-surface-variant">
+                  Isso ajuda a equipe a definir a prioridade do atendimento.
+                </p>
+                <div className="space-y-2">
+                  {checklist.map((c) => {
+                    const on = !!checks[c.id];
+                    return (
+                      <button
+                        key={c.id}
+                        type="button"
+                        onClick={() => setChecks((v) => ({ ...v, [c.id]: !v[c.id] }))}
+                        className={`w-full flex items-center gap-3 p-3.5 rounded-lg text-left transition-all ${on ? "bg-secondary/10 ring-1 ring-secondary/40" : "bg-surface-container-low hover:bg-surface-container"
+                          }`}
+                      >
+                        <Icon
+                          name={on ? "check_box" : "check_box_outline_blank"}
+                          className={`text-[20px] shrink-0 ${on ? "text-secondary" : "text-on-surface-variant"}`}
+                        />
+                        <Icon name={c.icon} className={`text-[18px] shrink-0 ${on ? "text-secondary" : "text-on-surface-variant"}`} />
+                        <span className={`text-sm font-medium ${on ? "text-primary font-bold" : "text-on-surface"}`}>
+                          {c.label}
+                        </span>
+                      </button>
+                    );
+                  })}
+                </div>
+              </>
+            )}
+          </section>
 
-        {erro && (
-          <div
-            role="alert"
-            aria-live="assertive"
-            className="flex items-center gap-2 p-4 rounded-lg bg-error-container text-on-error-container"
-          >
-            <Icon name="error" filled className="text-[18px]" />
-            <span className="text-[13px] font-bold">{erro}</span>
+          {/* localização */}
+          <section className="card-tonal p-6 shadow-ambient-sm">
+            <h2 className="mb-4 text-sm font-bold text-primary">4. Onde é?</h2>
+
+            <div className="flex flex-wrap items-center gap-2 mb-4">
+              <button
+                type="button"
+                onClick={() => setModoLocal("endereco")}
+                className={`px-4 py-2.5 rounded-lg text-[11px] font-bold uppercase tracking-mono-tight transition-all ${modoLocal === "endereco" ? "bg-primary text-white" : "bg-surface-container-high text-on-surface-variant"
+                  }`}
+              >
+                Endereço
+              </button>
+              <button
+                type="button"
+                onClick={() => setModoLocal("coordenada")}
+                className={`px-4 py-2.5 rounded-lg text-[11px] font-bold uppercase tracking-mono-tight transition-all ${modoLocal === "coordenada" ? "bg-primary text-white" : "bg-surface-container-high text-on-surface-variant"
+                  }`}
+              >
+                Coordenadas
+              </button>
+              <Btn variant="secondary" icon="my_location" onClick={pegarLocalizacao}>
+                {geoStatus === "carregando" ? "Localizando…" : "Usar minha localização"}
+              </Btn>
+            </div>
+
+            {geoStatus === "ok" && (
+              <Chip tone="secondary" icon="check" className="mb-3">
+                LOCALIZAÇÃO CAPTURADA
+              </Chip>
+            )}
+            {geoStatus === "erro" && (
+              <>
+                <Chip tone="error" icon="error" className="mb-1">
+                  {geoAviso || "NÃO FOI POSSÍVEL OBTER A LOCALIZAÇÃO — PREENCHA MANUALMENTE"}
+                </Chip>
+                <p className="text-[10px] text-on-surface-variant mb-3">
+                  Você também pode marcar o local diretamente no mapa.
+                </p>
+              </>
+            )}
+
+            {modoLocal === "endereco" ? (
+              <div className="space-y-2">
+                <input
+                  value={endereco}
+                  onChange={(e) => setEndereco(e.target.value)}
+                  placeholder="Rua, número, bairro e ponto de referência"
+                  className="w-full bg-surface-container-low rounded-lg px-4 py-3 text-sm font-medium focus:ring-2 focus:ring-secondary outline-none placeholder:text-[14px] placeholder:text-on-surface-variant/50"
+                />
+                <div className="flex flex-wrap items-center gap-2">
+                  <Btn variant="secondary" icon="search" onClick={buscarEndereco}>
+                    {geoBuscando ? "Buscando…" : "Localizar no mapa"}
+                  </Btn>
+                  {enderecoAviso && (
+                    <span className="text-[11px] text-error font-bold">{enderecoAviso}</span>
+                  )}
+                </div>
+              </div>
+            ) : (
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <MetaTag className="block mb-1.5">LATITUDE</MetaTag>
+                  <input
+                    value={lat}
+                    onChange={(e) => setLat(e.target.value)}
+                    placeholder="-16.440000"
+                    className="w-full bg-surface-container-low rounded-lg px-4 py-3 text-sm font-medium focus:ring-2 focus:ring-secondary outline-none placeholder:text-[14px]"
+                  />
+                </div>
+                <div>
+                  <MetaTag className="block mb-1.5">LONGITUDE</MetaTag>
+                  <input
+                    value={lng}
+                    onChange={(e) => setLng(e.target.value)}
+                    placeholder="-39.070000"
+                    className="w-full bg-surface-container-low rounded-lg px-4 py-3 text-sm font-medium focus:ring-2 focus:ring-secondary outline-none placeholder:text-[14px]"
+                  />
+                </div>
+              </div>
+            )}
+
+            <div className="mt-4">
+              <PublicMapPicker
+                lat={lat}
+                lng={lng}
+                height={260}
+                entidadeId={entidadeSelecionada?.id}
+                zonasDestaqueIds={eventoAtivo?.zonas}
+                onChange={(la, ln) => {
+                  setLat(la);
+                  setLng(ln);
+                  setModoLocal("coordenada");
+                  setGeoStatus("ok");
+                  setAjusteManualDoMapa(false);
+                }}
+              />
+              <p className="text-[11px] text-on-surface-variant mt-2">
+                Arraste o marcador até o local exato do ocorrido.
+              </p>
+              {localEntidade && (
+                <p className="text-[11px] text-secondary font-bold mt-1">
+                  Localização em {localEntidade}
+                </p>
+              )}
+            </div>
+          </section>
+
+          {/* anexos */}
+          {config.permitirAnexos && (
+            <section className="card-tonal p-6 shadow-ambient-sm">
+              <h2 className="mb-1 text-sm font-bold text-primary">Fotos e vídeos (opcional)</h2>
+              <p className="mb-3 text-sm text-on-surface-variant">
+                Imagens ajudam a equipe a dimensionar a situação antes de chegar ao local.
+              </p>
+              <label className="flex flex-col items-center justify-center gap-2 py-6 rounded-lg bg-surface-container-low border-2 border-dashed border-outline-variant/40 cursor-pointer hover:bg-surface-container transition-all">
+                <Icon name="add_a_photo" className="text-secondary text-[24px]" />
+                <span className="text-[12px] font-bold text-primary">Clique para anexar</span>
+                <span className="text-[10px] text-on-surface-variant">
+                  JPG, PNG, WebP, GIF ou MP4 · até 10 arquivos e 50 MB no total
+                </span>
+                <input
+                  type="file"
+                  multiple
+                  accept=".jpg,.jpeg,.png,.webp,.gif,.mp4,image/jpeg,image/png,image/webp,image/gif,video/mp4"
+                  className="hidden"
+                  onChange={(e) => {
+                    const selecionados = Array.from(e.target.files ?? []);
+                    const formatoInvalido = selecionados.some((arquivo) => {
+                      const nome = arquivo.name.toLowerCase();
+                      return (
+                        !TIPOS_ANEXOS_PERMITIDOS.has(arquivo.type) ||
+                        !EXTENSOES_ANEXOS_PERMITIDAS.some((extensao) => nome.endsWith(extensao))
+                      );
+                    });
+
+                    if (formatoInvalido) {
+                      setErro("Formato não permitido. Envie imagens JPG, PNG, WebP ou GIF, ou vídeos MP4.");
+                      e.currentTarget.value = "";
+                      return;
+                    }
+                    if (anexos.length + selecionados.length > MAXIMO_ANEXOS) {
+                      setErro(`Você pode anexar no máximo ${MAXIMO_ANEXOS} arquivos.`);
+                      e.currentTarget.value = "";
+                      return;
+                    }
+                    const tamanhoAtual = anexos.reduce(
+                      (total, anexo) => total + anexo.arquivo.size,
+                      0,
+                    );
+                    const tamanhoSelecionado = selecionados.reduce(
+                      (total, arquivo) => total + arquivo.size,
+                      0,
+                    );
+                    if (tamanhoAtual + tamanhoSelecionado > TAMANHO_MAXIMO_ANEXOS) {
+                      setErro("O tamanho total dos arquivos não pode ultrapassar 50 MB.");
+                      e.currentTarget.value = "";
+                      return;
+                    }
+
+                    const arquivos = selecionados.map((f) => ({
+                      arquivo: f,
+                      nome: f.name,
+                      tamanho:
+                        f.size > 1024 * 1024
+                          ? `${(f.size / (1024 * 1024)).toFixed(1).replace(".", ",")} MB`
+                          : `${Math.max(1, Math.round(f.size / 1024))} KB`,
+                    }));
+                    setAnexos((prev) => [...prev, ...arquivos]);
+                    setErro("");
+                    e.currentTarget.value = "";
+                  }}
+                />
+              </label>
+
+              {anexos.length > 0 && (
+                <div className="space-y-2 mt-3">
+                  {anexos.map((a, i) => (
+                    <div
+                      key={i}
+                      className="flex items-center gap-3 p-3 rounded-lg bg-surface-container-low text-[12px]"
+                    >
+                      <Icon name="image" className="text-secondary text-[18px]" />
+                      <span className="font-bold text-primary flex-1 truncate">{a.nome}</span>
+                      <span className="text-[10px] font-mono font-bold text-slate-400">{a.tamanho}</span>
+                      <button
+                        type="button"
+                        onClick={() => setAnexos((prev) => prev.filter((_, idx) => idx !== i))}
+                        className="p-1 rounded-md hover:bg-surface-container"
+                        aria-label="Remover anexo"
+                      >
+                        <Icon name="close" className="text-on-surface-variant text-[16px]" />
+                      </button>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </section>
+          )}
+
+          {/* contato */}
+          <section className="card-tonal p-6 shadow-ambient-sm">
+            <h2 className="mb-1 text-sm font-bold text-primary">
+              5. Contato {config.exigirContato ? "(obrigatório)" : "(opcional)"}
+            </h2>
+            <p className="mb-3 text-sm text-on-surface-variant">
+              {config.exigirContato
+                ? "Informe um telefone para que a equipe possa confirmar os detalhes do registro."
+                : "O CPF é obrigatório para identificar o registro. O telefone é opcional e permite que a equipe entre em contato."}
+            </p>
+            <label htmlFor="report-cpf" className="mb-1.5 block text-sm font-semibold text-primary">
+              CPF (obrigatório)
+            </label>
+            <input
+              id="report-cpf"
+              value={cpf}
+              onChange={(e) => setCpf(mascararCpf(e.target.value))}
+              placeholder="000.000.000-00"
+              inputMode="numeric"
+              maxLength={14}
+              className="w-full bg-surface-container-low rounded-lg px-4 py-3 text-sm font-medium focus:ring-2 focus:ring-secondary outline-none placeholder:text-[14px] placeholder:text-on-surface-variant/50 mb-4"
+            />
+
+            <label htmlFor="report-telefone" className="mb-1.5 block text-sm font-semibold text-primary">
+              Telefone {config.exigirContato ? "(obrigatório)" : "(opcional)"}
+            </label>
+            <input
+              id="report-telefone"
+              value={contato}
+              onChange={(e) => setContato(mascararTelefone(e.target.value))}
+              placeholder="(73) 90000-0000"
+              type="tel"
+              inputMode="tel"
+              maxLength={14}
+              className="w-full bg-surface-container-low rounded-lg px-4 py-3 text-sm font-medium focus:ring-2 focus:ring-secondary outline-none placeholder:text-[14px] placeholder:text-on-surface-variant/50"
+            />
+          </section>
+
+          {erro && (
+            <div
+              role="alert"
+              aria-live="assertive"
+              className="flex items-center gap-2 p-4 rounded-lg bg-error-container text-on-error-container"
+            >
+              <Icon name="error" filled className="text-[18px]" />
+              <span className="text-[13px] font-bold">{erro}</span>
+            </div>
+          )}
+
+          <div className="flex flex-col sm:flex-row gap-3 pb-12">
+            <Btn variant="primary" icon="send" full onClick={enviar} disabled={enviando}>
+              {enviando ? "Enviando…" : "Enviar registro"}
+            </Btn>
           </div>
-        )}
 
-        <div className="flex flex-col sm:flex-row gap-3 pb-12">
-          <Btn variant="primary" icon="send" full onClick={enviar} disabled={enviando}>
-            {enviando ? "Enviando…" : "Enviar registro"}
-          </Btn>
-        </div>
-
-        <p className="text-[13px] text-on-surface-variant text-center -mt-8 pb-8">
-          Emergência com risco à vida: ligue {config.telefonesEmergencia}.
-        </p>
+          <p className="text-[13px] text-on-surface-variant text-center -mt-8 pb-8">
+            Emergência com risco à vida: ligue {config.telefonesEmergencia}.
+          </p>
         </>}
       </div>
     </main>

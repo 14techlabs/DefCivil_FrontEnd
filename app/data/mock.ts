@@ -703,60 +703,6 @@ export const MOCK_STATUS_HISTORICO: StatusCidadeRegistro[] = [
   { id: 1, status: "alerta", quando: "15/07/2026 17:40", autor: "Carlos Menezes", motivo: "Frente fria com previsão de chuva persistente." },
 ];
 
-/* ═══════════ CONFIGURAÇÃO DO FORMULÁRIO PÚBLICO ═══════════ */
-
-export interface CampoFormulario {
-  id: string;
-  label: string;
-  icon: string;
-  ativo: boolean;
-  fixo?: boolean; // não pode ser desativado
-}
-
-export interface ConfigFormulario {
-  ativo: boolean;
-  titulo: string;
-  subtitulo: string;
-  mensagemDesativado: string;
-  minCaracteresDescricao: number;
-  exigirLocalizacao: boolean;
-  permitirAnexos: boolean;
-  exigirContato: boolean;
-  mostrarAvisoEvento: boolean;
-  telefonesEmergencia: string;
-  categorias: CampoFormulario[];
-  checklist: CampoFormulario[];
-}
-
-export const MOCK_FORM_CONFIG: ConfigFormulario = {
-  ativo: true,
-  titulo: "Registrar uma ocorrência",
-  subtitulo:
-    "Conte o que está acontecendo perto de você. As informações vão direto para a equipe de plantão.",
-  mensagemDesativado:
-    "O canal de registro está temporariamente indisponível. Em caso de emergência, ligue 199 (Defesa Civil) ou 193 (Bombeiros).",
-  minCaracteresDescricao: 10,
-  exigirLocalizacao: true,
-  permitirAnexos: true,
-  exigirContato: false,
-  mostrarAvisoEvento: true,
-  telefonesEmergencia: "199 (Defesa Civil) ou 193 (Bombeiros)",
-  categorias: [
-    { id: "climatico", label: "Chuva / Alagamento", icon: "thunderstorm", ativo: true },
-    { id: "geologico", label: "Deslizamento / Encosta", icon: "terrain", ativo: true },
-    { id: "vias_publicas", label: "Via pública", icon: "directions_car", ativo: true },
-    { id: "produtos_perigosos", label: "Produto perigoso", icon: "science", ativo: true },
-  ],
-  checklist: [
-    { id: "pessoas_risco", label: "Há pessoas em risco no local", icon: "personal_injury", ativo: true, fixo: true },
-    { id: "criancas_idosos", label: "Há crianças, idosos ou pessoas com mobilidade reduzida", icon: "elderly", ativo: true },
-    { id: "agua_invadindo", label: "Água invadindo imóveis", icon: "water", ativo: true },
-    { id: "rachaduras", label: "Rachaduras, estalos ou portas emperrando", icon: "foundation", ativo: true },
-    { id: "via_bloqueada", label: "Via bloqueada ou intransitável", icon: "block", ativo: true },
-    { id: "energia", label: "Fiação caída ou falta de energia", icon: "bolt", ativo: true },
-    { id: "animais", label: "Há animais no local", icon: "pets", ativo: true },
-  ],
-};
 
 /* ═══════════ PRESTAÇÃO DE CONTAS ═══════════ */
 
