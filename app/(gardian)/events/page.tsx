@@ -7,6 +7,7 @@ import { useGardian } from "@/app/components/GardianContext";
 import { api } from "@/app/services/Api";
 import { EventFormModal } from "@/app/components/EventFormModal";
 import { DeleteEventModal } from "@/app/components/DeleteEventModal";
+import { DataLoading } from "@/app/components/DataLoading";
 import { PRIORIDADE_META, type RouteStop } from "@/app/components/RouteMap";
 
 const RouteMap = dynamic(
@@ -371,11 +372,7 @@ export default function EventsPage() {
   };
 
   if (loading) {
-    return (
-      <div className="mx-auto flex min-h-[60vh] max-w-[1600px] items-center justify-center p-8">
-        <p className="text-sm font-medium text-on-surface-variant">Carregando eventos...</p>
-      </div>
-    );
+    return <DataLoading description="Preparando os eventos..." />;
   }
 
   const route = evento?.rota_ia ?? EMPTY_ROUTE;

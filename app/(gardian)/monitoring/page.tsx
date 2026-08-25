@@ -3,6 +3,7 @@
 import { useEffect, useMemo, useState } from "react";
 import dynamic from "next/dynamic";
 import { Btn, Chip, Icon, KPI, MetaTag, SectionHeader, StatusDot } from "@/app/components/Primitives";
+import { DataLoading } from "@/app/components/DataLoading";
 import { useAppNavigation } from "@/app/lib/useAppNavigation";
 import { api } from "@/app/services/Api";
 import {
@@ -190,21 +191,7 @@ export default function MonitoringPage() {
   // --- renderização ---
 
   if (loading) {
-    return (
-      <div className="p-8 max-w-[1600px] mx-auto">
-        <header>
-          <MetaTag className="text-secondary">MONITORAMENTO</MetaTag>
-          <h1 className="font-headline font-black text-5xl tracking-tighter text-primary">
-            Monitoramento
-          </h1>
-        </header>
-        <div className="flex items-center justify-center min-h-[60vh] mt-8">
-          <p className="text-sm text-on-surface-variant font-medium">
-            Carregando dados de monitoramento…
-          </p>
-        </div>
-      </div>
-    );
+    return <DataLoading description="Preparando o monitoramento..." />;
   }
 
   return (

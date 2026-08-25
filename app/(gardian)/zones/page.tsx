@@ -6,6 +6,7 @@ import { Btn, Chip, Icon, MetaTag } from "@/app/components/Primitives";
 import { api } from "@/app/services/Api";
 import { useAppNavigation } from "@/app/lib/useAppNavigation";
 import { CreateZoneModal } from "@/app/components/CreateZoneModal";
+import { DataLoading } from "@/app/components/DataLoading";
 
 interface Zona {
   id: number;
@@ -103,13 +104,7 @@ export default function ZonesPage() {
   ];
 
   if (loading) {
-    return (
-      <div className="p-8 max-w-[1600px] mx-auto">
-        <div className="flex items-center justify-center min-h-[60vh]">
-          <p className="text-sm text-on-surface-variant font-medium">Carregando zonas…</p>
-        </div>
-      </div>
-    );
+    return <DataLoading description="Preparando as zonas..." />;
   }
 
   return (

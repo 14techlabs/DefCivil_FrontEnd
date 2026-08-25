@@ -3,6 +3,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { Btn, Chip, Icon, KPI, MetaTag, SectionHeader, Tab } from "@/app/components/Primitives";
 import { useGardian } from "@/app/components/GardianContext";
+import { DataLoading } from "@/app/components/DataLoading";
 import { getOccurrenceStatusMeta } from "@/app/lib/occurrenceStatus";
 import { api } from "@/app/services/Api";
 import {
@@ -259,6 +260,10 @@ export default function DamagesPage() {
     janela.document.close();
     showToast("Relatório de danos preparado para impressão ou PDF.");
   };
+
+  if (carregandoOcorrencias) {
+    return <DataLoading description="Preparando os dados de danos e custos..." />;
+  }
 
   return (
     <div className="p-8 space-y-8 max-w-[1600px] mx-auto">

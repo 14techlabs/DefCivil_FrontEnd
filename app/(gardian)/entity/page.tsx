@@ -10,6 +10,7 @@ import {
   type Apoio,
 } from "@/app/components/PontoApoioFormModal";
 import { useGardian } from "@/app/components/GardianContext";
+import { DataLoading } from "@/app/components/DataLoading";
 import {
   STATUS_CIDADE_META,
   formatBRL,
@@ -227,6 +228,8 @@ export default function EntityPage() {
   const [editandoFicha, setEditandoFicha] = useState(false);
   const [fichaDraft, setFichaDraft] = useState<EntidadeDraft>({ sigla: "", telefone: "", email: "", endereco: "", responsavel: null });
   const [responsaveis, setResponsaveis] = useState<UsuarioResponsavel[]>([]);
+  const [responsaveisLoading, setResponsaveisLoading] = useState(true);
+  const [contasLoading, setContasLoading] = useState(true);
   const [prestacaoEditando, setPrestacaoEditando] = useState<ContaEventoView | null>(null);
 
   // rascunho da mudança de status
@@ -286,7 +289,8 @@ export default function EntityPage() {
   useEffect(() => {
     api.get<UsuarioResponsavel[]>("/usuarios/")
       .then((response) => setResponsaveis(response.data ?? []))
-      .catch(() => setResponsaveis([]));
+      .catch(() => setResponsaveis([]))
+      .finally(() => setResponsaveisLoading(false));
   }, []);
 
   useEffect(() => {
@@ -339,6 +343,8 @@ export default function EntityPage() {
           };
         }),
       );
+    }).finally(() => {
+      if (!cancelled) setContasLoading(false);
     });
     return () => {
       cancelled = true;
@@ -641,8 +647,8 @@ export default function EntityPage() {
     [contasBackend],
   );
 
-  if (entidadeLoading) {
-    return <div className="p-8 text-sm text-on-surface-variant">Carregando entidade…</div>;
+  if (entidadeLoading || responsaveisLoading || contasLoading || pontosLoading) {
+    return <DataLoading description="Preparando os dados da entidade..." />;
   }
 
   if (!entidade) {

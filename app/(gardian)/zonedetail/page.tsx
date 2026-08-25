@@ -8,6 +8,7 @@ import { useAppNavigation } from "@/app/lib/useAppNavigation";
 import { api } from "@/app/services/Api";
 import { EditZoneModal } from "@/app/components/EditZoneModal";
 import { DeleteZoneModal } from "@/app/components/DeleteZoneModal";
+import { DataLoading } from "@/app/components/DataLoading";
 import {
   MOCK_OCORRENCIAS,
   MOCK_EVENTOS,
@@ -232,15 +233,7 @@ function ZoneDetailContent() {
   }
 
   if (loading) {
-    return (
-      <div className="p-8 max-w-[1600px] mx-auto">
-        <div className="flex items-center justify-center min-h-[60vh]">
-          <p className="text-sm text-on-surface-variant font-medium">
-            Carregando detalhes da zona…
-          </p>
-        </div>
-      </div>
-    );
+    return <DataLoading description="Preparando os detalhes da zona..." />;
   }
 
   if (!z) {

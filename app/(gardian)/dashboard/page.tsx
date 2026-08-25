@@ -12,6 +12,7 @@ import {
   StatusDot,
 } from "@/app/components/Primitives";
 import { useGardian } from "@/app/components/GardianContext";
+import { DataLoading } from "@/app/components/DataLoading";
 import { useAppNavigation } from "@/app/lib/useAppNavigation";
 import { api } from "@/app/services/Api";
 import {
@@ -197,21 +198,7 @@ export default function DashboardPage() {
   // --- renderização ---
 
   if (loading) {
-    return (
-      <div className="p-8 max-w-[1600px] mx-auto">
-        <header className="mb-8">
-          <MetaTag className="text-secondary">PAINEL GERAL</MetaTag>
-          <h1 className="font-headline font-black text-5xl tracking-tighter text-primary">
-            Centro de Comando
-          </h1>
-        </header>
-        <div className="flex items-center justify-center min-h-[60vh]">
-          <p className="text-sm text-on-surface-variant font-medium">
-            Carregando painel…
-          </p>
-        </div>
-      </div>
-    );
+    return <DataLoading description="Preparando o centro de comando..." />;
   }
 
   return (

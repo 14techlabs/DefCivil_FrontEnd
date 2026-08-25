@@ -9,6 +9,7 @@ import { EditOccurrenceModal } from "@/app/components/EditOccurrenceModal";
 import { DeleteOccurrenceModal } from "@/app/components/DeleteOccurrenceModal";
 import { ModalShell } from "@/app/components/Modals";
 import { useGardian } from "@/app/components/GardianContext";
+import { DataLoading } from "@/app/components/DataLoading";
 import { googleMapsUrl } from "@/app/data/mock";
 import { getOccurrenceStatusMeta } from "@/app/lib/occurrenceStatus";
 
@@ -659,21 +660,7 @@ function OccurrencesContent() {
   // --- renderização ---
 
   if (loading) {
-    return (
-      <div className="p-8 max-w-[1600px] mx-auto">
-        <header className="mb-8">
-          <MetaTag className="text-secondary">CENTRAL DE OCORRÊNCIAS</MetaTag>
-          <h1 className="font-headline font-black text-5xl tracking-tighter text-primary">
-            Ocorrências em Aberto
-          </h1>
-        </header>
-        <div className="flex items-center justify-center min-h-[60vh]">
-          <p className="text-sm text-on-surface-variant font-medium">
-            Carregando ocorrências…
-          </p>
-        </div>
-      </div>
-    );
+    return <DataLoading description="Preparando as ocorrências..." />;
   }
 
   return (
