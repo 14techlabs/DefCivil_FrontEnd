@@ -7,7 +7,6 @@ import { DataLoading } from "@/app/components/DataLoading";
 import { api } from "@/app/services/Api";
 import {
   MOCK_OCORRENCIAS,
-  MOCK_HIST_PREVISOES_TEMPO,
   MOCK_HIST_PREVISOES_IA,
   MOCK_HIST_ACOES_EQUIPE,
   tecnicoNome,
@@ -44,6 +43,7 @@ interface HistoryOccurrence {
     id: number;
     tipo_acao: "criacao" | "edicao" | "exclusao";
     campos_alterados?: string[];
+    dados_novos?: Record<string, unknown>;
     criado_em: string;
     usuario: number | null;
   }>;
@@ -58,9 +58,14 @@ interface HistoryUser {
 interface WeatherHistoryApi {
   id: number;
   clima_dia: Record<string, unknown>;
+  clima_7_dias: unknown;
   precipitacao: number;
   created_at: string;
 }
+
+type WeatherHistoryResponse =
+  | WeatherHistoryApi[]
+  | { entidade?: string; total?: number; metereologias: WeatherHistoryApi[] };
 
 interface WeatherHistoryItem {
   data: string;
@@ -110,6 +115,7 @@ const CAMPO_LABEL: Record<string, string> = {
   endereco: "endereço",
   zona: "zona",
   evento: "evento",
+  evento_id: "evento",
   familia: "família",
   tecnico_responsavel: "responsável",
   nivel_perigo_tecnico: "nível de perigo",
@@ -159,6 +165,78 @@ function textoMeteorologico(value: Record<string, unknown>, nomes: string[]): st
   return null;
 }
 
+function dataMeteorologica(value: unknown): string | null {
+  if (typeof value !== "string") return null;
+  const iso = value.match(/^(\d{4})-(\d{2})-(\d{2})/);
+  if (!iso) return null;
+  const data = new Date(`${iso[1]}-${iso[2]}-${iso[3]}T12:00:00`);
+  return Number.isNaN(data.getTime()) ? null : `${iso[1]}-${iso[2]}-${iso[3]}`;
+}
+
+function chaveDataRegistro(value: string): string | null {
+  const data = new Date(value);
+  if (Number.isNaN(data.getTime())) return null;
+  const ano = data.getFullYear();
+  const mes = String(data.getMonth() + 1).padStart(2, "0");
+  const dia = String(data.getDate()).padStart(2, "0");
+  return `${ano}-${mes}-${dia}`;
+}
+
+function montarComparativoMeteorologico(registros: WeatherHistoryApi[]): WeatherHistoryItem[] {
+  const observados = new Map<string, number>();
+  for (const registro of [...registros].sort(
+    (a, b) => new Date(a.created_at).getTime() - new Date(b.created_at).getTime(),
+  )) {
+    const data = chaveDataRegistro(registro.created_at);
+    const valor = numeroMeteorologico(registro.precipitacao);
+    if (data && valor !== null && valor >= 0) observados.set(data, valor);
+  }
+
+  const previsoes = new Map<string, { valor: number; orgao: string }>();
+  const camposPrecipitacao = new Set([
+    "precipitacao_prevista",
+    "previsao_precipitacao",
+    "precip_mm",
+    "precipitation_sum",
+    "rain_sum",
+    "chuva_mm",
+  ]);
+
+  for (const registro of [...registros].sort(
+    (a, b) => new Date(a.created_at).getTime() - new Date(b.created_at).getTime(),
+  )) {
+    if (!Array.isArray(registro.clima_7_dias)) continue;
+    for (const item of registro.clima_7_dias) {
+      if (!item || typeof item !== "object" || Array.isArray(item)) continue;
+      const previsao = item as Record<string, unknown>;
+      const data = dataMeteorologica(
+        previsao.data ?? previsao.date ?? previsao.dia ?? previsao.target_date,
+      );
+      const valor = buscarCampoNumerico(previsao, camposPrecipitacao);
+      if (!data || valor === null || valor < 0) continue;
+      const orgao = textoMeteorologico(previsao, ["orgao", "fonte", "source", "modelo"])
+        ?? textoMeteorologico(registro.clima_dia, ["orgao", "fonte", "source", "modelo"])
+        ?? "Dados meteorológicos";
+      previsoes.set(data, { valor, orgao });
+    }
+  }
+
+  return [...previsoes.entries()]
+    .sort(([dataA], [dataB]) => dataA.localeCompare(dataB))
+    .flatMap<WeatherHistoryItem>(([data, previsao]) => {
+      const real = observados.get(data);
+      if (real === undefined) return [];
+      const dataLocal = new Date(`${data}T12:00:00`);
+      return [{
+        data: dataLocal.toLocaleDateString("pt-BR", { day: "2-digit", month: "2-digit" }),
+        orgao: previsao.orgao,
+        previstoMm: previsao.valor,
+        realMm: real,
+        desvio: real - previsao.valor,
+      }];
+    });
+}
+
 function formatDate(iso: string): string {
   return new Date(iso)
     .toLocaleDateString("pt-BR", { day: "2-digit", month: "short", year: "numeric", hour: "2-digit", minute: "2-digit" })
@@ -174,9 +252,8 @@ export default function HistoryPage() {
   );
   const [zonaLookup, setZonaLookup] = useState<Map<number, string>>(new Map());
   const [usuarioLookup, setUsuarioLookup] = useState<Map<number, string>>(new Map());
-  const [previsoesTempo, setPrevisoesTempo] = useState<WeatherHistoryItem[]>(
-    MOCK_HIST_PREVISOES_TEMPO,
-  );
+  const [previsoesTempo, setPrevisoesTempo] = useState<WeatherHistoryItem[]>([]);
+  const [erroMeteorologia, setErroMeteorologia] = useState("");
   const [previsoesIa, setPrevisoesIa] = useState<AiHistoryItem[]>(
     MOCK_HIST_PREVISOES_IA.map((item) => ({ ...item, zonaNome: zonaNome(item.zona) })),
   );
@@ -189,16 +266,20 @@ export default function HistoryPage() {
 
     const carregar = async () => {
       try {
-        const [ocorrenciasResult, zonasResult, usuariosResult, alertasResult] = await Promise.allSettled([
+        const [ocorrenciasResult, zonasResult, usuariosResult, alertasResult, eventosResult] = await Promise.allSettled([
           api.get<HistoryOccurrence[] | { ocorrencias: HistoryOccurrence[] }>("/ocorrencias/"),
           api.get<Array<{ id: number; nome: string }> | { zonas: Array<{ id: number; nome: string }> }>("/zonas/"),
           api.get<HistoryUser[] | { usuarios: HistoryUser[] }>("/usuarios/"),
           api.get<AlertApi[] | { alertas: AlertApi[] }>("/alertas/"),
+          api.get<Array<{ id: number; nome: string }> | { eventos: Array<{ id: number; nome: string }> }>("/eventos/"),
         ]);
         if (cancelado) return;
 
         let ocorrenciasReais: HistoryOccurrence[] | null = null;
         let zonasReais = new Map<number, string>();
+        const eventosReais = eventosResult.status === "fulfilled"
+          ? new Map(unwrapList(eventosResult.value.data, "eventos").map((evento) => [evento.id, evento.nome]))
+          : new Map<number, string>();
         if (ocorrenciasResult.status === "fulfilled") {
           ocorrenciasReais = unwrapList(ocorrenciasResult.value.data, "ocorrencias");
           setOcorrencias(ocorrenciasReais);
@@ -252,7 +333,17 @@ export default function HistoryPage() {
           const acoes = ocorrenciasReais.flatMap((ocorrencia) =>
           (ocorrencia.historico ?? []).map((registro) => {
             const campos = (registro.campos_alterados ?? [])
-              .map((campo) => CAMPO_LABEL[campo] ?? campo.replaceAll("_", " "));
+              .map((campo) => {
+                if (campo === "evento_id" || campo === "evento") {
+                  const valor = registro.dados_novos?.[campo]
+                    ?? registro.dados_novos?.evento_id
+                    ?? registro.dados_novos?.evento;
+                  if (valor === null || valor === undefined || valor === "") return "evento removido";
+                  const eventoId = Number(valor);
+                  return `evento: ${eventosReais.get(eventoId) ?? "evento não identificado"}`;
+                }
+                return CAMPO_LABEL[campo] ?? campo.replaceAll("_", " ");
+              });
             const acao = registro.tipo_acao === "criacao"
               ? "Ocorrência registrada no sistema"
               : registro.tipo_acao === "exclusao"
@@ -296,42 +387,41 @@ export default function HistoryPage() {
   useEffect(() => {
     if (!user) return;
     if (user.entidade == null) {
-      const timer = window.setTimeout(() => setCarregandoMeteorologia(false), 0);
+      const timer = window.setTimeout(() => {
+        setPrevisoesTempo([]);
+        setErroMeteorologia("");
+        setCarregandoMeteorologia(false);
+      }, 0);
       return () => window.clearTimeout(timer);
     }
     let cancelado = false;
-    api.get<WeatherHistoryApi[]>(`/metereologia/${user.entidade}/historico/`)
+    const resetTimer = window.setTimeout(() => {
+      if (!cancelado) {
+        setErroMeteorologia("");
+        setCarregandoMeteorologia(true);
+      }
+    }, 0);
+    api.get<WeatherHistoryResponse>(`/metereologia/${user.entidade}/historico/`)
       .then((response) => {
         if (cancelado) return;
-        const nomesPrevisao = new Set([
-          "precipitacao_prevista",
-          "previsao_precipitacao",
-          "precipitation_sum",
-          "rain_sum",
-          "precipitacao",
-          "chuva",
-        ]);
-        const itens = (response.data ?? []).flatMap<WeatherHistoryItem>((registro) => {
-          const previsto = buscarCampoNumerico(registro.clima_dia, nomesPrevisao);
-          const real = numeroMeteorologico(registro.precipitacao);
-          if (previsto === null || real === null) return [];
-          return [{
-            data: new Date(registro.created_at).toLocaleDateString("pt-BR", { day: "2-digit", month: "2-digit" }),
-            orgao: textoMeteorologico(registro.clima_dia, ["orgao", "fonte", "source", "modelo"]) ?? "METEO",
-            previstoMm: previsto,
-            realMm: real,
-            desvio: real - previsto,
-          }];
-        });
-        if (itens.length > 0) setPrevisoesTempo(itens);
+        const registros = Array.isArray(response.data)
+          ? response.data
+          : response.data.metereologias ?? [];
+        setPrevisoesTempo(montarComparativoMeteorologico(registros));
       })
       .catch(() => {
-        // Sem série utilizável no back: preserva o comparativo mockado.
+        if (!cancelado) {
+          setPrevisoesTempo([]);
+          setErroMeteorologia("Não foi possível carregar o histórico meteorológico.");
+        }
       })
       .finally(() => {
         if (!cancelado) setCarregandoMeteorologia(false);
       });
-    return () => { cancelado = true; };
+    return () => {
+      cancelado = true;
+      window.clearTimeout(resetTimer);
+    };
   }, [user]);
 
   const maxMm = useMemo(
@@ -434,6 +524,25 @@ export default function HistoryPage() {
             }
           />
           <div className="space-y-5">
+            {erroMeteorologia && (
+              <div className="flex items-center gap-3 rounded-xl bg-error-container p-5 text-on-error-container">
+                <Icon name="cloud_off" className="shrink-0 text-[24px] text-error" />
+                <div>
+                  <p className="text-sm font-black">Falha ao carregar as previsões</p>
+                  <p className="mt-0.5 text-xs">{erroMeteorologia}</p>
+                </div>
+              </div>
+            )}
+            {!erroMeteorologia && previsoesTempo.length === 0 && (
+              <div className="flex flex-col items-center rounded-xl bg-surface-container-low px-5 py-10 text-center">
+                <Icon name="cloud_off" className="mb-3 text-[36px] text-on-surface-variant" />
+                <p className="text-sm font-black text-primary">Nenhum histórico disponível</p>
+                <p className="mt-1 text-xs text-on-surface-variant">
+                  Ainda não há previsões com data e volume em milímetros que possam ser comparadas
+                  a uma medição realizada no mesmo dia.
+                </p>
+              </div>
+            )}
             {previsoesTempo.map((p, i) => {
               const desvioAlto = Math.abs(p.desvio) >= 10;
               return (
@@ -466,10 +575,12 @@ export default function HistoryPage() {
               );
             })}
           </div>
-          <p className="text-[11px] text-on-surface-variant mt-6 flex items-center gap-1.5">
-            <Icon name="info" className="text-[14px]" />
-            Desvios acima de 10mm ficam destacados e realimentam a calibração dos modelos.
-          </p>
+          {previsoesTempo.length > 0 && (
+            <p className="text-[11px] text-on-surface-variant mt-6 flex items-center gap-1.5">
+              <Icon name="info" className="text-[14px]" />
+              Desvios acima de 10mm ficam destacados e realimentam a calibração dos modelos.
+            </p>
+          )}
         </div>
       )}
 
