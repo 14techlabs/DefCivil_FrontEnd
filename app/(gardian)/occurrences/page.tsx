@@ -6,6 +6,7 @@ import { Btn, Chip, Icon, KPI, MetaTag } from "@/app/components/Primitives";
 import { api } from "@/app/services/Api";
 import { CreateOccurrenceModal } from "@/app/components/CreateOccurrenceModal";
 import { EditOccurrenceModal } from "@/app/components/EditOccurrenceModal";
+import { OccurrenceDamagesModal } from "@/app/components/OccurrenceDamagesModal";
 import { DeleteOccurrenceModal } from "@/app/components/DeleteOccurrenceModal";
 import { ModalShell } from "@/app/components/Modals";
 import { useGardian } from "@/app/components/GardianContext";
@@ -34,6 +35,7 @@ interface Ocorrencia {
   tecnico_responsavel: number | null;
   nivel_perigo_tecnico: string | null;
   analise_tecnico: string | null;
+  fatalidades: number;
   valido_tecnico: boolean | null;
   created_at: string;
   anexos: unknown[];
@@ -284,6 +286,8 @@ function OccurrencesContent() {
   const [carregandoDanos, setCarregandoDanos] = useState(false);
   const [erroDanos, setErroDanos] = useState("");
   const [mostrarTodosDanos, setMostrarTodosDanos] = useState(false);
+  const [showDamagesModal, setShowDamagesModal] = useState(false);
+  const [danosReloadKey, setDanosReloadKey] = useState(0);
   const [detailTab, setDetailTab] = useState<"detalhes" | "historico">("detalhes");
   const [showCreateModal, setShowCreateModal] = useState(false);
   const [showEditModal, setShowEditModal] = useState(false);
@@ -424,7 +428,7 @@ function OccurrencesContent() {
       cancelado = true;
       window.clearTimeout(timer);
     };
-  }, [selected]);
+  }, [selected, danosReloadKey]);
 
   // agrupa categorias disponiveis a partir dos dados reais
   const categoriasDisponiveis = useMemo(() => {
@@ -1229,15 +1233,21 @@ function OccurrencesContent() {
                       <div><MetaTag className="mb-1 block">EVENTO</MetaTag><p className="font-bold text-primary">{selecionada.evento != null ? eventos.find((evento) => evento.id === selecionada.evento)?.nome ?? `Evento #${selecionada.evento}` : "Não vinculado"}</p></div>
                       <div><MetaTag className="mb-1 block">ZONA</MetaTag><p className="font-bold text-primary">{selecionada.zona != null ? zonaLookup.get(selecionada.zona) ?? `Zona #${selecionada.zona}` : "Não vinculada"}</p></div>
                       <div><MetaTag className="mb-1 block">RESPONSÁVEL</MetaTag><p className="font-bold text-primary">{selecionada.tecnico_responsavel != null ? usuarioLookup.get(selecionada.tecnico_responsavel) ?? `Usuário #${selecionada.tecnico_responsavel}` : "Não atribuído"}</p></div>
+                      <div><MetaTag className="mb-1 block">FATALIDADES</MetaTag><p className="font-bold text-primary">{selecionada.fatalidades ?? 0}</p></div>
                     </div>
                   </div>
 
                   <div className="card-recessed p-5">
-                    <div className="mb-3 flex items-center gap-2">
-                      <Icon name="payments" filled className="text-[18px] text-secondary" />
-                      <MetaTag>DANOS E CUSTOS</MetaTag>
+                    <div className="mb-3 flex items-center justify-between gap-3">
+                      <div className="flex items-center gap-2">
+                        <Icon name="payments" filled className="text-[18px] text-secondary" />
+                        <MetaTag>DANOS E CUSTOS</MetaTag>
+                      </div>
+                      <Btn variant="ghost" icon="edit" onClick={() => setShowDamagesModal(true)}>
+                        Gerenciar danos
+                      </Btn>
                     </div>
-                    <div className="grid grid-cols-2 gap-3">
+                    <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
                       <div className="rounded-lg bg-white p-3">
                         <MetaTag className="mb-1 block">CUSTO DOS DANOS</MetaTag>
                         <p className="font-headline text-lg font-black text-primary">
@@ -1251,6 +1261,12 @@ function OccurrencesContent() {
                         <MetaTag className="mb-1 block">ITENS REGISTRADOS</MetaTag>
                         <p className="font-headline text-lg font-black text-primary">
                           {selecionada.total_itens_danos ?? 0}
+                        </p>
+                      </div>
+                      <div className="rounded-lg bg-white p-3">
+                        <MetaTag className="mb-1 block">FATALIDADES</MetaTag>
+                        <p className="font-headline text-lg font-black text-primary">
+                          {selecionada.fatalidades ?? 0}
                         </p>
                       </div>
                     </div>
@@ -1366,7 +1382,6 @@ function OccurrencesContent() {
                   )}
 
                   {/* analise tecnica */}
-                  {selecionada.analise_tecnico && (
                     <div className="card-recessed p-4 border-l-4 border-primary">
                       <div className="flex items-center gap-2 mb-2">
                         <Icon
@@ -1379,7 +1394,7 @@ function OccurrencesContent() {
                       </div>
 
                       <p className="text-[13px] text-on-surface leading-relaxed mb-3">
-                        {selecionada.analise_tecnico}
+                        {selecionada.analise_tecnico || "Nenhum parecer técnico registrado."}
                       </p>
 
                       <div className="flex flex-wrap gap-2">
@@ -1397,7 +1412,6 @@ function OccurrencesContent() {
                         )}
                       </div>
                     </div>
-                  )}
 
                   {/* anexos */}
                   <div>
@@ -1669,6 +1683,16 @@ function OccurrencesContent() {
               fetchData();
             }}
             ocorrencia={selecionada}
+          />
+          <OccurrenceDamagesModal
+            open={showDamagesModal}
+            ocorrenciaId={selecionada.id}
+            fatalidades={selecionada.fatalidades ?? 0}
+            onClose={() => setShowDamagesModal(false)}
+            onSaved={async () => {
+              setDanosReloadKey((key) => key + 1);
+              await fetchData();
+            }}
           />
         </>
       )}

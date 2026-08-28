@@ -15,6 +15,7 @@ interface OcorrenciaEdit {
   categoria: string;
   status: string;
   descricao: string;
+  analise_tecnico: string | null;
   coordenadas: { lat: number; lng: number } | null;
   zona: number | null;
   anexos: unknown[];
@@ -60,6 +61,7 @@ export function EditOccurrenceModal({ open, onClose, onSaved, zonas, ocorrencia 
   const [titulo, setTitulo] = useState("");
   const [status, setStatus] = useState("");
   const [descricao, setDescricao] = useState("");
+  const [analiseTecnico, setAnaliseTecnico] = useState("");
   const [zonaId, setZonaId] = useState<number | null>(null);
   const [detectedZonaIds, setDetectedZonaIds] = useState<number[]>([]);
   const [lat, setLat] = useState("");
@@ -78,6 +80,7 @@ export function EditOccurrenceModal({ open, onClose, onSaved, zonas, ocorrencia 
       setTitulo(ocorrencia.titulo ?? "");
       setStatus(ocorrencia.status ?? "");
       setDescricao(ocorrencia.descricao ?? "");
+      setAnaliseTecnico(ocorrencia.analise_tecnico ?? "");
       setZonaId(ocorrencia.zona ?? null);
       setDetectedZonaIds([]);
       setLat(ocorrencia.coordenadas ? String(ocorrencia.coordenadas.lat) : "");
@@ -142,6 +145,7 @@ export function EditOccurrenceModal({ open, onClose, onSaved, zonas, ocorrencia 
         categoria,
         status,
         descricao: descricao.trim(),
+        analise_tecnico: analiseTecnico.trim() || null,
         coordenadas: { lat: parsedLat, lng: parsedLng },
       };
       if (zonaId !== null) body.zona = zonaId;
@@ -235,6 +239,18 @@ export function EditOccurrenceModal({ open, onClose, onSaved, zonas, ocorrencia 
 
       {/* corpo compartilhado com o modal de criação */}
       <OccurrenceFormFields
+        beforeFields={(
+          <div>
+            <MetaTag className="mb-2 block">Parecer técnico</MetaTag>
+            <textarea
+              rows={4}
+              value={analiseTecnico}
+              onChange={(event) => setAnaliseTecnico(event.target.value)}
+              placeholder="Registre a avaliação e as recomendações técnicas…"
+              className="w-full resize-y rounded-lg border-none bg-surface-container-low px-4 py-3 text-sm font-medium text-primary focus:ring-2 focus:ring-secondary placeholder:text-on-surface-variant/60"
+            />
+          </div>
+        )}
         categoria={categoria}
         titulo={titulo}
         status={status}
