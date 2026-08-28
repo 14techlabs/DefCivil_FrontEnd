@@ -6,7 +6,6 @@ import { useGardian } from "@/app/components/GardianContext";
 import { DataLoading } from "@/app/components/DataLoading";
 import { api } from "@/app/services/Api";
 import {
-  MOCK_TECNICOS,
   MOCK_OCORRENCIAS,
   MOCK_ZONAS,
   zonaNome,
@@ -38,18 +37,37 @@ interface EquipeTecnico {
   hierarquia: Hierarquia;
   identificador: string;
   zonaBase: number | null;
+  zonaBaseNome: string | null;
   statusCampo: StatusCampo;
   atendimentos30d: number;
   telefone: string;
 }
 
-interface EquipeUsuarioApi {
+interface EquipeTecnicoApi {
   id: number;
-  user_sys: { first_name: string; username: string; email: string } | null;
-  telefone: string;
-  nome_anonimo: string | null;
-  tipo: number;
+  nome: string;
   cargo: number | null;
+  cargo_label: string;
+  hierarquia: Hierarquia;
+  matricula: string;
+  telefone: string;
+  status_campo: StatusCampo;
+  status_campo_label: string;
+  zona_base: number | null;
+  zona_base_nome: string | null;
+  atendimentos_30d: number;
+}
+
+interface EquipeKpis {
+  efetivo: number;
+  em_campo: number;
+  atendimentos_30d: number;
+  zonas_cobertas: number;
+}
+
+interface EquipePanoramaApi {
+  tecnicos: EquipeTecnicoApi[];
+  kpis: EquipeKpis;
 }
 
 interface EquipeOcorrencia {
@@ -67,14 +85,6 @@ interface EquipeZona {
   nome: string;
 }
 
-const CARGO_LABEL: Record<number, string> = {
-  1: "Coordenador",
-  2: "Supervisor",
-  3: "Técnico",
-  4: "Técnico",
-  5: "Técnico",
-};
-
 function hierarquiaCargo(cargo: number | null): Hierarquia {
   if (cargo === 1) return "coordenador";
   if (cargo === 2) return "supervisor";
@@ -85,38 +95,10 @@ function unwrapList<T>(value: T[] | Record<string, T[]>, key: string): T[] {
   return Array.isArray(value) ? value : value[key] ?? [];
 }
 
-function zonaMaisFrequente(ocorrencias: EquipeOcorrencia[]): number | null {
-  const contagem = new Map<number, number>();
-  for (const ocorrencia of ocorrencias) {
-    if (ocorrencia.zona != null) {
-      contagem.set(ocorrencia.zona, (contagem.get(ocorrencia.zona) ?? 0) + 1);
-    }
-  }
-  return [...contagem.entries()].sort((a, b) => b[1] - a[1])[0]?.[0] ?? null;
-}
-
-const TECNICOS_MOCK_INICIAIS: EquipeTecnico[] = MOCK_TECNICOS.map((tecnico) => ({
-  id: tecnico.id,
-  nome: tecnico.nome,
-  cargo: tecnico.cargo,
-  hierarquia: tecnico.hierarquia,
-  identificador: tecnico.matricula,
-  zonaBase: tecnico.zonaBase,
-  statusCampo: tecnico.statusCampo,
-  atendimentos30d: tecnico.atendimentos30d,
-  telefone: tecnico.telefone,
-}));
-
 const HIERARQUIA_META: Record<string, { label: string; icon: string; nivel: number }> = {
   coordenador: { label: "Coordenação", icon: "military_tech", nivel: 3 },
   supervisor: { label: "Supervisão", icon: "supervisor_account", nivel: 2 },
   tecnico: { label: "Técnicos de Campo", icon: "engineering", nivel: 1 },
-};
-
-const CAMPO_META: Record<string, { label: string; tone: "error" | "warning" | "secondary" | "neutral" }> = {
-  em_campo: { label: "Em campo", tone: "error" },
-  disponivel: { label: "Disponível", tone: "secondary" },
-  offline: { label: "Offline", tone: "neutral" },
 };
 
 // Fallback enquanto os dados da sessão ainda estão carregando.
@@ -128,13 +110,21 @@ export default function TeamPage() {
   const [filtroZona, setFiltroZona] = useState<number | "todas">("todas");
   const [filtroCategoria, setFiltroCategoria] = useState<string>("todas");
   const [periodo, setPeriodo] = useState("30d");
+  const [dataInicial, setDataInicial] = useState("");
+  const [dataFinal, setDataFinal] = useState("");
+  const [emitindoRelatorio, setEmitindoRelatorio] = useState(false);
   const [relCampos, setRelCampos] = useState<Record<string, boolean>>({
     atendimentos: true,
     ocorrencias: true,
     zonas: true,
-    tempos: false,
   });
-  const [tecnicos, setTecnicos] = useState<EquipeTecnico[]>(TECNICOS_MOCK_INICIAIS);
+  const [tecnicos, setTecnicos] = useState<EquipeTecnico[]>([]);
+  const [kpis, setKpis] = useState<EquipeKpis>({
+    efetivo: 0,
+    em_campo: 0,
+    atendimentos_30d: 0,
+    zonas_cobertas: 0,
+  });
   const [ocorrencias, setOcorrencias] = useState<EquipeOcorrencia[]>(
     MOCK_OCORRENCIAS as EquipeOcorrencia[],
   );
@@ -142,14 +132,17 @@ export default function TeamPage() {
     MOCK_ZONAS.map(({ id, nome }) => ({ id, nome })),
   );
   const [carregandoDados, setCarregandoDados] = useState(true);
+  const hierarquiaSessao = user ? hierarquiaCargo(user.cargo) : HIERARQUIA_SESSAO_MOCK;
+  const temAcesso = HIERARQUIA_META[hierarquiaSessao].nivel >= 2;
 
   useEffect(() => {
     if (!user) return;
+    if (user.cargo !== 1 && user.cargo !== 2) return;
     let cancelado = false;
     const carregarEquipe = async () => {
       try {
-        const [usuariosResult, ocorrenciasResult, zonasResult] = await Promise.allSettled([
-          api.get<EquipeUsuarioApi[] | { usuarios: EquipeUsuarioApi[] }>("/usuarios/"),
+        const [panoramaResult, ocorrenciasResult, zonasResult] = await Promise.allSettled([
+          api.get<EquipePanoramaApi>("/equipe/panorama/"),
           api.get<EquipeOcorrencia[] | { ocorrencias: EquipeOcorrencia[] }>("/ocorrencias/"),
           api.get<EquipeZona[] | { zonas: EquipeZona[] }>("/zonas/"),
         ]);
@@ -158,43 +151,28 @@ export default function TeamPage() {
         const ocorrenciasReais = ocorrenciasResult.status === "fulfilled"
           ? unwrapList(ocorrenciasResult.value.data, "ocorrencias")
           : null;
-        const baseOcorrencias = ocorrenciasReais ?? (MOCK_OCORRENCIAS as EquipeOcorrencia[]);
         if (ocorrenciasReais) setOcorrencias(ocorrenciasReais);
 
         if (zonasResult.status === "fulfilled") {
           setZonas(unwrapList(zonasResult.value.data, "zonas"));
         }
 
-        if (usuariosResult.status === "fulfilled") {
-          const limite30d = new Date();
-          limite30d.setDate(limite30d.getDate() - 30);
-          const usuarios = unwrapList(usuariosResult.value.data, "usuarios").filter(
-            (usuario) => usuario.tipo === 2,
-          );
-          setTecnicos(usuarios.map((usuario) => {
-            const atribuicoes = baseOcorrencias.filter(
-              (ocorrencia) => ocorrencia.tecnico_responsavel === usuario.id,
-            );
-            const ativas = atribuicoes.filter(
-              (ocorrencia) => ocorrencia.status === "em_andamento" || ocorrencia.status === "alta_prioridade",
-            );
-            return {
-              id: usuario.id,
-              nome: usuario.user_sys?.first_name?.trim() ||
-                usuario.nome_anonimo?.trim() ||
-                usuario.user_sys?.username ||
-                `Técnico #${usuario.id}`,
-              cargo: usuario.cargo != null ? CARGO_LABEL[usuario.cargo] ?? "Técnico" : "Técnico",
-              hierarquia: hierarquiaCargo(usuario.cargo),
-              identificador: `USUÁRIO #${usuario.id}`,
-              zonaBase: zonaMaisFrequente(atribuicoes),
-              statusCampo: ativas.length > 0 ? "em_campo" : "disponivel",
-              atendimentos30d: atribuicoes.filter(
-                (ocorrencia) => new Date(ocorrencia.created_at) >= limite30d,
-              ).length,
-              telefone: usuario.telefone,
-            };
-          }));
+        if (panoramaResult.status === "fulfilled") {
+          setKpis(panoramaResult.value.data.kpis);
+          setTecnicos(panoramaResult.value.data.tecnicos.map((tecnico) => ({
+            id: tecnico.id,
+            nome: tecnico.nome,
+            cargo: tecnico.cargo_label,
+            hierarquia: tecnico.hierarquia,
+            identificador: tecnico.matricula || "Matrícula não informada",
+            zonaBase: tecnico.zona_base,
+            zonaBaseNome: tecnico.zona_base_nome,
+            statusCampo: tecnico.status_campo,
+            atendimentos30d: tecnico.atendimentos_30d,
+            telefone: tecnico.telefone,
+          })));
+        } else {
+          showToast("Não foi possível carregar o panorama da equipe.", "error");
         }
       } finally {
         if (!cancelado) setCarregandoDados(false);
@@ -203,11 +181,7 @@ export default function TeamPage() {
 
     void carregarEquipe();
     return () => { cancelado = true; };
-  }, [user]);
-
-  const hierarquiaSessao = user ? hierarquiaCargo(user.cargo) : HIERARQUIA_SESSAO_MOCK;
-
-  const temAcesso = HIERARQUIA_META[hierarquiaSessao].nivel >= 2;
+  }, [showToast, user]);
 
   // panorama de atendimentos (ocorrências com técnico responsável)
   const atendimentos = useMemo(() => {
@@ -217,9 +191,6 @@ export default function TeamPage() {
       return true;
     });
   }, [ocorrencias, filtroZona, filtroCategoria]);
-
-  const emCampo = tecnicos.filter((t) => t.statusCampo === "em_campo").length;
-  const totalAtendimentos30d = tecnicos.reduce((a, t) => a + t.atendimentos30d, 0);
 
   const porHierarquia = useMemo(() => {
     const grupos: Record<Hierarquia, EquipeTecnico[]> = { coordenador: [], supervisor: [], tecnico: [] };
@@ -232,11 +203,54 @@ export default function TeamPage() {
   const nomeZona = (zonaId: number | null) =>
     zonaId == null ? "Sem zona de referência" : zonaLookup.get(zonaId) ?? zonaNome(zonaId);
 
-  if (carregandoDados) {
-    return <DataLoading description="Preparando o panorama da equipe..." />;
-  }
+  const emitirRelatorio = async () => {
+    const secoes = Object.entries(relCampos)
+      .filter(([, selecionado]) => selecionado)
+      .map(([secao]) => secao);
 
-  if (!temAcesso) {
+    if (secoes.length === 0) {
+      showToast("Selecione ao menos uma informação para o relatório.", "error");
+      return;
+    }
+    if (periodo === "custom" && (!dataInicial || !dataFinal)) {
+      showToast("Informe as datas inicial e final.", "error");
+      return;
+    }
+    if (periodo === "custom" && dataInicial > dataFinal) {
+      showToast("A data inicial não pode ser posterior à data final.", "error");
+      return;
+    }
+
+    setEmitindoRelatorio(true);
+    try {
+      const response = await api.get<Blob>("/equipe/relatorio/", {
+        params: {
+          periodo,
+          secoes: secoes.join(","),
+          ...(periodo === "custom" ? { de: dataInicial, ate: dataFinal } : {}),
+        },
+        responseType: "blob",
+      });
+      const disposition = response.headers["content-disposition"] as string | undefined;
+      const nomeArquivo = disposition?.match(/filename="?([^";]+)"?/i)?.[1]
+        ?? `relatorio_equipe_${periodo}.csv`;
+      const url = URL.createObjectURL(response.data);
+      const link = document.createElement("a");
+      link.href = url;
+      link.download = nomeArquivo;
+      document.body.appendChild(link);
+      link.click();
+      link.remove();
+      URL.revokeObjectURL(url);
+      showToast("Relatório da equipe baixado com sucesso.");
+    } catch {
+      showToast("Não foi possível emitir o relatório da equipe.", "error");
+    } finally {
+      setEmitindoRelatorio(false);
+    }
+  };
+
+  if (user && !temAcesso) {
     return (
       <div className="p-8 max-w-[1600px] mx-auto flex flex-col items-center justify-center min-h-[70vh] text-center">
         <div className="w-16 h-16 rounded-2xl bg-error-container flex items-center justify-center mb-5">
@@ -248,6 +262,10 @@ export default function TeamPage() {
         </p>
       </div>
     );
+  }
+
+  if (carregandoDados) {
+    return <DataLoading description="Preparando o panorama da equipe..." />;
   }
 
   return (
@@ -263,11 +281,10 @@ export default function TeamPage() {
         </h1>
       </header>
 
-      <div className="grid grid-cols-2 lg:grid-cols-4 gap-5">
-        <KPI label="Efetivo Total" value={tecnicos.length} icon="groups" tone="secondary" sub="Coordenação, supervisão e campo" />
-        <KPI label="Em Campo Agora" value={emCampo} icon="engineering" tone={emCampo > 0 ? "warning" : "secondary"} sub="Atuando em ocorrências" />
-        <KPI label="Atendimentos (30d)" value={totalAtendimentos30d} icon="task_alt" tone="secondary" sub="Toda a equipe" />
-        <KPI label="Zonas Cobertas" value={new Set(tecnicos.map((t) => t.zonaBase).filter((zona): zona is number => zona != null)).size} icon="hub" tone="secondary" sub="Com atendimentos atribuídos" />
+      <div className="grid grid-cols-1 lg:grid-cols-3 gap-5">
+        <KPI label="Efetivo Total" value={kpis.efetivo} icon="groups" tone="secondary" sub="Coordenação, supervisão e campo" />
+        <KPI label="Coordenação" value={porHierarquia.coordenador.length} icon="military_tech" tone="secondary" sub="Integrantes cadastrados" />
+        <KPI label="Equipe Técnica" value={porHierarquia.supervisor.length + porHierarquia.tecnico.length} icon="engineering" tone="secondary" sub="Supervisão e técnicos" />
       </div>
 
       {/* Hierarquia */}
@@ -282,7 +299,6 @@ export default function TeamPage() {
               </div>
               <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-3">
                 {porHierarquia[h].map((t) => {
-                  const campo = CAMPO_META[t.statusCampo];
                   const atuando = ocorrencias.filter(
                     (o) => o.tecnico_responsavel === t.id && (o.status === "em_andamento" || o.status === "alta_prioridade"),
                   );
@@ -298,12 +314,6 @@ export default function TeamPage() {
                           <p className="text-[13px] font-bold text-primary truncate">{t.nome}</p>
                           <p className="text-[10px] text-on-surface-variant uppercase font-bold tracking-mono-tight">{t.cargo}</p>
                         </div>
-                        <Chip tone={campo.tone}>{campo.label}</Chip>
-                      </div>
-                      <div className="flex items-center justify-between mt-3 text-[10px] font-mono font-bold uppercase tracking-mono text-slate-400">
-                        <span>{t.identificador}</span>
-                        <span>{nomeZona(t.zonaBase)}</span>
-                        <span>{t.atendimentos30d} ATEND./30D</span>
                       </div>
                       {atuando.length > 0 && (
                         <p className="text-[11px] text-error font-bold mt-2 flex items-center gap-1.5">
@@ -423,6 +433,28 @@ export default function TeamPage() {
                   </button>
                 ))}
               </div>
+              {periodo === "custom" && (
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 mt-3">
+                  <label>
+                    <MetaTag className="block mb-1.5">DATA INICIAL</MetaTag>
+                    <input
+                      type="date"
+                      value={dataInicial}
+                      onChange={(e) => setDataInicial(e.target.value)}
+                      className="w-full bg-surface-container-low rounded-lg px-4 py-2.5 text-xs font-bold focus:ring-2 focus:ring-secondary outline-none"
+                    />
+                  </label>
+                  <label>
+                    <MetaTag className="block mb-1.5">DATA FINAL</MetaTag>
+                    <input
+                      type="date"
+                      value={dataFinal}
+                      onChange={(e) => setDataFinal(e.target.value)}
+                      className="w-full bg-surface-container-low rounded-lg px-4 py-2.5 text-xs font-bold focus:ring-2 focus:ring-secondary outline-none"
+                    />
+                  </label>
+                </div>
+              )}
             </div>
             <div>
               <MetaTag className="block mb-2">INFORMAÇÕES INCLUÍDAS</MetaTag>
@@ -431,7 +463,6 @@ export default function TeamPage() {
                   { id: "atendimentos", label: "Atendimentos" },
                   { id: "ocorrencias", label: "Ocorrências" },
                   { id: "zonas", label: "Zonas" },
-                  { id: "tempos", label: "Tempos de resposta" },
                 ].map((c) => (
                   <button
                     key={c.id}
@@ -450,14 +481,11 @@ export default function TeamPage() {
           </div>
           <Btn
             variant="primary"
-            icon="download"
-            onClick={() =>
-              showToast(
-                `Relatório (${periodo}) emitido com ${Object.values(relCampos).filter(Boolean).length} seções.`,
-              )
-            }
+            icon={emitindoRelatorio ? "progress_activity" : "download"}
+            disabled={emitindoRelatorio}
+            onClick={emitirRelatorio}
           >
-            Emitir Relatório
+            {emitindoRelatorio ? "Gerando..." : "Emitir Relatório"}
           </Btn>
         </div>
       </section>
