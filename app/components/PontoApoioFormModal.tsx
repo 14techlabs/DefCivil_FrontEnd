@@ -28,7 +28,17 @@ export interface Apoio {
   descricao: string;
   endereco: string;
   coordenadas: { lat: number; lng: number } | null;
+  tipo: "escola" | "upa" | "hospital" | "crea" | "outro";
+  tipo_label: string;
 }
+
+export const APOIO_TIPOS = [
+  { value: "escola", label: "Escola" },
+  { value: "upa", label: "UPA" },
+  { value: "hospital", label: "Hospital" },
+  { value: "crea", label: "CREA" },
+  { value: "outro", label: "Outro" },
+] as const;
 
 interface PontoApoioFormModalProps {
   open: boolean;
@@ -49,10 +59,12 @@ export function PontoApoioFormModal({
   const { showToast } = useGardian();
 
   const [nome, setNome] = useState("");
+  const [tipo, setTipo] = useState<Apoio["tipo"]>("outro");
   const [descricao, setDescricao] = useState("");
   const [endereco, setEndereco] = useState("");
   const [lat, setLat] = useState("");
   const [lng, setLng] = useState("");
+  const [zonas, setZonas] = useState<{ id: number; nome: string }[]>([]);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState("");
 
@@ -60,6 +72,7 @@ export function PontoApoioFormModal({
   useEffect(() => {
     if (open) {
       setNome(ponto?.nome ?? "");
+      setTipo(ponto?.tipo ?? "outro");
       setDescricao(ponto?.descricao ?? "");
       setEndereco(ponto?.endereco ?? "");
       setLat(ponto?.coordenadas ? String(ponto.coordenadas.lat) : "");
@@ -68,6 +81,24 @@ export function PontoApoioFormModal({
       setError("");
     }
   }, [open, ponto]);
+
+  useEffect(() => {
+    if (!open) return;
+    let cancelled = false;
+
+    api
+      .get<{ zonas: { id: number; nome: string }[] }>("/zonas/")
+      .then((response) => {
+        if (!cancelled) setZonas(response.data.zonas ?? []);
+      })
+      .catch(() => {
+        if (!cancelled) setZonas([]);
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [open]);
 
   /* envio */
   const handleSubmit = useCallback(async () => {
@@ -82,6 +113,7 @@ export function PontoApoioFormModal({
 
     const payload = {
       nome: nome.trim(),
+      tipo,
       descricao: descricao.trim(),
       endereco: endereco.trim(),
       coordenadas: { lat: Number(lat), lng: Number(lng) },
@@ -110,7 +142,7 @@ export function PontoApoioFormModal({
     } finally {
       setSaving(false);
     }
-  }, [nome, descricao, endereco, lat, lng, ponto, showToast, onSaved, onClose]);
+  }, [nome, tipo, descricao, endereco, lat, lng, ponto, showToast, onSaved, onClose]);
 
   if (!open) return null;
 
@@ -133,6 +165,25 @@ export function PontoApoioFormModal({
             placeholder="Ex: Escola Municipal da Orla"
             className="w-full bg-surface-container-low border-none rounded-lg px-4 py-3 text-sm font-medium text-primary focus:ring-2 focus:ring-secondary placeholder:text-on-surface-variant/60"
           />
+        </div>
+
+        <div>
+          <MetaTag className="block mb-2">Categoria</MetaTag>
+          <div className="relative">
+            <select
+              value={tipo}
+              onChange={(event) => setTipo(event.target.value as Apoio["tipo"])}
+              className="w-full appearance-none rounded-lg border-none bg-surface-container-low py-3 pl-4 pr-12 text-sm font-bold text-primary focus:ring-2 focus:ring-secondary"
+            >
+              {APOIO_TIPOS.map((opcao) => (
+                <option key={opcao.value} value={opcao.value}>{opcao.label}</option>
+              ))}
+            </select>
+            <Icon
+              name="keyboard_arrow_down"
+              className="pointer-events-none absolute right-4 top-1/2 -translate-y-1/2 text-[18px] text-primary"
+            />
+          </div>
         </div>
 
         {/* endereco */}
@@ -164,13 +215,14 @@ export function PontoApoioFormModal({
           <CoordsPickerMap
             lat={lat}
             lng={lng}
+            zonas={zonas}
             onChange={(newLat, newLng) => {
               setLat(newLat);
               setLng(newLng);
             }}
           />
-          <p className="text-[11px] text-on-surface-variant mt-1.5 flex items-start gap-1.5">
-            <Icon name="info" className="text-[14px] mt-0.5" />
+          <p className="text-[11px] text-on-surface-variant mt-1.5 flex items-center gap-1.5">
+            <Icon name="info" className="shrink-0 text-[14px]" />
             Clique ou arraste o marcador no mapa para definir a localização.
           </p>
         </div>

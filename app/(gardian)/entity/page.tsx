@@ -6,11 +6,13 @@ import { Btn, Chip, Icon, KPI, MetaTag, SectionHeader, StatusDot, Tab } from "@/
 import { ModalShell } from "@/app/components/Modals";
 import { api } from "@/app/services/Api";
 import {
+  APOIO_TIPOS,
   PontoApoioFormModal,
   type Apoio,
 } from "@/app/components/PontoApoioFormModal";
 import { useGardian } from "@/app/components/GardianContext";
 import { DataLoading } from "@/app/components/DataLoading";
+import { PlanContingenciaEditor } from "@/app/components/PlanContingenciaEditor";
 import {
   STATUS_CIDADE_META,
   formatBRL,
@@ -151,6 +153,83 @@ interface ConfigFormularioApi {
   categorias: FormUiItem[];
 }
 
+interface PlanoZona {
+  id: number;
+  nome: string;
+  tipo: "urbana" | "rural";
+  status: "critico" | "atencao" | "estavel";
+  descricao: string;
+}
+
+interface PlanoEvento {
+  id: number;
+  nome: string;
+  tipo: string;
+  status: string | null;
+  descricao: string;
+  data_inicio: string | null;
+  recomendacoes: string[];
+  zonas: number[];
+}
+
+interface PlanoFamiliasResumo {
+  total_familias: number;
+  total_pessoas: number;
+  total_animais: number;
+  total_em_risco: number;
+}
+
+interface PlanoMonitoramento {
+  id: number;
+  status: "estavel" | "risco_moderado" | "risco_alto" | "critico";
+  resumo: string;
+  zona: number | null;
+  created_at: string;
+}
+
+interface PlanoEquipeKpis {
+  efetivo: number;
+  em_campo: number;
+  atendimentos_30d: number;
+  zonas_cobertas: number;
+}
+
+const CENARIOS_CONTINGENCIA = [
+  {
+    icon: "landslide",
+    titulo: "Deslizamentos e movimentos de massa",
+    gatilho: "Chuva persistente, trincas, movimentação de solo ou alerta técnico.",
+    resposta: "Vistoria, isolamento preventivo e retirada das famílias expostas.",
+  },
+  {
+    icon: "flood",
+    titulo: "Alagamentos e inundações",
+    gatilho: "Elevação de rios, canais ou acúmulo crítico de água em área urbana.",
+    resposta: "Monitoramento, bloqueio de vias e encaminhamento aos pontos de apoio.",
+  },
+  {
+    icon: "local_fire_department",
+    titulo: "Incêndios e emergências urbanas",
+    gatilho: "Foco de incêndio com risco à população, estruturas ou vegetação.",
+    resposta: "Acionamento dos bombeiros, isolamento e apoio à evacuação.",
+  },
+];
+
+const NIVEIS_CONTINGENCIA = [
+  { nivel: "Observação", tone: "neutral" as const, descricao: "Monitorar indicadores e manter equipes informadas." },
+  { nivel: "Atenção", tone: "warning" as const, descricao: "Mobilizar responsáveis e preparar recursos prioritários." },
+  { nivel: "Alerta", tone: "error" as const, descricao: "Ativar resposta, comunicar a população e proteger áreas expostas." },
+];
+
+const PROTOCOLOS_CONTINGENCIA = [
+  "Confirmar o cenário, a área atingida e o nível de resposta.",
+  "Acionar coordenação, equipes de campo e órgãos parceiros.",
+  "Definir bloqueios, rotas seguras e necessidade de evacuação.",
+  "Preparar pontos de apoio e registrar famílias encaminhadas.",
+  "Emitir comunicação oficial e manter atualizações periódicas.",
+  "Registrar decisões, recursos utilizados e encerramento da operação.",
+];
+
 const EMPTY_FORM_CONFIG: FormUiConfig = {
   ativo: false,
   titulo: "",
@@ -217,7 +296,8 @@ export default function EntityPage() {
   const { showToast, user } = useGardian();
   const entidadeId = user?.entidade;
 
-  const [tab, setTab] = useState<"status" | "formulario" | "contas" | "apoios">("status");
+  const [tab, setTab] = useState<"status" | "formulario" | "contas" | "plano" | "apoios">("status");
+  const [planoModo, setPlanoModo] = useState<"documento" | "operacional">("documento");
   const [entidade, setEntidade] = useState<EntityApiData | null>(null);
   const [entidadeLoading, setEntidadeLoading] = useState(true);
   const [checklist, setChecklist] = useState<ChecklistApiItem[]>([]);
@@ -247,6 +327,17 @@ export default function EntityPage() {
   const [pontoFormOpen, setPontoFormOpen] = useState(false);
   const [pontoEditando, setPontoEditando] = useState<Apoio | null>(null);
   const [pontoExcluindo, setPontoExcluindo] = useState<Apoio | null>(null);
+  const [planoLoading, setPlanoLoading] = useState(true);
+  const [planoZonas, setPlanoZonas] = useState<PlanoZona[]>([]);
+  const [planoEventos, setPlanoEventos] = useState<PlanoEvento[]>([]);
+  const [planoFamilias, setPlanoFamilias] = useState<PlanoFamiliasResumo>({
+    total_familias: 0,
+    total_pessoas: 0,
+    total_animais: 0,
+    total_em_risco: 0,
+  });
+  const [planoMonitoramentos, setPlanoMonitoramentos] = useState<PlanoMonitoramento[]>([]);
+  const [planoEquipe, setPlanoEquipe] = useState<PlanoEquipeKpis | null>(null);
 
   const fetchEntidadeEChecklist = useCallback(async () => {
     if (!entidadeId) return;
@@ -376,6 +467,49 @@ export default function EntityPage() {
     const timer = window.setTimeout(() => fetchPontos(), 0);
     return () => window.clearTimeout(timer);
   }, [fetchPontos]);
+
+  useEffect(() => {
+    if (!entidadeId) return;
+    let cancelled = false;
+    Promise.allSettled([
+      api.get<PlanoZona[] | { zonas: PlanoZona[] }>("/zonas/"),
+      api.get<PlanoEvento[] | { eventos: PlanoEvento[] }>("/eventos/"),
+      api.get<PlanoFamiliasResumo & { familias: unknown[] }>("/familias/"),
+      api.get<PlanoMonitoramento[] | { monitoramentos: PlanoMonitoramento[] }>("/monitoramentos/"),
+      api.get<{ kpis: PlanoEquipeKpis }>("/equipe/panorama/"),
+    ]).then(([zonasResult, eventosResult, familiasResult, monitoramentosResult, equipeResult]) => {
+      if (cancelled) return;
+      if (zonasResult.status === "fulfilled") {
+        const data = zonasResult.value.data;
+        setPlanoZonas(Array.isArray(data) ? data : data.zonas ?? []);
+      }
+      if (eventosResult.status === "fulfilled") {
+        const data = eventosResult.value.data;
+        setPlanoEventos(Array.isArray(data) ? data : data.eventos ?? []);
+      }
+      if (familiasResult.status === "fulfilled") {
+        const data = familiasResult.value.data;
+        setPlanoFamilias({
+          total_familias: data.total_familias ?? 0,
+          total_pessoas: data.total_pessoas ?? 0,
+          total_animais: data.total_animais ?? 0,
+          total_em_risco: data.total_em_risco ?? 0,
+        });
+      }
+      if (monitoramentosResult.status === "fulfilled") {
+        const data = monitoramentosResult.value.data;
+        setPlanoMonitoramentos(Array.isArray(data) ? data : data.monitoramentos ?? []);
+      }
+      if (equipeResult.status === "fulfilled") {
+        setPlanoEquipe(equipeResult.value.data.kpis);
+      }
+    }).finally(() => {
+      if (!cancelled) setPlanoLoading(false);
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [entidadeId]);
 
   const excluirPonto = async (ponto: Apoio) => {
     try {
@@ -647,7 +781,7 @@ export default function EntityPage() {
     [contasBackend],
   );
 
-  if (entidadeLoading || responsaveisLoading || contasLoading || pontosLoading) {
+  if (entidadeLoading || responsaveisLoading || contasLoading || pontosLoading || planoLoading) {
     return <DataLoading description="Preparando os dados da entidade..." />;
   }
 
@@ -661,6 +795,14 @@ export default function EntityPage() {
     : { label: "Não informado", cor: "#64748B", tone: "neutral" as const };
   const categoriasAtivas = config.categorias.filter((item) => item.ativo).length;
   const checksAtivos = checklist.filter((item) => item.ativo).length;
+  const zonasPrioritarias = planoZonas.filter((zona) => zona.status !== "estavel");
+  const eventosAtivos = planoEventos.filter((evento) => {
+    const status = (evento.status ?? "").toLocaleLowerCase("pt-BR");
+    return !["encerrado", "concluido", "concluído", "finalizado", "inativo"].includes(status);
+  });
+  const monitoramentosPrioritarios = planoMonitoramentos.filter(
+    (item) => item.status === "risco_alto" || item.status === "critico",
+  );
 
   return (
     <div className="p-8 space-y-8 max-w-[1600px] mx-auto">
@@ -735,6 +877,9 @@ export default function EntityPage() {
         </Tab>
         <Tab active={tab === "contas"} onClick={() => setTab("contas")} icon="account_balance">
           Prestação de Contas
+        </Tab>
+        <Tab active={tab === "plano"} onClick={() => setTab("plano")} icon="assignment">
+          Plano de Contingência
         </Tab>
         <Tab active={tab === "apoios"} onClick={() => setTab("apoios")} icon="home_work">
           Pontos de Apoio
@@ -934,12 +1079,12 @@ export default function EntityPage() {
             </div>
           </section>
 
-          <div className="grid grid-cols-12 gap-5 items-start">
-            {/* textos e regras */}
-            <section className="col-span-12 lg:col-span-5 space-y-5">
+          <div className="space-y-5">
+            {/* textos do formulário */}
+            <section>
               <div className="card-tonal p-7 shadow-ambient-sm">
                 <SectionHeader overline="APRESENTAÇÃO" title="Textos do Formulário" />
-                <div className="space-y-4">
+                <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
                   <div>
                     <MetaTag className="block mb-1.5">TÍTULO</MetaTag>
                     <input
@@ -976,70 +1121,10 @@ export default function EntityPage() {
                   </div>
                 </div>
               </div>
-
-              <div className="card-tonal p-7 shadow-ambient-sm">
-                <SectionHeader overline="REGRAS DE PREENCHIMENTO" title="Exigências" />
-                <div className="space-y-2">
-                  {[
-                    { id: "exigirLocalizacao", label: "Exigir localização (endereço ou coordenada)", icon: "location_on" },
-                    { id: "permitirAnexos", label: "Permitir anexar fotos e vídeos", icon: "attach_file" },
-                    { id: "exigirContato", label: "Exigir telefone de contato", icon: "call" },
-                    { id: "mostrarAvisoEvento", label: "Exibir aviso do evento em andamento", icon: "campaign" },
-                  ].map((r) => {
-                    const ligado = config[r.id as keyof FormUiConfig] as boolean;
-                    return (
-                      <button
-                        key={r.id}
-                        type="button"
-                        onClick={() => setConfig((current) => ({
-                          ...current,
-                          [r.id]: !ligado,
-                        }))}
-                        className={`w-full flex items-center gap-3 p-3.5 rounded-lg text-left transition-all ${ligado ? "bg-secondary/10 ring-1 ring-secondary/40" : "bg-surface-container-low"
-                          }`}
-                      >
-                        <Icon
-                          name={ligado ? "toggle_on" : "toggle_off"}
-                          filled
-                          className={`text-[24px] shrink-0 ${ligado ? "text-secondary" : "text-slate-300"}`}
-                        />
-                        <Icon
-                          name={r.icon}
-                          className={`text-[18px] shrink-0 ${ligado ? "text-secondary" : "text-on-surface-variant"}`}
-                        />
-                        <span className={`text-[12px] ${ligado ? "font-bold text-primary" : "text-on-surface"}`}>
-                          {r.label}
-                        </span>
-                      </button>
-                    );
-                  })}
-                </div>
-
-                <div className="mt-5 pt-5 border-t border-outline-variant/20">
-                  <div className="flex items-center justify-between mb-2">
-                    <MetaTag>MÍNIMO DE CARACTERES NA DESCRIÇÃO</MetaTag>
-                    <span className="text-[13px] font-black text-primary">
-                      {config.minCaracteresDescricao}
-                    </span>
-                  </div>
-                  <input
-                    type="range"
-                    min={0}
-                    max={200}
-                    step={10}
-                    value={config.minCaracteresDescricao}
-                    onChange={(event) => setConfig((current) => ({
-                      ...current,
-                      minCaracteresDescricao: Number(event.target.value),
-                    }))}
-                    className="w-full accent-[#006A60]"
-                  />
-                </div>
-              </div>
             </section>
 
             {/* categorias e checklist */}
-            <section className="col-span-12 lg:col-span-7 space-y-5">
+            <section className="grid grid-cols-1 items-start gap-5 xl:grid-cols-2">
               {(
                 [
                   {
@@ -1064,7 +1149,7 @@ export default function EntityPage() {
                   },
                 ]
               ).map((sec) => (
-                <div key={sec.grupo} className="card-tonal p-7 shadow-ambient-sm">
+                <div key={sec.grupo} className="card-tonal h-full p-7 shadow-ambient-sm">
                   <SectionHeader
                     overline={sec.overline}
                     title={sec.titulo}
@@ -1132,7 +1217,7 @@ export default function EntityPage() {
                 </div>
               ))}
 
-              <div className="flex justify-end gap-3">
+              <div className="flex justify-end gap-3 xl:col-span-2">
                 <Btn
                   variant="primary"
                   icon="cloud_done"
@@ -1354,20 +1439,262 @@ export default function EntityPage() {
         </div>
       )}
 
+      {/* ─────────── PLANO DE CONTINGÊNCIA ─────────── */}
+      {tab === "plano" && (
+        <div className="flex items-center gap-4 rounded-xl border border-outline-variant/25 bg-surface-container-low px-4 py-3 shadow-ambient-sm flex-wrap">
+          <div className="flex items-center gap-2 shrink-0">
+            <Icon name="view_compact" className="text-secondary text-[18px]" />
+            <div>
+              <MetaTag className="block text-secondary">VISUALIZAÇÃO DO PLANO</MetaTag>
+              <p className="text-[10px] text-on-surface-variant">Escolha como consultar o PLANCON</p>
+            </div>
+          </div>
+          <div className="flex gap-1 rounded-lg bg-surface-container-high p-1">
+            <button type="button" onClick={() => setPlanoModo("documento")} className={`inline-flex items-center gap-1.5 rounded-md px-3 py-2 text-[10px] font-bold uppercase tracking-mono-tight transition-all ${planoModo === "documento" ? "bg-surface text-secondary shadow-ambient-sm" : "text-on-surface-variant hover:text-primary"}`}>
+              <Icon name="description" className="text-[15px]" /> Documento
+            </button>
+            <button type="button" onClick={() => setPlanoModo("operacional")} className={`inline-flex items-center gap-1.5 rounded-md px-3 py-2 text-[10px] font-bold uppercase tracking-mono-tight transition-all ${planoModo === "operacional" ? "bg-surface text-secondary shadow-ambient-sm" : "text-on-surface-variant hover:text-primary"}`}>
+              <Icon name="monitoring" className="text-[15px]" /> Operacional
+            </button>
+          </div>
+        </div>
+      )}
+
+      {tab === "plano" && planoModo === "documento" && (
+        <PlanContingenciaEditor
+          entidadeId={entidade.id}
+          entidadeNome={entidade.nome}
+          responsavel={entidade.responsavel_nome || ""}
+          contato={entidade.telefone || entidade.email || ""}
+          zonas={planoZonas}
+          eventos={eventosAtivos}
+          familiasEmRisco={planoFamilias.total_em_risco}
+          totalPessoas={planoFamilias.total_pessoas}
+          pontos={pontos}
+          equipe={planoEquipe}
+          onToast={showToast}
+        />
+      )}
+
+      {tab === "plano" && planoModo === "operacional" && (
+        <div className="space-y-5">
+          <section className="card-tonal p-7 shadow-ambient-sm">
+            <div className="flex items-start justify-between gap-6 flex-wrap">
+              <div className="max-w-3xl">
+                <div className="flex items-center gap-2 mb-2">
+                  <MetaTag className="text-secondary">PLANEJAMENTO OPERACIONAL</MetaTag>
+                  <Chip tone="secondary">DADOS CONSOLIDADOS</Chip>
+                </div>
+                <h2 className="font-headline font-black text-3xl tracking-tighter text-primary">
+                  Plano de Contingência Municipal
+                </h2>
+                <p className="text-[12px] text-on-surface-variant mt-2 leading-relaxed">
+                  Visão operacional de riscos, pessoas expostas, recursos e procedimentos de resposta
+                  de {entidade.nome}. Os indicadores são atualizados a partir dos cadastros da entidade.
+                </p>
+              </div>
+              <div className="card-recessed px-5 py-4 min-w-[220px]">
+                <MetaTag className="block">SITUAÇÃO OPERACIONAL</MetaTag>
+                <p className="mt-1 flex items-center gap-2 text-sm font-black" style={{ color: statusMeta.cor }}>
+                  <StatusDot tone={statusMeta.tone} live={false} /> {statusMeta.label}
+                </p>
+                <p className="text-[10px] text-on-surface-variant mt-2">Status vigente da entidade</p>
+              </div>
+            </div>
+          </section>
+
+          <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 gap-4">
+            <KPI label="Zonas prioritárias" value={zonasPrioritarias.length} icon="warning" tone={zonasPrioritarias.length > 0 ? "warning" : "secondary"} sub="Em atenção ou situação crítica" />
+            <KPI label="Eventos ativos" value={eventosAtivos.length} icon="emergency" tone={eventosAtivos.length > 0 ? "error" : "secondary"} sub="Em acompanhamento" />
+            <KPI label="Famílias em risco" value={planoFamilias.total_em_risco} icon="family_restroom" tone={planoFamilias.total_em_risco > 0 ? "warning" : "secondary"} sub={`${planoFamilias.total_pessoas} pessoas cadastradas`} />
+            <KPI label="Pontos de apoio" value={pontos.length} icon="home_work" tone="secondary" sub="Cadastrados na entidade" />
+          </div>
+
+          <section>
+            <SectionHeader overline="1 · CENÁRIO ATUAL" title="Informações para tomada de decisão" />
+            <div className="grid grid-cols-1 xl:grid-cols-3 gap-4">
+              <article className="card-tonal p-6 shadow-ambient-sm">
+                <div className="flex items-center justify-between gap-3 mb-4">
+                  <div><MetaTag className="text-secondary">ÁREAS PRIORITÁRIAS</MetaTag><h3 className="font-headline font-black text-lg text-primary">Zonas em atenção</h3></div>
+                  <Chip tone={zonasPrioritarias.length > 0 ? "warning" : "secondary"}>{zonasPrioritarias.length}</Chip>
+                </div>
+                <div className="space-y-2">
+                  {zonasPrioritarias.length === 0 ? (
+                    <p className="text-[11px] text-on-surface-variant">Nenhuma zona crítica ou em atenção cadastrada.</p>
+                  ) : zonasPrioritarias.map((zona) => (
+                    <div key={zona.id} className="card-recessed p-3">
+                      <div className="flex items-center justify-between gap-2"><p className="text-[12px] font-bold text-primary">{zona.nome}</p><Chip tone={zona.status === "critico" ? "error" : "warning"}>{zona.status === "critico" ? "Crítica" : "Atenção"}</Chip></div>
+                      <p className="text-[10px] text-on-surface-variant mt-1">{zona.tipo === "rural" ? "Área rural" : "Área urbana"}{zona.descricao ? ` · ${zona.descricao}` : ""}</p>
+                    </div>
+                  ))}
+                </div>
+              </article>
+
+              <article className="card-tonal p-6 shadow-ambient-sm">
+                <div className="flex items-center justify-between gap-3 mb-4">
+                  <div><MetaTag className="text-secondary">OCORRÊNCIAS AMPLIADAS</MetaTag><h3 className="font-headline font-black text-lg text-primary">Eventos em curso</h3></div>
+                  <Chip tone={eventosAtivos.length > 0 ? "error" : "secondary"}>{eventosAtivos.length}</Chip>
+                </div>
+                <div className="space-y-2">
+                  {eventosAtivos.length === 0 ? (
+                    <p className="text-[11px] text-on-surface-variant">Nenhum evento ativo cadastrado.</p>
+                  ) : eventosAtivos.map((evento) => (
+                    <div key={evento.id} className="card-recessed p-3">
+                      <p className="text-[12px] font-bold text-primary">{evento.nome}</p>
+                      <p className="text-[10px] text-on-surface-variant mt-1">{evento.status || "Status não informado"} · {evento.zonas.length} zona(s) relacionada(s)</p>
+                      {evento.recomendacoes.length > 0 && <p className="text-[10px] text-secondary font-bold mt-2">{evento.recomendacoes.length} recomendação(ões) publicada(s)</p>}
+                    </div>
+                  ))}
+                </div>
+              </article>
+
+              <article className="card-tonal p-6 shadow-ambient-sm">
+                <div className="flex items-center justify-between gap-3 mb-4">
+                  <div><MetaTag className="text-secondary">ACOMPANHAMENTO</MetaTag><h3 className="font-headline font-black text-lg text-primary">Monitoramentos críticos</h3></div>
+                  <Chip tone={monitoramentosPrioritarios.length > 0 ? "error" : "secondary"}>{monitoramentosPrioritarios.length}</Chip>
+                </div>
+                <div className="space-y-2">
+                  {monitoramentosPrioritarios.length === 0 ? (
+                    <p className="text-[11px] text-on-surface-variant">Nenhum monitoramento de risco alto ou crítico.</p>
+                  ) : monitoramentosPrioritarios.slice(0, 5).map((item) => (
+                    <div key={item.id} className="card-recessed p-3">
+                      <div className="flex items-center gap-2"><StatusDot tone="error" /><p className="text-[11px] font-bold text-primary">{item.status === "critico" ? "Crítico" : "Risco alto"}</p></div>
+                      <p className="text-[10px] text-on-surface-variant mt-1 leading-relaxed">{item.resumo}</p>
+                    </div>
+                  ))}
+                </div>
+              </article>
+            </div>
+          </section>
+
+          <section>
+            <SectionHeader overline="2 · PROTOCOLOS POR CENÁRIO" title="Riscos e respostas previstas" />
+            <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
+              {CENARIOS_CONTINGENCIA.map((cenario) => (
+                <article key={cenario.titulo} className="card-tonal p-6 shadow-ambient-sm">
+                  <div className="w-11 h-11 rounded-xl bg-error-container flex items-center justify-center mb-4">
+                    <Icon name={cenario.icon} className="text-error text-[23px]" />
+                  </div>
+                  <h3 className="font-headline font-black text-lg tracking-tight text-primary">{cenario.titulo}</h3>
+                  <div className="mt-4 space-y-3">
+                    <div>
+                      <MetaTag className="block">CRITÉRIO DE ATIVAÇÃO</MetaTag>
+                      <p className="text-[11px] text-on-surface-variant leading-relaxed">{cenario.gatilho}</p>
+                    </div>
+                    <div>
+                      <MetaTag className="block">RESPOSTA INICIAL</MetaTag>
+                      <p className="text-[11px] text-on-surface-variant leading-relaxed">{cenario.resposta}</p>
+                    </div>
+                  </div>
+                </article>
+              ))}
+            </div>
+          </section>
+
+          <div className="grid grid-cols-12 gap-5 items-start">
+            <section className="col-span-12 lg:col-span-5 card-tonal p-7 shadow-ambient-sm">
+              <SectionHeader overline="3 · ATIVAÇÃO" title="Níveis de resposta" />
+              <div className="space-y-3">
+                {NIVEIS_CONTINGENCIA.map((item, index) => (
+                  <div key={item.nivel} className="card-recessed p-4 flex items-start gap-3">
+                    <div className="w-8 h-8 rounded-lg bg-surface-container flex items-center justify-center shrink-0 font-black text-xs text-primary">
+                      {index + 1}
+                    </div>
+                    <div>
+                      <Chip tone={item.tone}>{item.nivel}</Chip>
+                      <p className="text-[11px] text-on-surface-variant leading-relaxed mt-2">{item.descricao}</p>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </section>
+
+            <section className="col-span-12 lg:col-span-7 card-tonal p-7 shadow-ambient-sm">
+              <SectionHeader overline="4 · COMANDO" title="Responsabilidades operacionais" />
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                {[
+                  { icon: "account_tree", papel: "Coordenação geral", pessoa: entidade.responsavel_nome || "Não cadastrado", acao: "Autorizar ativação e coordenar os órgãos envolvidos." },
+                  { icon: "engineering", papel: "Operações de campo", pessoa: planoEquipe ? `${planoEquipe.efetivo} integrante(s) · ${planoEquipe.em_campo} em campo` : "Equipe sem panorama disponível", acao: "Vistoriar áreas, executar isolamento e apoiar evacuações." },
+                  { icon: "campaign", papel: "Comunicação", pessoa: entidade.telefone || entidade.email || "Contato não cadastrado", acao: "Publicar alertas, orientações e atualizações oficiais." },
+                  { icon: "inventory_2", papel: "Logística e assistência", pessoa: `${pontos.length} ponto(s) de apoio · ${planoFamilias.total_em_risco} família(s) em risco`, acao: "Mobilizar transporte, suprimentos e acolhimento." },
+                ].map((item) => (
+                  <div key={item.papel} className="card-recessed p-4 flex items-start gap-3">
+                    <Icon name={item.icon} className="text-secondary text-[20px] shrink-0" />
+                    <div>
+                      <MetaTag className="block">{item.papel.toUpperCase()}</MetaTag>
+                      <p className="text-[12px] font-bold text-primary">{item.pessoa}</p>
+                      <p className="text-[10px] text-on-surface-variant leading-relaxed mt-1">{item.acao}</p>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </section>
+          </div>
+
+          <div className="grid grid-cols-12 gap-5 items-start">
+            <section className="col-span-12 lg:col-span-7 card-tonal p-7 shadow-ambient-sm">
+              <SectionHeader overline="5 · PROCEDIMENTOS" title="Checklist de ativação" />
+              <div className="space-y-2">
+                {PROTOCOLOS_CONTINGENCIA.map((protocolo, index) => (
+                  <div key={protocolo} className="card-recessed p-3.5 flex items-center gap-3">
+                    <span className="w-7 h-7 rounded-lg bg-secondary/10 text-secondary flex items-center justify-center text-[11px] font-black shrink-0">
+                      {String(index + 1).padStart(2, "0")}
+                    </span>
+                    <p className="text-[12px] font-medium text-primary">{protocolo}</p>
+                  </div>
+                ))}
+              </div>
+            </section>
+
+            <section className="col-span-12 lg:col-span-5 card-tonal p-7 shadow-ambient-sm">
+              <SectionHeader overline="6 · RECURSOS" title="Estrutura disponível" />
+              <div className="space-y-3">
+                <div className="card-recessed p-4 flex items-center justify-between gap-3">
+                  <div className="flex items-center gap-3">
+                    <Icon name="home_work" className="text-secondary" />
+                    <div><p className="text-[12px] font-bold text-primary">Pontos de apoio</p><p className="text-[10px] text-on-surface-variant">Locais de acolhimento cadastrados</p></div>
+                  </div>
+                  <span className="font-headline font-black text-xl text-primary">{pontos.length}</span>
+                </div>
+                {pontos.slice(0, 3).map((ponto) => (
+                  <div key={ponto.id} className="card-recessed p-3 pl-5">
+                    <p className="text-[11px] font-bold text-primary">{ponto.nome}</p>
+                    <p className="text-[10px] text-on-surface-variant">{ponto.endereco || ponto.descricao || "Localização cadastrada por coordenadas"}</p>
+                  </div>
+                ))}
+                <div className="card-recessed p-4 flex items-center justify-between gap-3">
+                  <div className="flex items-center gap-3">
+                    <Icon name="call" className="text-secondary" />
+                    <div><p className="text-[12px] font-bold text-primary">Contato da entidade</p><p className="text-[10px] text-on-surface-variant">Canal para coordenação da resposta</p></div>
+                  </div>
+                  <span className="text-[11px] font-bold text-primary">{entidade.telefone || "Não cadastrado"}</span>
+                </div>
+                <div className="rounded-xl border border-dashed border-outline-variant p-4">
+                  <MetaTag className="block">AINDA PRECISA SER LEVANTADO</MetaTag>
+                  <p className="text-[11px] text-on-surface-variant leading-relaxed mt-1">
+                    Veículos, equipamentos, abrigos com capacidade, rotas de evacuação, contatos dos órgãos parceiros e recursos para públicos vulneráveis.
+                  </p>
+                </div>
+              </div>
+            </section>
+          </div>
+        </div>
+      )}
+
       {/* ─────────── PONTOS DE APOIO ─────────── */}
       {tab === "apoios" && (
         <div className="space-y-5">
           {/* cabecalho */}
           <section className="card-tonal p-7 shadow-ambient-sm">
             <div className="flex items-start justify-between gap-6 flex-wrap">
-              <div>
+              <div className="min-w-0 flex-1">
                 <SectionHeader
                   overline="ABRIGO TEMPORÁRIO"
                   title="Pontos de Apoio"
                 />
-                <p className="text-[12px] text-on-surface-variant -mt-3 max-w-2xl">
-                  Locais onde a população em risco pode ficar temporariamente durante uma calamidade
-                  (escolas, igrejas, ginásios…).
+                <p className="text-[12px] text-on-surface-variant -mt-3 w-full">
+                  Escolas, UPAs, hospitais, CREAs e outras entidades municipais que podem oferecer
+                  ajuda ou abrigo às pessoas atingidas por eventos.
                 </p>
               </div>
               <Btn
@@ -1422,6 +1749,9 @@ export default function EntityPage() {
                     </div>
                     <div className="min-w-0 flex-1">
                       <p className="text-[13px] font-bold text-primary leading-snug">{p.nome}</p>
+                      <p className="mt-0.5 text-[10px] font-black uppercase tracking-mono-tight text-secondary">
+                        {p.tipo_label || APOIO_TIPOS.find((opcao) => opcao.value === p.tipo)?.label || "Outro"}
+                      </p>
                       {p.endereco && (
                         <p className="text-[11px] text-on-surface-variant mt-0.5 flex items-center gap-1">
                           <Icon name="place" className="text-[13px]" /> {p.endereco}
@@ -1498,18 +1828,24 @@ export default function EntityPage() {
             ))}
             <label className="md:col-span-2">
               <MetaTag className="mb-1.5 block">RESPONSÁVEL</MetaTag>
-              <select
-                value={fichaDraft.responsavel ?? ""}
-                onChange={(event) => setFichaDraft((atual) => ({ ...atual, responsavel: event.target.value ? Number(event.target.value) : null }))}
-                className="w-full rounded-lg bg-surface-container-low px-4 py-3 text-sm font-medium text-primary outline-none focus:ring-2 focus:ring-secondary"
-              >
-                <option value="">Sem responsável</option>
-                {responsaveis.map((responsavel) => (
-                  <option key={responsavel.id} value={responsavel.id}>
-                    {responsavel.user_sys?.first_name || responsavel.user_sys?.username || responsavel.nome_anonimo || responsavel.telefone}
-                  </option>
-                ))}
-              </select>
+              <div className="relative">
+                <select
+                  value={fichaDraft.responsavel ?? ""}
+                  onChange={(event) => setFichaDraft((atual) => ({ ...atual, responsavel: event.target.value ? Number(event.target.value) : null }))}
+                  className="w-full appearance-none rounded-lg bg-surface-container-low py-3 pl-4 pr-12 text-sm font-medium text-primary outline-none focus:ring-2 focus:ring-secondary"
+                >
+                  <option value="">Sem responsável</option>
+                  {responsaveis.map((responsavel) => (
+                    <option key={responsavel.id} value={responsavel.id}>
+                      {responsavel.user_sys?.first_name || responsavel.user_sys?.username || responsavel.nome_anonimo || responsavel.telefone}
+                    </option>
+                  ))}
+                </select>
+                <Icon
+                  name="keyboard_arrow_down"
+                  className="pointer-events-none absolute right-4 top-1/2 -translate-y-1/2 text-[18px] text-primary"
+                />
+              </div>
             </label>
           </div>
           <div className="mt-6 flex gap-3">
