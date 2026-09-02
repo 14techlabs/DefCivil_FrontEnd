@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { Btn, MetaTag } from "@/app/components/Primitives";
+import { Btn, Icon, MetaTag } from "@/app/components/Primitives";
 import { ModalShell } from "@/app/components/Modals";
 import { useGardian } from "@/app/components/GardianContext";
 import { api } from "@/app/services/Api";
@@ -18,6 +18,7 @@ interface OcorrenciaEdit {
   analise_tecnico: string | null;
   coordenadas: { lat: number; lng: number } | null;
   zona: number | null;
+  evento: number | null;
   anexos: unknown[];
 }
 
@@ -48,12 +49,13 @@ interface Props {
   onClose: () => void;
   onSaved: () => void;
   zonas: { id: number; nome: string }[];
+  eventos: { id: number; nome: string }[];
   ocorrencia: OcorrenciaEdit;
 }
 
 /* ───────────── componente ───────────── */
 
-export function EditOccurrenceModal({ open, onClose, onSaved, zonas, ocorrencia }: Props) {
+export function EditOccurrenceModal({ open, onClose, onSaved, zonas, eventos, ocorrencia }: Props) {
   const { showToast } = useGardian();
 
   // form state
@@ -63,6 +65,7 @@ export function EditOccurrenceModal({ open, onClose, onSaved, zonas, ocorrencia 
   const [descricao, setDescricao] = useState("");
   const [analiseTecnico, setAnaliseTecnico] = useState("");
   const [zonaId, setZonaId] = useState<number | null>(null);
+  const [eventoId, setEventoId] = useState<number | null>(null);
   const [detectedZonaIds, setDetectedZonaIds] = useState<number[]>([]);
   const [lat, setLat] = useState("");
   const [lng, setLng] = useState("");
@@ -75,13 +78,15 @@ export function EditOccurrenceModal({ open, onClose, onSaved, zonas, ocorrencia 
 
   // popula o formulário com os dados da ocorrência ao abrir
   useEffect(() => {
-    if (open) {
+    if (!open) return;
+    const timer = window.setTimeout(() => {
       setCategoria(ocorrencia.categoria ?? "");
       setTitulo(ocorrencia.titulo ?? "");
       setStatus(ocorrencia.status ?? "");
       setDescricao(ocorrencia.descricao ?? "");
       setAnaliseTecnico(ocorrencia.analise_tecnico ?? "");
       setZonaId(ocorrencia.zona ?? null);
+      setEventoId(ocorrencia.evento ?? null);
       setDetectedZonaIds([]);
       setLat(ocorrencia.coordenadas ? String(ocorrencia.coordenadas.lat) : "");
       setLng(ocorrencia.coordenadas ? String(ocorrencia.coordenadas.lng) : "");
@@ -98,7 +103,8 @@ export function EditOccurrenceModal({ open, onClose, onSaved, zonas, ocorrencia 
       setReferenciasExcluir([]);
       setSaving(false);
       setError("");
-    }
+    }, 0);
+    return () => window.clearTimeout(timer);
   }, [open, ocorrencia]);
 
   const handleFiles = (files: FileList | null) => {
@@ -146,6 +152,7 @@ export function EditOccurrenceModal({ open, onClose, onSaved, zonas, ocorrencia 
         status,
         descricao: descricao.trim(),
         analise_tecnico: analiseTecnico.trim() || null,
+        evento: eventoId,
         coordenadas: { lat: parsedLat, lng: parsedLng },
       };
       if (zonaId !== null) body.zona = zonaId;
@@ -166,11 +173,11 @@ export function EditOccurrenceModal({ open, onClose, onSaved, zonas, ocorrencia 
           };
         }),
         ...referenciasExcluir.map((referenceId) =>
-          ({
-            tipo: "excluir" as const,
-            referenceId,
-            promise: api.delete("/api/arquivo", { params: { reference_id: referenceId } }),
-          }),
+        ({
+          tipo: "excluir" as const,
+          referenceId,
+          promise: api.delete("/api/arquivo", { params: { reference_id: referenceId } }),
+        }),
         ),
       ];
       const resultados = await Promise.allSettled(operacoes.map((operacao) => operacao.promise));
@@ -240,15 +247,40 @@ export function EditOccurrenceModal({ open, onClose, onSaved, zonas, ocorrencia 
       {/* corpo compartilhado com o modal de criação */}
       <OccurrenceFormFields
         beforeFields={(
-          <div>
-            <MetaTag className="mb-2 block">Parecer técnico</MetaTag>
-            <textarea
-              rows={4}
-              value={analiseTecnico}
-              onChange={(event) => setAnaliseTecnico(event.target.value)}
-              placeholder="Registre a avaliação e as recomendações técnicas…"
-              className="w-full resize-y rounded-lg border-none bg-surface-container-low px-4 py-3 text-sm font-medium text-primary focus:ring-2 focus:ring-secondary placeholder:text-on-surface-variant/60"
-            />
+          <div className="space-y-5">
+            <label className="block">
+              <MetaTag className="mb-2 block">Evento vinculado</MetaTag>
+              <div className="relative">
+                <select
+                  value={eventoId ?? ""}
+                  onChange={(event) => setEventoId(event.target.value ? Number(event.target.value) : null)}
+                  className="w-full appearance-none rounded-lg border-none bg-surface-container-low py-3.5 pl-4 pr-12 text-sm font-bold text-primary focus:ring-2 focus:ring-secondary"
+                >
+                  <option value="">Não vinculado</option>
+                  {eventos.map((evento) => (
+                    <option key={evento.id} value={evento.id}>
+                      #{evento.id} · {evento.nome}
+                    </option>
+                  ))}
+                </select>
+                <Icon name="keyboard_arrow_down" className="pointer-events-none absolute right-4 top-1/2 -translate-y-1/2 text-[20px] text-primary" />
+              </div>
+              {ocorrencia.evento != null && eventoId === null && (
+                <p className="mt-2 text-[11px] font-medium text-on-surface-variant">
+                  Ao salvar, a ocorrência será desvinculada e o evento manterá esse registro na timeline.
+                </p>
+              )}
+            </label>
+            <div>
+              <MetaTag className="mb-2 block">Parecer técnico</MetaTag>
+              <textarea
+                rows={4}
+                value={analiseTecnico}
+                onChange={(event) => setAnaliseTecnico(event.target.value)}
+                placeholder="Registre a avaliação e as recomendações técnicas…"
+                className="w-full resize-y rounded-lg border-none bg-surface-container-low px-4 py-3 text-sm font-medium text-primary focus:ring-2 focus:ring-secondary placeholder:text-on-surface-variant/60"
+              />
+            </div>
           </div>
         )}
         categoria={categoria}
