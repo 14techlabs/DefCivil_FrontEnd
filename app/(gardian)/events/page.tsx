@@ -1,6 +1,7 @@
 "use client";
 
 import dynamic from "next/dynamic";
+import { isAxiosError } from "axios";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { Btn, Chip, Icon, MetaTag, SectionHeader, StatusDot, Tab } from "@/app/components/Primitives";
 import { useGardian } from "@/app/components/GardianContext";
@@ -23,17 +24,16 @@ const RouteMap = dynamic(
 );
 
 interface TimelineItem {
-  hora: string;
+  id: number;
+  tipo: "ocorrencia_vinculada" | "ocorrencia_desvinculada" | "evento_criado" | "evento_ativado" | "evento_desativado" | "nota";
   titulo: string;
   detalhe: string;
-  nivel: string;
-}
-
-interface TempoRealItem {
-  hora: string;
-  origem: string;
-  autor: string;
-  msg: string;
+  nivel: "info" | "atencao" | "critico";
+  data_hora: string;
+  autor_nome: string | null;
+  ocorrencia: number | { id: number } | null;
+  anterior_ao_evento: boolean;
+  snapshot: Record<string, unknown> | null;
 }
 
 interface RotaEvento {
@@ -54,11 +54,14 @@ interface Evento {
   data_fim: string | null;
   resumo_publico: string;
   recomendacoes: string[];
-  timeline: TimelineItem[];
+  timeline?: unknown[];
   zonas: number[];
   ocorrencias_count: number;
   rota_ia?: RotaEvento | null;
-  tempo_real?: TempoRealItem[];
+}
+
+interface TimelineResponse {
+  entradas: TimelineItem[];
 }
 
 interface Ocorrencia {
@@ -99,11 +102,56 @@ const NIVEL_DOT: Record<string, string> = {
   critico: "bg-error",
 };
 
-const ORIGEM_META: Record<string, { icon: string; label: string; cls: string }> = {
-  campo: { icon: "engineering", label: "Equipe em campo", cls: "text-primary bg-primary/8" },
-  sistema: { icon: "sensors", label: "Sistema", cls: "text-secondary bg-secondary/10" },
-  cidadao: { icon: "person", label: "Cidadão", cls: "text-orange-700 bg-orange-100" },
+const TIMELINE_TYPE_META: Record<TimelineItem["tipo"], { icon: string; label: string }> = {
+  ocorrencia_vinculada: { icon: "link", label: "Ocorrência vinculada" },
+  ocorrencia_desvinculada: { icon: "link_off", label: "Ocorrência desvinculada" },
+  evento_criado: { icon: "add_circle", label: "Evento criado" },
+  evento_ativado: { icon: "play_circle", label: "Evento ativado" },
+  evento_desativado: { icon: "stop_circle", label: "Evento desativado" },
+  nota: { icon: "note", label: "Nota manual" },
 };
+
+const formatTimelineDate = (value: string) => {
+  const date = new Date(value);
+  return Number.isNaN(date.getTime())
+    ? "Data não informada"
+    : date.toLocaleString("pt-BR", { dateStyle: "short", timeStyle: "short" });
+};
+
+type TimelineAction = "carregar" | "adicionar" | "apagar";
+
+function timelineErrorMessage(error: unknown, action: TimelineAction): string {
+  if (!isAxiosError(error)) {
+    return `Não foi possível ${action === "carregar" ? "carregar a timeline" : action === "adicionar" ? "adicionar a nota" : "apagar a nota"}. Tente novamente.`;
+  }
+
+  const status = error.response?.status;
+  const data = error.response?.data as
+    | { error?: string; detail?: string; titulo?: string[]; data_hora?: string[] }
+    | undefined;
+  const backendMessage = data?.error || data?.detail;
+
+  if (status === 403) {
+    if (backendMessage?.toLocaleLowerCase("pt-BR").includes("apenas notas")) {
+      return "Esta entrada foi criada pelo sistema e não pode ser apagada. Apenas notas manuais podem ser removidas.";
+    }
+    return action === "carregar"
+      ? "Você não tem permissão para acessar a timeline deste evento, pois ele pertence a outra entidade."
+      : "Você não tem permissão para alterar a timeline deste evento, pois ele pertence a outra entidade.";
+  }
+
+  if (status === 404) {
+    return action === "apagar"
+      ? "A nota não foi encontrada. Ela pode já ter sido removida."
+      : "O evento ou a entrada da timeline não foi encontrado.";
+  }
+
+  if (status === 400) {
+    return data?.titulo?.[0] || data?.data_hora?.[0] || backendMessage || "Confira os dados informados na nota.";
+  }
+
+  return backendMessage || `Não foi possível ${action === "carregar" ? "carregar a timeline" : action === "adicionar" ? "adicionar a nota" : "apagar a nota"}. Tente novamente.`;
+}
 
 const normalize = (value: string | null | undefined) =>
   (value ?? "").trim().toLocaleLowerCase("pt-BR");
@@ -112,6 +160,19 @@ const TYPE_LABEL: Record<Evento["tipo"], string> = {
   desastre: "Desastre",
   mitigacao: "Mitigação",
 };
+
+const OCCURRENCE_CATEGORY_LABEL: Record<string, string> = {
+  geologico: "Geológico",
+  climatico: "Climático",
+  vias_publicas: "Vias Públicas",
+  produtos_perigosos: "Produtos Perigosos",
+};
+
+const formatOccurrenceTitle = (title: string) =>
+  Object.entries(OCCURRENCE_CATEGORY_LABEL).reduce(
+    (formatted, [category, label]) => formatted.replaceAll(category, label),
+    title,
+  );
 
 const STATUS_LABEL: Record<string, string> = {
   ativo: "Ativo",
@@ -167,9 +228,14 @@ export default function EventsPage() {
   const [editandoPublico, setEditandoPublico] = useState(false);
   const [rascunhoResumo, setRascunhoResumo] = useState("");
   const [rascunhoRecs, setRascunhoRecs] = useState<string[]>([]);
-  const [editandoTimeline, setEditandoTimeline] = useState(false);
-  const [rascunhoTimeline, setRascunhoTimeline] = useState<TimelineItem[]>([]);
+  const [timelineEntries, setTimelineEntries] = useState<TimelineItem[]>([]);
+  const [loadingTimeline, setLoadingTimeline] = useState(false);
   const [timelineError, setTimelineError] = useState("");
+  const [adicionandoNota, setAdicionandoNota] = useState(false);
+  const [notaTitulo, setNotaTitulo] = useState("");
+  const [notaDetalhe, setNotaDetalhe] = useState("");
+  const [notaNivel, setNotaNivel] = useState<TimelineItem["nivel"]>("info");
+  const [notaDataHora, setNotaDataHora] = useState("");
 
   const fetchData = useCallback(async () => {
     setLoading(true);
@@ -243,6 +309,31 @@ export default function EventsPage() {
       window.clearTimeout(timer);
     };
   }, [selectedId]);
+
+  const fetchTimeline = useCallback(async (eventId: number) => {
+    setLoadingTimeline(true);
+    setTimelineError("");
+    try {
+      const response = await api.get<TimelineResponse>(`/eventos/${eventId}/timeline/`);
+      setTimelineEntries(response.data.entradas ?? []);
+    } catch (error) {
+      setTimelineEntries([]);
+      setTimelineError(timelineErrorMessage(error, "carregar"));
+    } finally {
+      setLoadingTimeline(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    const timer = window.setTimeout(() => {
+      if (selectedId == null) {
+        setTimelineEntries([]);
+        return;
+      }
+      void fetchTimeline(selectedId);
+    }, 0);
+    return () => window.clearTimeout(timer);
+  }, [fetchTimeline, selectedId]);
 
   const filteredEvents = useMemo(() => {
     const term = normalize(search);
@@ -331,41 +422,46 @@ export default function EventsPage() {
     }
   };
 
-  const abrirEdicaoTimeline = () => {
+  const adicionarNotaTimeline = async () => {
     if (!evento) return;
-    setRascunhoTimeline((evento.timeline ?? []).map((item) => ({ ...item })));
-    setTimelineError("");
-    setEditandoTimeline(true);
-  };
-
-  const salvarTimeline = async () => {
-    if (!evento) return;
-    const timelineLimpa = rascunhoTimeline.map((item) => ({
-      hora: item.hora.trim(),
-      titulo: item.titulo.trim(),
-      detalhe: item.detalhe.trim(),
-      nivel: item.nivel,
-    }));
-    if (timelineLimpa.some((item) => !item.hora || !item.titulo || !item.detalhe)) {
-      setTimelineError("Preencha horário, título e detalhes de todos os registros.");
+    if (!notaTitulo.trim()) {
+      setTimelineError("Informe o título da nota.");
       return;
     }
-
     setSavingAction(true);
     setTimelineError("");
     try {
-      const response = await api.patch<Evento>(`/eventos/${evento.id}/`, {
-        timeline: timelineLimpa,
+      await api.post<TimelineItem>(`/eventos/${evento.id}/timeline/`, {
+        titulo: notaTitulo.trim(),
+        detalhe: notaDetalhe.trim(),
+        nivel: notaNivel,
+        ...(notaDataHora ? { data_hora: new Date(notaDataHora).toISOString() } : {}),
       });
-      setEventos((current) =>
-        current.map((item) =>
-          item.id === evento.id ? { ...item, ...response.data, timeline: timelineLimpa } : item,
-        ),
-      );
-      setEditandoTimeline(false);
-      showToast("Timeline atualizada com sucesso.");
-    } catch {
-      setTimelineError("Não foi possível atualizar a timeline. Tente novamente.");
+      setNotaTitulo("");
+      setNotaDetalhe("");
+      setNotaNivel("info");
+      setNotaDataHora("");
+      setAdicionandoNota(false);
+      await fetchTimeline(evento.id);
+      showToast("Nota adicionada à timeline.");
+    } catch (error) {
+      setTimelineError(timelineErrorMessage(error, "adicionar"));
+    } finally {
+      setSavingAction(false);
+    }
+  };
+
+  const apagarNotaTimeline = async (entrada: TimelineItem) => {
+    if (!evento || entrada.tipo !== "nota") return;
+    if (!window.confirm(`Apagar a nota “${entrada.titulo}”?`)) return;
+    setSavingAction(true);
+    setTimelineError("");
+    try {
+      await api.delete(`/eventos/${evento.id}/timeline/${entrada.id}/`);
+      setTimelineEntries((current) => current.filter((item) => item.id !== entrada.id));
+      showToast("Nota removida da timeline.");
+    } catch (error) {
+      setTimelineError(timelineErrorMessage(error, "apagar"));
     } finally {
       setSavingAction(false);
     }
@@ -376,7 +472,7 @@ export default function EventsPage() {
   }
 
   const route = evento?.rota_ia ?? EMPTY_ROUTE;
-  const realTime = evento?.tempo_real ?? [];
+  const realTime = timelineEntries[0] ?? null;
 
   return (
     <div className="mx-auto max-w-[1600px] space-y-8 p-8">
@@ -418,27 +514,27 @@ export default function EventsPage() {
           </div>
         </label>
 
-          <label className="min-w-0">
-            <MetaTag className="mb-2 block">Status</MetaTag>
-            <div className="relative">
-              <select value={statusFilter} onChange={(event) => setStatusFilter(event.target.value)} className="w-full appearance-none rounded-lg border-none bg-white py-3.5 pl-4 pr-12 text-sm font-bold text-primary focus:ring-2 focus:ring-secondary">
-                <option value="todos">Todos os status</option>
-                {statusOptions.map((status) => <option key={status} value={status}>{statusLabel(status)}</option>)}
-              </select>
-              <Icon name="keyboard_arrow_down" className="pointer-events-none absolute right-4 top-1/2 -translate-y-1/2 text-[20px] text-primary" />
-            </div>
-          </label>
-          <label className="min-w-0">
-            <MetaTag className="mb-2 block">Tipo</MetaTag>
-            <div className="relative">
-              <select value={typeFilter} onChange={(event) => setTypeFilter(event.target.value)} className="w-full appearance-none rounded-lg border-none bg-white py-3.5 pl-4 pr-12 text-sm font-bold text-primary focus:ring-2 focus:ring-secondary">
-                <option value="todos">Todos os tipos</option>
-                <option value="desastre">Desastre</option>
-                <option value="mitigacao">Mitigação</option>
-              </select>
-              <Icon name="keyboard_arrow_down" className="pointer-events-none absolute right-4 top-1/2 -translate-y-1/2 text-[20px] text-primary" />
-            </div>
-          </label>
+        <label className="min-w-0">
+          <MetaTag className="mb-2 block">Status</MetaTag>
+          <div className="relative">
+            <select value={statusFilter} onChange={(event) => setStatusFilter(event.target.value)} className="w-full appearance-none rounded-lg border-none bg-white py-3.5 pl-4 pr-12 text-sm font-bold text-primary focus:ring-2 focus:ring-secondary">
+              <option value="todos">Todos os status</option>
+              {statusOptions.map((status) => <option key={status} value={status}>{statusLabel(status)}</option>)}
+            </select>
+            <Icon name="keyboard_arrow_down" className="pointer-events-none absolute right-4 top-1/2 -translate-y-1/2 text-[20px] text-primary" />
+          </div>
+        </label>
+        <label className="min-w-0">
+          <MetaTag className="mb-2 block">Tipo</MetaTag>
+          <div className="relative">
+            <select value={typeFilter} onChange={(event) => setTypeFilter(event.target.value)} className="w-full appearance-none rounded-lg border-none bg-white py-3.5 pl-4 pr-12 text-sm font-bold text-primary focus:ring-2 focus:ring-secondary">
+              <option value="todos">Todos os tipos</option>
+              <option value="desastre">Desastre</option>
+              <option value="mitigacao">Mitigação</option>
+            </select>
+            <Icon name="keyboard_arrow_down" className="pointer-events-none absolute right-4 top-1/2 -translate-y-1/2 text-[20px] text-primary" />
+          </div>
+        </label>
         <div className="flex min-h-12 items-center md:justify-end">
           <MetaTag>{filteredEvents.length} RESULTADO(S)</MetaTag>
         </div>
@@ -457,7 +553,7 @@ export default function EventsPage() {
             {filteredEvents.map((item) => {
               const active = item.id === evento?.id;
               return (
-                <button key={item.id} type="button" onClick={() => { setSelectedId(item.id); setEditandoTimeline(false); setTimelineError(""); }} className={`card-tonal relative w-full overflow-hidden p-5 text-left shadow-ambient-sm transition-all hover:shadow-ambient ${active ? "ring-2 ring-secondary" : ""}`}>
+                <button key={item.id} type="button" onClick={() => { setSelectedId(item.id); setTimelineEntries([]); setLoadingTimeline(true); setAdicionandoNota(false); setTimelineError(""); }} className={`card-tonal relative w-full overflow-hidden p-5 text-left shadow-ambient-sm transition-all hover:shadow-ambient ${active ? "ring-2 ring-secondary" : ""}`}>
                   <span className={`absolute bottom-0 left-0 top-0 w-1 ${normalize(item.status) === "ativo" ? "bg-error" : normalize(item.status) === "monitorando" ? "bg-orange-500" : "bg-slate-300"}`} />
                   <div className="pl-3">
                     <div className="mb-2 flex items-center justify-between gap-2">
@@ -512,10 +608,36 @@ export default function EventsPage() {
               {tab === "tempo_real" && (
                 <div className="card-tonal p-7 shadow-ambient-sm">
                   <SectionHeader overline="RELATÓRIO EM TEMPO REAL" title="Dados que chegam do campo" />
-                  {realTime.length === 0 ? <p className="text-[12px] italic text-on-surface-variant">Nenhuma transmissão registrada para este evento.</p> : <div className="space-y-3">{realTime.map((item, index) => { const meta = ORIGEM_META[item.origem] ?? ORIGEM_META.sistema; return <div key={index} className="flex gap-3 rounded-lg bg-surface-container-low p-4"><div className={`flex h-9 w-9 shrink-0 items-center justify-center rounded-md ${meta.cls}`}><Icon name={meta.icon} filled className="text-[18px]" /></div><div><div className="flex flex-wrap items-center gap-2"><span className="text-[12px] font-bold text-primary">{item.autor}</span><MetaTag>{meta.label}</MetaTag><MetaTag className="text-secondary">{item.hora}</MetaTag></div><p className="mt-1 text-[12px] leading-relaxed text-on-surface">{item.msg}</p></div></div>; })}</div>}
+                  {loadingTimeline ? (
+                    <p className="text-[12px] text-on-surface-variant">Carregando atualização mais recente...</p>
+                  ) : timelineError ? (
+                    <p className="rounded-lg bg-error-container p-3 text-[12px] font-semibold text-error">{timelineError}</p>
+                  ) : !realTime ? (
+                    <p className="text-[12px] italic text-on-surface-variant">Nenhuma transmissão registrada para este evento.</p>
+                  ) : (
+                    <div className="flex gap-3 rounded-lg bg-surface-container-low p-4">
+                      <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-md bg-secondary/10 text-secondary">
+                        <Icon name={TIMELINE_TYPE_META[realTime.tipo]?.icon ?? "sensors"} filled className="text-[18px]" />
+                      </div>
+                      <div className="min-w-0">
+                        <div className="flex flex-wrap items-center gap-2">
+                          <span className="text-[12px] font-bold text-primary">{realTime.autor_nome || "Sistema"}</span>
+                          <MetaTag>{TIMELINE_TYPE_META[realTime.tipo]?.label ?? realTime.tipo}</MetaTag>
+                          <MetaTag className="text-secondary">{formatTimelineDate(realTime.data_hora)}</MetaTag>
+                        </div>
+                        <p className="mt-1 text-[13px] font-bold text-primary">{realTime.titulo}</p>
+                        {realTime.detalhe && <p className="mt-1 text-[12px] leading-relaxed text-on-surface">{realTime.detalhe}</p>}
+                        {realTime.anterior_ao_evento && (
+                          <p className="mt-2 rounded-md bg-orange-100 px-3 py-2 text-[11px] font-semibold text-orange-800">
+                            Ocorrência criada antes do evento; vinculada posteriormente.
+                          </p>
+                        )}
+                      </div>
+                    </div>
+                  )}
                   <div className="mt-6 border-t border-outline-variant/20 pt-5">
                     <MetaTag className="mb-3 block">OCORRÊNCIAS VINCULADAS ({ocorrenciasVinculadas.length})</MetaTag>
-                    {ocorrenciasVinculadas.length === 0 ? <p className="text-[12px] italic text-on-surface-variant">Nenhuma ocorrência vinculada.</p> : <div className="grid grid-cols-1 gap-2 md:grid-cols-2">{ocorrenciasVinculadas.map((occurrence) => <div key={occurrence.id} className="flex items-center gap-2 rounded-lg bg-surface-container-low p-2.5 text-[12px]"><Icon name="emergency" className="shrink-0 text-[16px] text-error" /><span className="font-bold text-primary">#{occurrence.id}</span><span className="truncate">{occurrence.titulo}</span></div>)}</div>}
+                    {ocorrenciasVinculadas.length === 0 ? <p className="text-[12px] italic text-on-surface-variant">Nenhuma ocorrência vinculada.</p> : <div className="grid grid-cols-1 gap-2 md:grid-cols-2">{ocorrenciasVinculadas.map((occurrence) => <div key={occurrence.id} className="flex items-center gap-2 rounded-lg bg-surface-container-low p-2.5 text-[12px]"><Icon name="emergency" className="shrink-0 text-[16px] text-error" /><span className="font-bold text-primary">#{occurrence.id}</span><span className="truncate">{formatOccurrenceTitle(occurrence.titulo)}</span></div>)}</div>}
                   </div>
                 </div>
               )}
@@ -533,68 +655,82 @@ export default function EventsPage() {
                     overline="CRESCIMENTO E DIMENSÃO"
                     title="Timeline do Evento"
                     action={
-                      editandoTimeline ? (
-                        <Btn variant="ghost" icon="close" onClick={() => { setEditandoTimeline(false); setTimelineError(""); }} disabled={savingAction}>Cancelar</Btn>
+                      adicionandoNota ? (
+                        <Btn variant="ghost" icon="close" onClick={() => { setAdicionandoNota(false); setTimelineError(""); }} disabled={savingAction}>Cancelar</Btn>
                       ) : (
-                        <Btn variant="secondary" icon="edit" onClick={abrirEdicaoTimeline}>Editar timeline</Btn>
+                        <Btn variant="secondary" icon="add" onClick={() => setAdicionandoNota(true)}>Adicionar nota</Btn>
                       )
                     }
                   />
-                  {!editandoTimeline ? (
-                    (evento.timeline ?? []).length === 0 ? (
-                      <p className="text-[12px] italic text-on-surface-variant">Nenhum registro na timeline.</p>
-                    ) : (
-                      <div className="relative pl-6">
-                        <span className="absolute bottom-2 left-[7px] top-2 w-px bg-outline-variant/50" />
-                        <div className="relative space-y-5">
-                          {evento.timeline.map((item, index) => (
-                            <div key={`${item.hora}-${item.titulo}-${index}`} className="relative">
-                              <span className={`absolute -left-6 top-1 h-3.5 w-3.5 rounded-full border-2 border-white shadow ${NIVEL_DOT[item.nivel] ?? "bg-slate-400"}`} />
-                              <MetaTag className="text-secondary">{item.hora}</MetaTag>
-                              <p className="mt-0.5 text-[13px] font-bold text-primary">{item.titulo}</p>
-                              <p className="mt-0.5 text-[12px] leading-relaxed text-on-surface-variant">{item.detalhe}</p>
-                            </div>
-                          ))}
-                        </div>
+                  {adicionandoNota && (
+                    <div className="mb-6 space-y-4 rounded-xl bg-surface-container-low p-5">
+                      <div className="grid gap-4 md:grid-cols-[minmax(0,1fr)_180px_220px]">
+                        <label>
+                          <MetaTag className="mb-1.5 block">Título</MetaTag>
+                          <input value={notaTitulo} onChange={(event) => setNotaTitulo(event.target.value)} disabled={savingAction} placeholder="Título da nota" className="w-full rounded-lg border-none bg-white px-3 py-2.5 text-sm font-semibold text-primary focus:ring-2 focus:ring-secondary" />
+                        </label>
+                        <label>
+                          <MetaTag className="mb-1.5 block">Nível</MetaTag>
+                          <select value={notaNivel} onChange={(event) => setNotaNivel(event.target.value as TimelineItem["nivel"])} disabled={savingAction} className="w-full rounded-lg border-none bg-white px-3 py-2.5 text-sm font-semibold text-primary focus:ring-2 focus:ring-secondary">
+                            <option value="info">Informativo</option>
+                            <option value="atencao">Atenção</option>
+                            <option value="critico">Crítico</option>
+                          </select>
+                        </label>
+                        <label>
+                          <MetaTag className="mb-1.5 block">Data e hora (opcional)</MetaTag>
+                          <input type="datetime-local" value={notaDataHora} onChange={(event) => setNotaDataHora(event.target.value)} disabled={savingAction} className="w-full rounded-lg border-none bg-white px-3 py-2.5 text-sm font-semibold text-primary focus:ring-2 focus:ring-secondary" />
+                        </label>
                       </div>
-                    )
+                      <label className="block">
+                        <MetaTag className="mb-1.5 block">Detalhes (opcional)</MetaTag>
+                        <textarea value={notaDetalhe} onChange={(event) => setNotaDetalhe(event.target.value)} disabled={savingAction} rows={3} placeholder="Informações adicionais..." className="w-full resize-none rounded-lg border-none bg-white px-3 py-2.5 text-sm font-medium text-primary focus:ring-2 focus:ring-secondary" />
+                      </label>
+                      <Btn variant="success" icon="save" onClick={adicionarNotaTimeline} disabled={savingAction}>{savingAction ? "Salvando..." : "Salvar nota"}</Btn>
+                    </div>
+                  )}
+                  {timelineError && <p role="alert" className="mb-4 rounded-lg bg-error-container p-3 text-sm font-semibold text-error">{timelineError}</p>}
+                  {loadingTimeline ? (
+                    <p className="text-[12px] text-on-surface-variant">Carregando timeline...</p>
+                  ) : timelineEntries.length === 0 ? (
+                    <p className="text-[12px] italic text-on-surface-variant">Nenhum registro na timeline.</p>
                   ) : (
-                    <div className="space-y-4">
-                      {rascunhoTimeline.map((item, index) => (
-                        <div key={index} className="rounded-xl bg-surface-container-low p-4">
-                          <div className="mb-3 flex items-center justify-between gap-3">
-                            <MetaTag>REGISTRO {index + 1}</MetaTag>
-                            <button type="button" onClick={() => setRascunhoTimeline((current) => current.filter((_, itemIndex) => itemIndex !== index))} disabled={savingAction} className="rounded-lg p-2 text-on-surface-variant hover:bg-error-container hover:text-error" aria-label={`Remover registro ${index + 1}`}>
-                              <Icon name="delete" className="text-[18px]" />
-                            </button>
-                          </div>
-                          <div className="grid gap-3 sm:grid-cols-[140px_1fr_170px]">
-                            <label>
-                              <MetaTag className="mb-1.5 block">Horário</MetaTag>
-                              <input type="time" value={item.hora} onChange={(event) => setRascunhoTimeline((current) => current.map((entry, itemIndex) => itemIndex === index ? { ...entry, hora: event.target.value } : entry))} disabled={savingAction} className="w-full rounded-lg border-none bg-white px-3 py-2.5 text-sm font-semibold text-primary focus:ring-2 focus:ring-secondary" />
-                            </label>
-                            <label>
-                              <MetaTag className="mb-1.5 block">Título</MetaTag>
-                              <input value={item.titulo} onChange={(event) => setRascunhoTimeline((current) => current.map((entry, itemIndex) => itemIndex === index ? { ...entry, titulo: event.target.value } : entry))} disabled={savingAction} className="w-full rounded-lg border-none bg-white px-3 py-2.5 text-sm font-semibold text-primary focus:ring-2 focus:ring-secondary" />
-                            </label>
-                            <label>
-                              <MetaTag className="mb-1.5 block">Nível</MetaTag>
-                              <select value={item.nivel} onChange={(event) => setRascunhoTimeline((current) => current.map((entry, itemIndex) => itemIndex === index ? { ...entry, nivel: event.target.value } : entry))} disabled={savingAction} className="w-full rounded-lg border-none bg-white px-3 py-2.5 text-sm font-semibold text-primary focus:ring-2 focus:ring-secondary">
-                                <option value="info">Informativo</option>
-                                <option value="atencao">Atenção</option>
-                                <option value="critico">Crítico</option>
-                              </select>
-                            </label>
-                          </div>
-                          <label className="mt-3 block">
-                            <MetaTag className="mb-1.5 block">Detalhes</MetaTag>
-                            <textarea value={item.detalhe} onChange={(event) => setRascunhoTimeline((current) => current.map((entry, itemIndex) => itemIndex === index ? { ...entry, detalhe: event.target.value } : entry))} disabled={savingAction} rows={2} className="w-full resize-none rounded-lg border-none bg-white px-3 py-2.5 text-sm font-medium text-primary focus:ring-2 focus:ring-secondary" />
-                          </label>
-                        </div>
-                      ))}
-                      <Btn variant="ghost" icon="add" onClick={() => setRascunhoTimeline((current) => [...current, { hora: "", titulo: "", detalhe: "", nivel: "info" }])} disabled={savingAction}>Adicionar registro</Btn>
-                      {timelineError && <p role="alert" className="text-sm font-semibold text-error">{timelineError}</p>}
-                      <Btn variant="success" icon="save" onClick={salvarTimeline} disabled={savingAction}>{savingAction ? "Salvando..." : "Salvar timeline"}</Btn>
+                    <div className="relative pl-6">
+                      <span className="absolute bottom-2 left-[7px] top-2 w-px bg-outline-variant/50" />
+                      <div className="relative space-y-5">
+                        {timelineEntries.map((item) => {
+                          const tipoMeta = TIMELINE_TYPE_META[item.tipo];
+                          const ocorrenciaId = typeof item.ocorrencia === "number" ? item.ocorrencia : item.ocorrencia?.id;
+                          return (
+                            <div key={item.id} className="relative rounded-lg bg-surface-container-low p-4">
+                              <span className={`absolute -left-6 top-1 h-3.5 w-3.5 rounded-full border-2 border-white shadow ${NIVEL_DOT[item.nivel] ?? "bg-slate-400"}`} />
+                              <div className="flex items-start justify-between gap-4">
+                                <div className="min-w-0">
+                                  <div className="flex flex-wrap items-center gap-2">
+                                    <Icon name={tipoMeta?.icon ?? "history"} className="text-[16px] text-secondary" />
+                                    <MetaTag>{tipoMeta?.label ?? item.tipo}</MetaTag>
+                                    <MetaTag className="text-secondary">{formatTimelineDate(item.data_hora)}</MetaTag>
+                                    {ocorrenciaId != null && <MetaTag>OCORRÊNCIA #{ocorrenciaId}</MetaTag>}
+                                  </div>
+                                  <p className="mt-2 text-[13px] font-bold text-primary">{item.titulo}</p>
+                                  {item.detalhe && <p className="mt-1 text-[12px] leading-relaxed text-on-surface-variant">{item.detalhe}</p>}
+                                  <p className="mt-2 text-[10px] font-semibold text-on-surface-variant">{item.autor_nome || "Sistema"}</p>
+                                  {item.anterior_ao_evento && (
+                                    <p className="mt-3 rounded-md bg-orange-100 px-3 py-2 text-[11px] font-semibold text-orange-800">
+                                      Ocorrência criada antes do evento; vinculada posteriormente.
+                                    </p>
+                                  )}
+                                </div>
+                                {item.tipo === "nota" && (
+                                  <button type="button" onClick={() => void apagarNotaTimeline(item)} disabled={savingAction} className="shrink-0 rounded-lg p-2 text-on-surface-variant hover:bg-error-container hover:text-error disabled:opacity-50" aria-label={`Apagar nota ${item.titulo}`} title="Apagar nota">
+                                    <Icon name="delete" className="text-[18px]" />
+                                  </button>
+                                )}
+                              </div>
+                            </div>
+                          );
+                        })}
+                      </div>
                     </div>
                   )}
                 </div>

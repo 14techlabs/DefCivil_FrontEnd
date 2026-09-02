@@ -19,6 +19,7 @@ interface OcorrenciaEdit {
   analise_tecnico: string | null;
   coordenadas: { lat: number; lng: number } | null;
   zona: number | null;
+  evento: number | null;
   /** M2M: todas as famílias atingidas. A FK `familia` é legado. */
   familias?: number[];
   anexos: unknown[];
@@ -51,6 +52,7 @@ interface Props {
   onClose: () => void;
   onSaved: () => void;
   zonas: { id: number; nome: string }[];
+  eventos: { id: number; nome: string }[];
   familias?: { id: number; nome: string; endereco?: string }[];
   ocorrencia: OcorrenciaEdit;
 }
@@ -62,6 +64,7 @@ export function EditOccurrenceModal({
   onClose,
   onSaved,
   zonas,
+  eventos,
   familias = [],
   ocorrencia,
 }: Props) {
@@ -74,6 +77,7 @@ export function EditOccurrenceModal({
   const [descricao, setDescricao] = useState("");
   const [analiseTecnico, setAnaliseTecnico] = useState("");
   const [zonaId, setZonaId] = useState<number | null>(null);
+  const [eventoId, setEventoId] = useState<number | null>(null);
   const [detectedZonaIds, setDetectedZonaIds] = useState<number[]>([]);
 
   /**
@@ -100,6 +104,7 @@ export function EditOccurrenceModal({
       setDescricao(ocorrencia.descricao ?? "");
       setAnaliseTecnico(ocorrencia.analise_tecnico ?? "");
       setZonaId(ocorrencia.zona ?? null);
+      setEventoId(ocorrencia.evento ?? null);
       setFamiliaIds(ocorrencia.familias ?? []);
       setDetectedZonaIds([]);
       setLat(ocorrencia.coordenadas ? String(ocorrencia.coordenadas.lat) : "");
@@ -165,6 +170,7 @@ export function EditOccurrenceModal({
         status,
         descricao: descricao.trim(),
         analise_tecnico: analiseTecnico.trim() || null,
+        evento: eventoId,
         coordenadas: { lat: parsedLat, lng: parsedLng },
       };
       if (zonaId !== null) body.zona = zonaId;
@@ -260,7 +266,38 @@ export function EditOccurrenceModal({
       {/* corpo compartilhado com o modal de criação */}
       <OccurrenceFormFields
         beforeFields={(
-          <div>
+          <div className="space-y-5">
+            <label className="block">
+              <MetaTag className="mb-2 block">Evento vinculado</MetaTag>
+              <div className="relative">
+                <select
+                  value={eventoId ?? ""}
+                  onChange={(event) =>
+                    setEventoId(event.target.value ? Number(event.target.value) : null)
+                  }
+                  className="w-full appearance-none rounded-lg border-none bg-surface-container-low py-3.5 pl-4 pr-12 text-sm font-bold text-primary focus:ring-2 focus:ring-secondary"
+                >
+                  <option value="">Não vinculado</option>
+                  {eventos.map((evento) => (
+                    <option key={evento.id} value={evento.id}>
+                      #{evento.id} · {evento.nome}
+                    </option>
+                  ))}
+                </select>
+                <Icon
+                  name="keyboard_arrow_down"
+                  className="pointer-events-none absolute right-4 top-1/2 -translate-y-1/2 text-[20px] text-primary"
+                />
+              </div>
+              {ocorrencia.evento != null && eventoId === null && (
+                <p className="mt-2 text-[11px] font-medium text-on-surface-variant">
+                  Ao salvar, a ocorrência será desvinculada e o evento manterá esse
+                  registro na timeline.
+                </p>
+              )}
+            </label>
+
+            <div>
             <MetaTag className="mb-2 block">
               Famílias atingidas ({familiaIds.length})
             </MetaTag>
@@ -307,14 +344,18 @@ export function EditOccurrenceModal({
               </div>
             )}
 
-            <MetaTag className="mb-2 block">Parecer técnico</MetaTag>
-            <textarea
-              rows={4}
-              value={analiseTecnico}
-              onChange={(event) => setAnaliseTecnico(event.target.value)}
-              placeholder="Registre a avaliação e as recomendações técnicas…"
-              className="w-full resize-y rounded-lg border-none bg-surface-container-low px-4 py-3 text-sm font-medium text-primary focus:ring-2 focus:ring-secondary placeholder:text-on-surface-variant/60"
-            />
+            </div>
+
+            <div>
+              <MetaTag className="mb-2 block">Parecer técnico</MetaTag>
+              <textarea
+                rows={4}
+                value={analiseTecnico}
+                onChange={(event) => setAnaliseTecnico(event.target.value)}
+                placeholder="Registre a avaliação e as recomendações técnicas…"
+                className="w-full resize-y rounded-lg border-none bg-surface-container-low px-4 py-3 text-sm font-medium text-primary focus:ring-2 focus:ring-secondary placeholder:text-on-surface-variant/60"
+              />
+            </div>
           </div>
         )}
         categoria={categoria}
