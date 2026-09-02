@@ -9,26 +9,8 @@ import { api } from "@/app/services/Api";
 import { EditZoneModal } from "@/app/components/EditZoneModal";
 import { DeleteZoneModal } from "@/app/components/DeleteZoneModal";
 import { DataLoading } from "@/app/components/DataLoading";
-import {
-  MOCK_OCORRENCIAS,
-  MOCK_EVENTOS,
-  tecnicoNome,
-  zonaNome as zonaNomeMock,
-} from "@/app/data/mock";
 import type { MapPoint } from "@/app/components/PointsMap";
 import { getOccurrenceStatusMeta } from "@/app/lib/occurrenceStatus";
-
-const PointsMap = dynamic(
-  () => import("@/app/components/PointsMap").then((m) => m.PointsMap),
-  {
-    ssr: false,
-    loading: () => (
-      <div className="flex items-center justify-center rounded-xl bg-surface-container-low min-h-[440px]">
-        <p className="text-sm text-on-surface-variant font-medium">Carregando mapa…</p>
-      </div>
-    ),
-  },
-);
 
 function occurrencePointKind(status: string): MapPoint["kind"] {
   const key = getOccurrenceStatusMeta(status).key;
@@ -70,6 +52,28 @@ interface ZoneDetailResponse {
   eventos: Evento[];
 }
 
+interface Ocorrencia {
+  id: number;
+  titulo: string;
+  categoria: string;
+  status: string;
+  descricao: string;
+  endereco: string;
+  coordenadas: { lat: number; lng: number } | null;
+  created_at: string;
+  custo_danos?: string | number | null;
+}
+
+interface PontoApoio {
+  id: number;
+  tipo: string;
+  tipo_label: string;
+  nome: string;
+  descricao: string;
+  endereco: string;
+  coordenadas: { lat: number; lng: number } | null;
+}
+
 const STATUS_LABEL: Record<string, string> = {
   critico: "Crítico",
   atencao: "Atenção",
@@ -80,6 +84,185 @@ const TIPO_LABEL: Record<string, string> = {
   urbana: "Urbana",
   rural: "Rural",
 };
+
+const CATEGORIA_LABEL: Record<string, string> = {
+  climatico: "Climático",
+  geologico: "Geológico",
+  vias_publicas: "Vias Públicas",
+  produtos_perigosos: "Produtos Perigosos",
+};
+
+// altura do mapa (px); o card lateral usa o mesmo valor + 16 (padding p-2 do card do mapa)
+const ALTURA_MAPA = 500;
+
+function formatDataHora(iso: string | null | undefined): string {
+  if (!iso) return "—";
+  const d = new Date(iso);
+  return `${d
+    .toLocaleDateString("pt-BR", { day: "2-digit", month: "short", year: "numeric" })
+    .toUpperCase()
+    .replace(/\./g, "")} · ${d.toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit" })}`;
+}
+
+function SemItens({ texto }: { texto: string }) {
+  return (
+    <div className="flex flex-col items-center justify-center gap-3 py-14 text-center">
+      <Icon name="inbox" className="text-outline text-[32px]" />
+      <p className="text-[12px] text-on-surface-variant">{texto}</p>
+    </div>
+  );
+}
+
+function PainelOcorrencia({
+  ocorrencia,
+  onVoltar,
+}: {
+  ocorrencia: Ocorrencia;
+  onVoltar: () => void;
+}) {
+  const meta = getOccurrenceStatusMeta(ocorrencia.status);
+  const custo = Number(ocorrencia.custo_danos);
+  return (
+    <div>
+      <button
+        type="button"
+        onClick={onVoltar}
+        className="inline-flex items-center gap-2 text-[11px] font-bold uppercase tracking-mono-tight text-on-surface-variant hover:text-primary mb-4"
+      >
+        <Icon name="arrow_back" className="text-[14px]" /> Voltar
+      </button>
+      <MetaTag className="block mb-3">OCORRÊNCIA #{ocorrencia.id}</MetaTag>
+      <span
+        className="inline-flex items-center gap-2 text-[10px] font-black uppercase tracking-mono-tight mb-3"
+        style={{ color: meta.color }}
+      >
+        <span className="w-2 h-2 rounded-full" style={{ background: meta.color }} />
+        {meta.label}
+      </span>
+      <h3 className="font-headline font-black text-xl text-primary tracking-tighter mb-4">
+        {ocorrencia.titulo || `Ocorrência #${ocorrencia.id}`}
+      </h3>
+      <dl className="space-y-3">
+        <div>
+          <dt className="text-[10px] font-bold uppercase tracking-mono-tight text-on-surface-variant mb-0.5">
+            Categoria
+          </dt>
+          <dd className="text-[13px] font-semibold">
+            {CATEGORIA_LABEL[ocorrencia.categoria] ?? ocorrencia.categoria}
+          </dd>
+        </div>
+        <div>
+          <dt className="text-[10px] font-bold uppercase tracking-mono-tight text-on-surface-variant mb-0.5">
+            Data de registro
+          </dt>
+          <dd className="text-[13px] font-semibold">
+            {formatDataHora(ocorrencia.created_at)}
+          </dd>
+        </div>
+        {ocorrencia.endereco ? (
+          <div>
+            <dt className="text-[10px] font-bold uppercase tracking-mono-tight text-on-surface-variant mb-0.5">
+              Endereço
+            </dt>
+            <dd className="text-[13px] font-semibold">{ocorrencia.endereco}</dd>
+          </div>
+        ) : null}
+        {ocorrencia.coordenadas ? (
+          <div>
+            <dt className="text-[10px] font-bold uppercase tracking-mono-tight text-on-surface-variant mb-0.5">
+              Coordenadas
+            </dt>
+            <dd className="text-[13px] font-semibold font-mono">
+              {ocorrencia.coordenadas.lat.toFixed(5)},{" "}
+              {ocorrencia.coordenadas.lng.toFixed(5)}
+            </dd>
+          </div>
+        ) : null}
+        {Number.isFinite(custo) && custo > 0 ? (
+          <div>
+            <dt className="text-[10px] font-bold uppercase tracking-mono-tight text-on-surface-variant mb-0.5">
+              Danos estimados
+            </dt>
+            <dd className="text-[13px] font-semibold">
+              {custo.toLocaleString("pt-BR", { style: "currency", currency: "BRL" })}
+            </dd>
+          </div>
+        ) : null}
+      </dl>
+      {ocorrencia.descricao ? (
+        <>
+          <div className="h-px bg-outline-variant/20 my-4" />
+          <p className="text-[10px] font-bold uppercase tracking-mono-tight text-on-surface-variant mb-1">
+            Descrição
+          </p>
+          <p className="text-[12px] text-on-surface-variant leading-relaxed whitespace-pre-line">
+            {ocorrencia.descricao}
+          </p>
+        </>
+      ) : null}
+    </div>
+  );
+}
+
+function PainelApoio({
+  apoio,
+  onVoltar,
+}: {
+  apoio: PontoApoio;
+  onVoltar: () => void;
+}) {
+  return (
+    <div>
+      <button
+        type="button"
+        onClick={onVoltar}
+        className="inline-flex items-center gap-2 text-[11px] font-bold uppercase tracking-mono-tight text-on-surface-variant hover:text-primary mb-4"
+      >
+        <Icon name="arrow_back" className="text-[14px]" /> Voltar
+      </button>
+      <MetaTag className="block mb-3">PONTO DE APOIO</MetaTag>
+      <span className="inline-flex items-center gap-2 text-[10px] font-black uppercase tracking-mono-tight text-[#7C4DFF] mb-3">
+        <span className="w-2 h-2 rounded-full bg-[#7C4DFF]" />
+        {apoio.tipo_label}
+      </span>
+      <h3 className="font-headline font-black text-xl text-primary tracking-tighter mb-4">
+        {apoio.nome}
+      </h3>
+      <dl className="space-y-3">
+        {apoio.endereco ? (
+          <div>
+            <dt className="text-[10px] font-bold uppercase tracking-mono-tight text-on-surface-variant mb-0.5">
+              Endereço
+            </dt>
+            <dd className="text-[13px] font-semibold">{apoio.endereco}</dd>
+          </div>
+        ) : null}
+        {apoio.coordenadas ? (
+          <div>
+            <dt className="text-[10px] font-bold uppercase tracking-mono-tight text-on-surface-variant mb-0.5">
+              Coordenadas
+            </dt>
+            <dd className="text-[13px] font-semibold font-mono">
+              {apoio.coordenadas.lat.toFixed(5)},{" "}
+              {apoio.coordenadas.lng.toFixed(5)}
+            </dd>
+          </div>
+        ) : null}
+      </dl>
+      {apoio.descricao ? (
+        <>
+          <div className="h-px bg-outline-variant/20 my-4" />
+          <p className="text-[10px] font-bold uppercase tracking-mono-tight text-on-surface-variant mb-1">
+            Descrição
+          </p>
+          <p className="text-[12px] text-on-surface-variant leading-relaxed whitespace-pre-line">
+            {apoio.descricao}
+          </p>
+        </>
+      ) : null}
+    </div>
+  );
+}
 
 function formatDate(dateStr: string | null | undefined): string {
   if (!dateStr) return "—";
@@ -110,6 +293,13 @@ function ZoneDetailContent() {
   const [loadError, setLoadError] = useState("");
   const [showEditModal, setShowEditModal] = useState(false);
   const [showDeleteModal, setShowDeleteModal] = useState(false);
+
+  // lista lateral: ocorrências e pontos de apoio dentro da zona
+  const [ocorrencias, setOcorrencias] = useState<Ocorrencia[]>([]);
+  const [apoios, setApoios] = useState<PontoApoio[]>([]);
+  const [aba, setAba] = useState<"ocorrencias" | "apoios">("ocorrencias");
+  const [selecionadoId, setSelecionadoId] = useState<string | null>(null);
+  const [avisoFicha, setAvisoFicha] = useState(false);
 
   useEffect(() => {
     if (!zoneId) return;
@@ -144,6 +334,36 @@ function ZoneDetailContent() {
     };
   }, [zoneId]);
 
+  // carrega ocorrências e pontos de apoio da zona (falha silenciosa → lista vazia)
+  useEffect(() => {
+    if (!zoneId) return;
+    let cancelled = false;
+
+    api
+      .get<{ ocorrencias: Ocorrencia[] }>(
+        `/ocorrencias/ocorrencias_por_zona/?zona_id=${zoneId}`,
+      )
+      .then((res) => {
+        if (!cancelled) setOcorrencias(res.data.ocorrencias ?? []);
+      })
+      .catch(() => {
+        if (!cancelled) setOcorrencias([]);
+      });
+
+    api
+      .get<PontoApoio[]>(`/apoios/?zona_id=${zoneId}`)
+      .then((res) => {
+        if (!cancelled) setApoios(Array.isArray(res.data) ? res.data : []);
+      })
+      .catch(() => {
+        if (!cancelled) setApoios([]);
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [zoneId]);
+
   const z = data?.zonas;
   const eventos = useMemo(() => data?.eventos ?? [], [data]);
 
@@ -157,46 +377,72 @@ function ZoneDetailContent() {
     [eventos],
   );
 
-  // pontos do mapa: ocorrências + eventos registrados na zona (mock)
-  const pontosZona: MapPoint[] = useMemo(() => {
-    const zid = z?.id;
-    const ocorrencias: MapPoint[] = MOCK_OCORRENCIAS.filter(
-      (o) => o.coordenadas != null && (zid == null || o.zona === zid),
-    ).map((o) => ({
-      id: `oc-${o.id}`,
-      lat: o.coordenadas!.lat,
-      lng: o.coordenadas!.lng,
-      titulo: `#${o.id} · ${o.titulo}`,
-      subtitulo: `${zonaNomeMock(o.zona)} — ${o.endereco}`,
-      kind: occurrencePointKind(o.status),
-      tecnicoNoLocal:
-        (o.status === "em_andamento" || o.status === "alta_prioridade") && o.tecnico_responsavel
-          ? tecnicoNome(o.tecnico_responsavel)
-          : null,
-    }));
+  // pins do mapa: ocorrências + pontos de apoio dentro da zona
+  const pontos: MapPoint[] = useMemo(() => {
+    const lista: MapPoint[] = [];
+    for (const o of ocorrencias) {
+      if (!o.coordenadas) continue;
+      lista.push({
+        id: `oc-${o.id}`,
+        lat: o.coordenadas.lat,
+        lng: o.coordenadas.lng,
+        titulo: o.titulo || `Ocorrência #${o.id}`,
+        subtitulo: [
+          CATEGORIA_LABEL[o.categoria] ?? o.categoria,
+          getOccurrenceStatusMeta(o.status).label,
+          o.endereco || null,
+        ]
+          .filter(Boolean)
+          .join(" · "),
+        kind: occurrencePointKind(o.status),
+      });
+    }
+    for (const a of apoios) {
+      if (!a.coordenadas) continue;
+      lista.push({
+        id: `apoio-${a.id}`,
+        lat: a.coordenadas.lat,
+        lng: a.coordenadas.lng,
+        titulo: a.nome,
+        subtitulo: [a.tipo_label, a.endereco || null].filter(Boolean).join(" · "),
+        kind: "ponto_apoio",
+      });
+    }
+    return lista;
+  }, [ocorrencias, apoios]);
 
-    // eventos: posiciona no centroide das ocorrências vinculadas
-    const eventos: MapPoint[] = MOCK_EVENTOS.filter(
-      (ev) => zid == null || ev.zonas.includes(zid),
-    ).flatMap((ev) => {
-      const ocs = MOCK_OCORRENCIAS.filter((o) => o.evento === ev.id && o.coordenadas);
-      if (ocs.length === 0) return [];
-      const lat = ocs.reduce((a, o) => a + o.coordenadas!.lat, 0) / ocs.length;
-      const lng = ocs.reduce((a, o) => a + o.coordenadas!.lng, 0) / ocs.length;
-      return [
-        {
-          id: `ev-${ev.id}`,
-          lat,
-          lng,
-          titulo: ev.nome,
-          subtitulo: `${ev.tipo} · ${ocs.length} ocorrências vinculadas`,
-          kind: "evento" as const,
-        },
-      ];
-    });
+  // seleção vinda do mapa (pin) ou da lista lateral
+  const selecionarPonto = (ponto: MapPoint | null) => {
+    if (!ponto) {
+      setSelecionadoId(null);
+      setAvisoFicha(false);
+      return;
+    }
+    const pid = String(ponto.id);
+    setAba(pid.startsWith("apoio-") ? "apoios" : "ocorrencias");
+    setSelecionadoId(pid);
+    setAvisoFicha(false);
+  };
 
-    return [...ocorrencias, ...eventos];
-  }, [z?.id]);
+  const mudarAba = (nova: "ocorrencias" | "apoios") => {
+    setAba(nova);
+    setSelecionadoId(null);
+    setAvisoFicha(false);
+  };
+
+  const selecionadoOcorrencia = useMemo(() => {
+    const id = selecionadoId?.startsWith("oc-")
+      ? Number(selecionadoId.slice(3))
+      : null;
+    return id == null ? null : ocorrencias.find((o) => o.id === id) ?? null;
+  }, [selecionadoId, ocorrencias]);
+
+  const selecionadoApoio = useMemo(() => {
+    const id = selecionadoId?.startsWith("apoio-")
+      ? Number(selecionadoId.slice(6))
+      : null;
+    return id == null ? null : apoios.find((a) => a.id === id) ?? null;
+  }, [selecionadoId, apoios]);
 
 
   const allEventsSorted = useMemo(
@@ -312,75 +558,212 @@ function ZoneDetailContent() {
           <ZoneMap
             zoneId={z.id}
             zoneName={z.nome}
-            height={500}
+            height={ALTURA_MAPA}
             editable={true}
+            pontos={pontos}
+            pontoSelecionadoId={selecionadoId}
+            onSelecionarPonto={selecionarPonto}
           />
         </section>
 
-        {/* Zone Info Card — replaces removed sensor cards */}
+        {/* Lista lateral: ocorrências e pontos de apoio da zona */}
         <section className="col-span-12 lg:col-span-5 flex flex-col gap-5">
-          <div className="card-tonal p-7 shadow-ambient-sm">
-            <div className="space-y-5">
-              <div>
-                <MetaTag className="block mb-1">Nome</MetaTag>
-                <p className="font-headline font-black text-2xl text-primary tracking-tighter">
-                  {z.nome}
-                </p>
-              </div>
-              <div className="h-px bg-outline-variant/20" />
-              <div>
-                <MetaTag className="block mb-1">Tipo</MetaTag>
-                <p className="font-headline font-black text-2xl text-primary tracking-tighter">
-                  {TIPO_LABEL[z.tipo] ?? z.tipo}
-                </p>
-              </div>
-              <div className="h-px bg-outline-variant/20" />
-              <div>
-                <MetaTag className="block mb-1">Status</MetaTag>
-                <p
-                  className={`font-headline font-black text-2xl tracking-tighter ${tone === "error"
-                      ? "text-error"
-                      : tone === "warning"
-                        ? "text-orange-600"
-                        : "text-secondary"
+          <div
+            className="card-tonal p-6 shadow-ambient-sm flex flex-col overflow-hidden"
+            style={{ height: ALTURA_MAPA + 16 }}
+          >
+            {/* abas */}
+            <div className="flex items-center gap-5 border-b border-outline-variant/20 px-1 mb-4">
+              {(["ocorrencias", "apoios"] as const).map((chave) => {
+                const ativa = aba === chave;
+                const total =
+                  chave === "ocorrencias" ? ocorrencias.length : apoios.length;
+                return (
+                  <button
+                    key={chave}
+                    type="button"
+                    onClick={() => mudarAba(chave)}
+                    className={`-mb-px pb-3 pt-1 flex items-center gap-2 text-[11px] font-black uppercase tracking-mono-tight border-b-2 transition ${
+                      ativa
+                        ? "border-primary text-primary"
+                        : "border-transparent text-on-surface-variant hover:text-primary"
                     }`}
-                >
-                  {STATUS_LABEL[z.status]}
-                </p>
-              </div>
+                  >
+                    {chave === "ocorrencias"
+                      ? "Ocorrências"
+                      : "Pontos de Apoio"}
+                    <span
+                      className={`px-1.5 py-0.5 rounded-md text-[10px] font-bold ${
+                        ativa
+                          ? "bg-primary/10 text-primary"
+                          : "bg-surface-container-low text-on-surface-variant"
+                      }`}
+                    >
+                      {String(total).padStart(2, "0")}
+                    </span>
+                  </button>
+                );
+              })}
             </div>
-          </div>
 
-          {/* Events count card */}
-          <div className="card-tonal p-7 shadow-ambient-sm">
-            <div className="flex items-center justify-between mb-6">
-              <MetaTag>Eventos</MetaTag>
-              <Icon
-                name="event"
-                filled
-                className="text-secondary text-[20px]"
-              />
+            {/* conteúdo: lista da aba ou detalhe do item selecionado */}
+            <div className="flex-1 min-h-0 overflow-y-auto pr-1 -mr-1">
+              {selecionadoOcorrencia ? (
+                <PainelOcorrencia
+                  ocorrencia={selecionadoOcorrencia}
+                  onVoltar={() => {
+                    setSelecionadoId(null);
+                    setAvisoFicha(false);
+                  }}
+                />
+              ) : selecionadoApoio ? (
+                <PainelApoio
+                  apoio={selecionadoApoio}
+                  onVoltar={() => {
+                    setSelecionadoId(null);
+                    setAvisoFicha(false);
+                  }}
+                />
+              ) : aba === "ocorrencias" ? (
+                ocorrencias.length === 0 ? (
+                  <SemItens texto="Nenhuma ocorrência registrada nesta zona." />
+                ) : (
+                  <div className="space-y-2">
+                    {ocorrencias.map((o) => {
+                      const meta = getOccurrenceStatusMeta(o.status);
+                      const ativo = selecionadoId === `oc-${o.id}`;
+                      return (
+                        <button
+                          key={o.id}
+                          type="button"
+                          onClick={() => {
+                            setSelecionadoId(ativo ? null : `oc-${o.id}`);
+                            setAvisoFicha(false);
+                          }}
+                          className={`w-full text-left p-3 rounded-lg flex gap-3 items-start transition ${
+                            ativo
+                              ? "bg-primary/8 ring-1 ring-primary/30"
+                              : "bg-surface-container-low hover:bg-surface-container-higher"
+                          }`}
+                        >
+                          <span
+                            className="mt-1 w-2.5 h-2.5 rounded-full shrink-0"
+                            style={{ background: meta.color }}
+                          />
+                          <span className="flex-1 min-w-0">
+                            <span className="block font-bold text-[13px] text-primary truncate">
+                              {o.titulo || `Ocorrência #${o.id}`}
+                            </span>
+                            <span className="block text-[11px] text-on-surface-variant truncate mt-0.5">
+                              {CATEGORIA_LABEL[o.categoria] ?? o.categoria} ·{" "}
+                              {meta.label}
+                              {o.endereco ? ` · ${o.endereco}` : ""}
+                            </span>
+                            <span className="block text-[10px] font-mono text-slate-400 mt-1">
+                              {formatDataHora(o.created_at)}
+                            </span>
+                          </span>
+                          <Icon
+                            name="chevron_right"
+                            className="text-on-surface-variant text-[16px] mt-1"
+                          />
+                        </button>
+                      );
+                    })}
+                  </div>
+                )
+              ) : apoios.length === 0 ? (
+                <SemItens texto="Nenhum ponto de apoio registrado nesta zona." />
+              ) : (
+                <div className="space-y-2">
+                  {apoios.map((a) => {
+                    const ativo = selecionadoId === `apoio-${a.id}`;
+                    return (
+                      <button
+                        key={a.id}
+                        type="button"
+                        onClick={() => {
+                          setSelecionadoId(ativo ? null : `apoio-${a.id}`);
+                          setAvisoFicha(false);
+                        }}
+                        className={`w-full text-left p-3 rounded-lg flex gap-3 items-start transition ${
+                          ativo
+                            ? "bg-primary/8 ring-1 ring-primary/30"
+                            : "bg-surface-container-low hover:bg-surface-container-higher"
+                        }`}
+                      >
+                        <span className="mt-1 w-2.5 h-2.5 rounded-full shrink-0 bg-[#7C4DFF]" />
+                        <span className="flex-1 min-w-0">
+                          <span className="block font-bold text-[13px] text-primary truncate">
+                            {a.nome}
+                          </span>
+                          <span className="block text-[11px] text-on-surface-variant truncate mt-0.5">
+                            {a.tipo_label}
+                            {a.endereco ? ` · ${a.endereco}` : ""}
+                          </span>
+                        </span>
+                        <Icon
+                          name="chevron_right"
+                          className="text-on-surface-variant text-[16px] mt-1"
+                        />
+                      </button>
+                    );
+                  })}
+                </div>
+              )}
             </div>
-            <div className="grid grid-cols-2 gap-4">
-              <div className="bg-surface-container-low rounded-lg p-4 text-center">
-                <MetaTag className="block mb-1">Desastres</MetaTag>
-                <p className="font-headline font-black text-3xl text-error tracking-tighter">
-                  {String(desastres.length).padStart(2, "0")}
-                </p>
+
+            {/* ações fixas do detalhe (fora da área de rolagem, nunca somem) */}
+            {(selecionadoOcorrencia || selecionadoApoio) && (
+              <div className="pt-4 mt-4 border-t border-outline-variant/20">
+                {selecionadoOcorrencia ? (
+                  <Btn
+                    variant="primary"
+                    icon="open_in_new"
+                    className="w-full"
+                    onClick={() =>
+                      // sem noopener: nova aba herda a sessionStorage (senão cai no login)
+                      window.open(
+                        `/occurrences?id=${selecionadoOcorrencia.id}`,
+                        "_blank",
+                      )
+                    }
+                  >
+                    Ver ocorrência completa
+                  </Btn>
+                ) : selecionadoApoio ? (
+                  <>
+                    <Btn
+                      variant="secondary"
+                      icon="open_in_new"
+                      className="w-full"
+                      onClick={() => setAvisoFicha((v) => !v)}
+                    >
+                      Abrir ficha completa
+                    </Btn>
+                    {avisoFicha ? (
+                      <p className="text-[11px] text-on-surface-variant mt-3 text-center">
+                        Ficha completa do ponto de apoio em breve.
+                      </p>
+                    ) : null}
+                  </>
+                ) : null}
               </div>
-              <div className="bg-surface-container-low rounded-lg p-4 text-center">
-                <MetaTag className="block mb-1">Mitigações</MetaTag>
-                <p className="font-headline font-black text-3xl text-secondary tracking-tighter">
-                  {String(mitigacoes.length).padStart(2, "0")}
-                </p>
-              </div>
-            </div>
+            )}
           </div>
         </section>
 
         {/* Desastres section — using backend eventos */}
-        <section className="col-span-12 lg:col-span-5 card-tonal p-7 shadow-ambient-sm">
-          <SectionHeader overline="HISTÓRICO" title="Desastres Registrados" />
+        <section className="col-span-12 lg:col-span-6 card-tonal p-7 shadow-ambient-sm">
+          <SectionHeader
+            overline="HISTÓRICO"
+            title="Desastres Registrados"
+            action={
+              <Chip tone="error">
+                {String(desastres.length).padStart(2, "0")}
+              </Chip>
+            }
+          />
           {desastres.length === 0 ? (
             <p className="text-[12px] text-on-surface-variant">
               Nenhum desastre registrado para esta zona.
@@ -413,8 +796,16 @@ function ZoneDetailContent() {
         </section>
 
         {/* Mitigações section — using backend eventos */}
-        <section className="col-span-12 lg:col-span-7 card-tonal p-7 shadow-ambient-sm">
-          <SectionHeader overline="SOLUÇÕES APLICADAS" title="Histórico de Mitigação" />
+        <section className="col-span-12 lg:col-span-6 card-tonal p-7 shadow-ambient-sm">
+          <SectionHeader
+            overline="SOLUÇÕES APLICADAS"
+            title="Histórico de Mitigação"
+            action={
+              <Chip tone="secondary">
+                {String(mitigacoes.length).padStart(2, "0")}
+              </Chip>
+            }
+          />
           {mitigacoes.length === 0 ? (
             <p className="text-[12px] text-on-surface-variant">
               Nenhuma mitigação registrada para esta zona.

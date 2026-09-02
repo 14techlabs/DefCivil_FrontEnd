@@ -35,7 +35,7 @@ interface PointsMapProps {
 
 /* ────────────── Config visual por tipo ────────────── */
 
-const KIND_META: Record<
+export const KIND_META: Record<
   MapPoint["kind"],
   { label: string; color: string; icon: string }
 > = {
