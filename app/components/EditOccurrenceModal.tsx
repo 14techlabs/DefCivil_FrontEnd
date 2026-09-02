@@ -1,7 +1,8 @@
+// DefCivil_FrontEnd/app/components/EditOccurrenceModal.tsx
 "use client";
 
 import { useEffect, useState } from "react";
-import { Btn, MetaTag } from "@/app/components/Primitives";
+import { Btn, MetaTag, Icon } from "@/app/components/Primitives";
 import { ModalShell } from "@/app/components/Modals";
 import { useGardian } from "@/app/components/GardianContext";
 import { api } from "@/app/services/Api";
@@ -18,6 +19,8 @@ interface OcorrenciaEdit {
   analise_tecnico: string | null;
   coordenadas: { lat: number; lng: number } | null;
   zona: number | null;
+  /** M2M: todas as famílias atingidas. A FK `familia` é legado. */
+  familias?: number[];
   anexos: unknown[];
 }
 
@@ -48,12 +51,20 @@ interface Props {
   onClose: () => void;
   onSaved: () => void;
   zonas: { id: number; nome: string }[];
+  familias?: { id: number; nome: string; endereco?: string }[];
   ocorrencia: OcorrenciaEdit;
 }
 
 /* ───────────── componente ───────────── */
 
-export function EditOccurrenceModal({ open, onClose, onSaved, zonas, ocorrencia }: Props) {
+export function EditOccurrenceModal({
+  open,
+  onClose,
+  onSaved,
+  zonas,
+  familias = [],
+  ocorrencia,
+}: Props) {
   const { showToast } = useGardian();
 
   // form state
@@ -64,6 +75,13 @@ export function EditOccurrenceModal({ open, onClose, onSaved, zonas, ocorrencia 
   const [analiseTecnico, setAnaliseTecnico] = useState("");
   const [zonaId, setZonaId] = useState<number | null>(null);
   const [detectedZonaIds, setDetectedZonaIds] = useState<number[]>([]);
+
+  /**
+   * Um deslizamento atinge o barranco inteiro: a ocorrência é uma só, mas as
+   * famílias afetadas são várias. O backend sincroniza a FK `familia` sozinho,
+   * então enviamos apenas `familias`.
+   */
+  const [familiaIds, setFamiliaIds] = useState<number[]>([]);
   const [lat, setLat] = useState("");
   const [lng, setLng] = useState("");
   const [anexos, setAnexos] = useState<AnexoEditavel[]>([]);
@@ -82,6 +100,7 @@ export function EditOccurrenceModal({ open, onClose, onSaved, zonas, ocorrencia 
       setDescricao(ocorrencia.descricao ?? "");
       setAnaliseTecnico(ocorrencia.analise_tecnico ?? "");
       setZonaId(ocorrencia.zona ?? null);
+      setFamiliaIds(ocorrencia.familias ?? []);
       setDetectedZonaIds([]);
       setLat(ocorrencia.coordenadas ? String(ocorrencia.coordenadas.lat) : "");
       setLng(ocorrencia.coordenadas ? String(ocorrencia.coordenadas.lng) : "");
@@ -149,6 +168,7 @@ export function EditOccurrenceModal({ open, onClose, onSaved, zonas, ocorrencia 
         coordenadas: { lat: parsedLat, lng: parsedLng },
       };
       if (zonaId !== null) body.zona = zonaId;
+      body.familias = familiaIds;
 
       await api.patch(`/ocorrencias/${ocorrencia.id}/`, body);
 
@@ -241,6 +261,52 @@ export function EditOccurrenceModal({ open, onClose, onSaved, zonas, ocorrencia 
       <OccurrenceFormFields
         beforeFields={(
           <div>
+            <MetaTag className="mb-2 block">
+              Famílias atingidas ({familiaIds.length})
+            </MetaTag>
+            {familias.length === 0 ? (
+              <p className="mb-4 text-[12px] italic text-on-surface-variant">
+                Nenhuma família cadastrada nesta entidade.
+              </p>
+            ) : (
+              <div className="mb-4 max-h-40 space-y-1.5 overflow-y-auto pr-1">
+                {familias.map((f) => {
+                  const marcada = familiaIds.includes(f.id);
+                  return (
+                    <button
+                      key={f.id}
+                      type="button"
+                      onClick={() =>
+                        setFamiliaIds((atual) =>
+                          marcada
+                            ? atual.filter((x) => x !== f.id)
+                            : [...atual, f.id],
+                        )
+                      }
+                      className={`flex w-full items-center gap-3 rounded-lg p-2.5 text-left transition-colors ${
+                        marcada
+                          ? "bg-secondary/12 ring-2 ring-secondary"
+                          : "bg-surface-container-low hover:bg-secondary/8"
+                      }`}
+                    >
+                      <Icon
+                        name={marcada ? "check_box" : "check_box_outline_blank"}
+                        className="text-[18px] text-secondary"
+                      />
+                      <span className="min-w-0 flex-1 truncate text-[12px] font-bold text-primary">
+                        {f.nome}
+                      </span>
+                      {f.endereco && (
+                        <span className="shrink-0 truncate text-[10px] text-on-surface-variant">
+                          {f.endereco}
+                        </span>
+                      )}
+                    </button>
+                  );
+                })}
+              </div>
+            )}
+
             <MetaTag className="mb-2 block">Parecer técnico</MetaTag>
             <textarea
               rows={4}

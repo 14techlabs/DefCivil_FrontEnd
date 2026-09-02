@@ -1726,6 +1726,7 @@ function OccurrencesContent() {
               fetchData();
             }}
             zonas={Array.from(zonaLookup.entries()).map(([id, nome]) => ({ id, nome }))}
+            familias={Array.from(familiaLookup.entries()).map(([id, nome]) => ({ id, nome }))}
             ocorrencia={selecionada}
           />
           <DeleteOccurrenceModal

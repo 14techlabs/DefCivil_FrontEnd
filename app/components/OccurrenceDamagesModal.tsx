@@ -1,3 +1,4 @@
+// DefCivil_FrontEnd/app/components/OccurrenceDamagesModal.tsx
 "use client";
 
 import { useCallback, useEffect, useMemo, useState } from "react";
@@ -41,6 +42,56 @@ const moeda = (valor: string | number) => Number(valor || 0).toLocaleString("pt-
   currency: "BRL",
 });
 
+/** ISO -> '25/08 14:36'. Split evita o fuso do `new Date`. */
+function formatarDataHistorico(iso: string): string {
+  if (!iso) return "—";
+  const [data, hora] = iso.split("T");
+  const [, m, d] = data.split("-");
+  return `${d}/${m} ${(hora ?? "").slice(0, 5)}`;
+}
+
+type DanoHumano = {
+  feridos_leves: number;
+  feridos_graves: number;
+  obitos: number;
+  desaparecidos: number;
+  desalojados: number;
+  desabrigados: number;
+  observacoes: string;
+  total_afetados: number;
+  tem_vitima_fatal: boolean;
+};
+
+type EntradaHistorico = {
+  id: number;
+  tipo_label: string;
+  acao_label: string;
+  campos_alterados: string[];
+  criado_em: string;
+};
+
+const HUMANO_VAZIO: DanoHumano = {
+  feridos_leves: 0,
+  feridos_graves: 0,
+  obitos: 0,
+  desaparecidos: 0,
+  desalojados: 0,
+  desabrigados: 0,
+  observacoes: "",
+  total_afetados: 0,
+  tem_vitima_fatal: false,
+};
+
+/** Ordem em que a Defesa Civil costuma reportar. */
+const CATEGORIAS_HUMANO: { campo: keyof DanoHumano; rotulo: string; alerta?: boolean }[] = [
+  { campo: "obitos", rotulo: "ÓBITOS", alerta: true },
+  { campo: "desaparecidos", rotulo: "DESAPARECIDOS", alerta: true },
+  { campo: "feridos_graves", rotulo: "FERIDOS GRAVES" },
+  { campo: "feridos_leves", rotulo: "FERIDOS LEVES" },
+  { campo: "desabrigados", rotulo: "DESABRIGADOS" },
+  { campo: "desalojados", rotulo: "DESALOJADOS" },
+];
+
 export function OccurrenceDamagesModal({
   open,
   ocorrenciaId,
@@ -53,6 +104,16 @@ export function OccurrenceDamagesModal({
   const [danos, setDanos] = useState<DamageRecord[]>([]);
   const [danosOriginais, setDanosOriginais] = useState<DamageRecord[]>([]);
   const [fatalidadesDraft, setFatalidadesDraft] = useState("0");
+
+  /**
+   * Dano humano detalhado. `fatalidades` na ocorrência é o contador simples;
+   * gravar `obitos` aqui atualiza aquele campo automaticamente no backend, o
+   * que evita dois lugares escrevendo o mesmo número.
+   */
+  const [humano, setHumano] = useState<DanoHumano>(HUMANO_VAZIO);
+  const [temHumano, setTemHumano] = useState(false);
+  const [historicoDanos, setHistoricoDanos] = useState<EntradaHistorico[]>([]);
+  const [aba, setAba] = useState<"material" | "humano" | "historico">("material");
   const [editandoId, setEditandoId] = useState<number | null>(null);
   const [itemId, setItemId] = useState("");
   const [quantidade, setQuantidade] = useState("1");
@@ -67,12 +128,26 @@ export function OccurrenceDamagesModal({
     setLoading(true);
     setError("");
     try {
-      const [catalogoResponse, danosResponse] = await Promise.all([
-        api.get<{ itens: CatalogItem[] }>("/danos/itens/"),
-        api.get<{ danos: DamageRecord[] }>("/danos/registros/", {
-          params: { ocorrencia: ocorrenciaId },
-        }),
-      ]);
+      const [catalogoResponse, danosResponse, humanoResponse, historicoResponse] =
+        await Promise.all([
+          api.get<{ itens: CatalogItem[] }>("/danos/itens/"),
+          api.get<{ danos: DamageRecord[] }>("/danos/registros/", {
+            params: { ocorrencia: ocorrenciaId },
+          }),
+          // Dano humano e histórico são complementares: se falharem, a aba de
+          // material ainda é útil. Por isso cada um tem seu próprio catch.
+          api
+            .get<{ dano_humano: DanoHumano }>(
+              `/danos/ocorrencia/${ocorrenciaId}/humano/`,
+            )
+            .catch(() => null),
+          api
+            .get<{ historico: EntradaHistorico[] }>(
+              `/danos/ocorrencia/${ocorrenciaId}/historico/`,
+            )
+            .catch(() => null),
+        ]);
+
       setCatalogo(catalogoResponse.data.itens ?? []);
       const registros = (danosResponse.data.danos ?? []).map((dano) => ({
         ...dano,
@@ -80,6 +155,12 @@ export function OccurrenceDamagesModal({
       }));
       setDanos(registros);
       setDanosOriginais(registros);
+
+      // 204 devolve corpo vazio: `data` vem como string vazia, não objeto.
+      const dh = humanoResponse?.data?.dano_humano ?? null;
+      setHumano(dh ?? HUMANO_VAZIO);
+      setTemHumano(dh != null);
+      setHistoricoDanos(historicoResponse?.data?.historico ?? []);
     } catch {
       setCatalogo([]);
       setDanos([]);
@@ -179,6 +260,14 @@ export function OccurrenceDamagesModal({
     if (editandoId === dano.id) limparFormulario();
   };
 
+  function ajustarHumano(campo: keyof DanoHumano, delta: number) {
+    setHumano((h) => {
+      const atual = Number(h[campo]) || 0;
+      // Nunca abaixo de zero: o backend rejeitaria e o erro chegaria tarde.
+      return { ...h, [campo]: Math.max(0, atual + delta) };
+    });
+  }
+
   const salvarTudo = async () => {
     const fatalidadesValor = Number(fatalidadesDraft);
     if (!Number.isInteger(fatalidadesValor) || fatalidadesValor < 0) {
@@ -212,8 +301,28 @@ export function OccurrenceDamagesModal({
 
     setSaving(true);
     setError("");
+    /**
+     * O PUT do dano humano já atualiza `fatalidades` na ocorrência (o backend
+     * sincroniza com `obitos`). Por isso não fazemos os dois: o PATCH direto
+     * só entra quando o detalhamento nunca foi preenchido, para não descartar
+     * o número que já estava lá.
+     */
+    const operacoesHumano = temHumano || humano.total_afetados > 0
+      ? [
+          api.put(`/danos/ocorrencia/${ocorrenciaId}/humano/`, {
+            feridos_leves: humano.feridos_leves,
+            feridos_graves: humano.feridos_graves,
+            obitos: humano.obitos,
+            desaparecidos: humano.desaparecidos,
+            desalojados: humano.desalojados,
+            desabrigados: humano.desabrigados,
+            observacoes: humano.observacoes,
+          }),
+        ]
+      : [api.patch(`/ocorrencias/${ocorrenciaId}/`, { fatalidades: fatalidadesValor })];
+
     const operacoes = [
-      api.patch(`/ocorrencias/${ocorrenciaId}/`, { fatalidades: fatalidadesValor }),
+      ...operacoesHumano,
       ...excluidos.map((dano) => api.delete(`/danos/registros/${dano.id}/`)),
       ...novos.map((dano) => api.post("/danos/registros/", payloadDano(dano))),
       ...alterados.map((dano) => api.patch(`/danos/registros/${dano.id}/`, payloadDano(dano))),
@@ -253,20 +362,118 @@ export function OccurrenceDamagesModal({
         )}
 
         <section className="card-recessed p-5">
-          <div>
-            <label>
-              <MetaTag className="mb-2 block">DANO HUMANO · FATALIDADES</MetaTag>
-              <input
-                type="number"
-                min="0"
-                step="1"
-                value={fatalidadesDraft}
-                onChange={(event) => setFatalidadesDraft(event.target.value)}
-                className="w-full rounded-lg border-none bg-white px-4 py-3 text-sm font-bold text-primary focus:ring-2 focus:ring-secondary"
-              />
-            </label>
+          <div className="mb-4 flex items-end justify-between gap-4 flex-wrap">
+            <div>
+              <MetaTag className="block">DANO HUMANO</MetaTag>
+              <p className="mt-1 text-sm font-black text-primary">
+                Vítimas e afetados
+                {!temHumano && (
+                  <span className="ml-2 text-[11px] font-bold text-on-surface-variant">
+                    ainda não registrado
+                  </span>
+                )}
+              </p>
+            </div>
+            <div className="text-right">
+              <MetaTag className="block">TOTAL AFETADOS</MetaTag>
+              <p
+                className={`text-2xl font-black tracking-tighter ${
+                  humano.obitos > 0 || humano.desaparecidos > 0
+                    ? "text-error"
+                    : "text-primary"
+                }`}
+              >
+                {CATEGORIAS_HUMANO.reduce(
+                  (soma, c) => soma + (Number(humano[c.campo]) || 0),
+                  0,
+                )}
+              </p>
+            </div>
           </div>
+
+          <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
+            {CATEGORIAS_HUMANO.map(({ campo, rotulo, alerta }) => (
+              <div
+                key={campo}
+                className="flex items-center justify-between gap-3 rounded-lg bg-white px-4 py-2.5"
+              >
+                <span
+                  className={`font-mono text-[10px] font-bold uppercase tracking-mono-tight ${
+                    alerta ? "text-error" : "text-on-surface-variant"
+                  }`}
+                >
+                  {rotulo}
+                </span>
+                <div className="flex items-center gap-1.5 shrink-0">
+                  <button
+                    type="button"
+                    onClick={() => ajustarHumano(campo, -1)}
+                    className="flex h-8 w-8 items-center justify-center rounded-md bg-surface-container-high text-lg font-black text-primary hover:bg-secondary/12"
+                    aria-label={`Diminuir ${rotulo}`}
+                  >
+                    −
+                  </button>
+                  <span className="w-9 text-center font-mono text-sm font-black text-primary tabular-nums">
+                    {String(humano[campo])}
+                  </span>
+                  <button
+                    type="button"
+                    onClick={() => ajustarHumano(campo, 1)}
+                    className="flex h-8 w-8 items-center justify-center rounded-md bg-surface-container-high text-lg font-black text-primary hover:bg-secondary/12"
+                    aria-label={`Aumentar ${rotulo}`}
+                  >
+                    +
+                  </button>
+                </div>
+              </div>
+            ))}
+          </div>
+
+          <p className="mt-3 text-[11px] leading-relaxed text-on-surface-variant">
+            Desalojado vai para casa de conhecidos; desabrigado depende de abrigo
+            público. A distinção é da classificação oficial e entra no relatório de
+            repasse. O número de óbitos atualiza o campo de fatalidades da ocorrência.
+          </p>
+
+          <label className="mt-4 block">
+            <MetaTag className="mb-2 block">OBSERVAÇÕES</MetaTag>
+            <textarea
+              value={humano.observacoes}
+              onChange={(event) =>
+                setHumano((h) => ({ ...h, observacoes: event.target.value }))
+              }
+              rows={2}
+              placeholder="Detalhes sobre as vítimas"
+              className="w-full resize-none rounded-lg border-none bg-white px-4 py-3 text-sm text-on-surface focus:ring-2 focus:ring-secondary"
+            />
+          </label>
         </section>
+
+        {historicoDanos.length > 0 && (
+          <section className="card-recessed p-5">
+            <MetaTag className="mb-3 block">
+              HISTÓRICO DE DANOS ({historicoDanos.length})
+            </MetaTag>
+            <div className="max-h-48 space-y-1.5 overflow-y-auto pr-1">
+              {historicoDanos.map((h) => (
+                <div
+                  key={h.id}
+                  className="flex items-center gap-3 rounded-md bg-white px-3 py-2 text-[11px]"
+                >
+                  <span className="font-bold text-primary">
+                    {h.tipo_label} · {h.acao_label}
+                  </span>
+                  <span className="min-w-0 flex-1 truncate text-on-surface-variant">
+                    {h.campos_alterados.join(", ") || "—"}
+                  </span>
+                  <span className="shrink-0 font-mono text-[10px] text-slate-400">
+                    {formatarDataHistorico(h.criado_em)}
+                  </span>
+                </div>
+              ))}
+            </div>
+          </section>
+        )}
 
         <section>
           <div className="mb-3 flex items-end justify-between gap-4">
