@@ -299,7 +299,6 @@ function ZoneDetailContent() {
   const [apoios, setApoios] = useState<PontoApoio[]>([]);
   const [aba, setAba] = useState<"ocorrencias" | "apoios">("ocorrencias");
   const [selecionadoId, setSelecionadoId] = useState<string | null>(null);
-  const [avisoFicha, setAvisoFicha] = useState(false);
 
   useEffect(() => {
     if (!zoneId) return;
@@ -415,19 +414,16 @@ function ZoneDetailContent() {
   const selecionarPonto = (ponto: MapPoint | null) => {
     if (!ponto) {
       setSelecionadoId(null);
-      setAvisoFicha(false);
       return;
     }
     const pid = String(ponto.id);
     setAba(pid.startsWith("apoio-") ? "apoios" : "ocorrencias");
     setSelecionadoId(pid);
-    setAvisoFicha(false);
   };
 
   const mudarAba = (nova: "ocorrencias" | "apoios") => {
     setAba(nova);
     setSelecionadoId(null);
-    setAvisoFicha(false);
   };
 
   const selecionadoOcorrencia = useMemo(() => {
@@ -613,7 +609,6 @@ function ZoneDetailContent() {
                   ocorrencia={selecionadoOcorrencia}
                   onVoltar={() => {
                     setSelecionadoId(null);
-                    setAvisoFicha(false);
                   }}
                 />
               ) : selecionadoApoio ? (
@@ -621,7 +616,6 @@ function ZoneDetailContent() {
                   apoio={selecionadoApoio}
                   onVoltar={() => {
                     setSelecionadoId(null);
-                    setAvisoFicha(false);
                   }}
                 />
               ) : aba === "ocorrencias" ? (
@@ -638,7 +632,6 @@ function ZoneDetailContent() {
                           type="button"
                           onClick={() => {
                             setSelecionadoId(ativo ? null : `oc-${o.id}`);
-                            setAvisoFicha(false);
                           }}
                           className={`w-full text-left p-3 rounded-lg flex gap-3 items-start transition ${
                             ativo
@@ -684,7 +677,6 @@ function ZoneDetailContent() {
                         type="button"
                         onClick={() => {
                           setSelecionadoId(ativo ? null : `apoio-${a.id}`);
-                          setAvisoFicha(false);
                         }}
                         className={`w-full text-left p-3 rounded-lg flex gap-3 items-start transition ${
                           ativo
@@ -732,21 +724,20 @@ function ZoneDetailContent() {
                     Ver ocorrência completa
                   </Btn>
                 ) : selecionadoApoio ? (
-                  <>
-                    <Btn
-                      variant="secondary"
-                      icon="open_in_new"
-                      className="w-full"
-                      onClick={() => setAvisoFicha((v) => !v)}
-                    >
-                      Abrir ficha completa
-                    </Btn>
-                    {avisoFicha ? (
-                      <p className="text-[11px] text-on-surface-variant mt-3 text-center">
-                        Ficha completa do ponto de apoio em breve.
-                      </p>
-                    ) : null}
-                  </>
+                  <Btn
+                    variant="secondary"
+                    icon="open_in_new"
+                    className="w-full"
+                    onClick={() =>
+                      // sem noopener: nova aba herda a sessionStorage (senão cai no login)
+                      window.open(
+                        `/entity?tab=apoios&ponto=${selecionadoApoio.id}`,
+                        "_blank",
+                      )
+                    }
+                  >
+                    Abrir ficha completa
+                  </Btn>
                 ) : null}
               </div>
             )}
