@@ -14,6 +14,7 @@ import { useGardian } from "@/app/components/GardianContext";
 import { DataLoading } from "@/app/components/DataLoading";
 import { googleMapsUrl } from "@/app/data/mock";
 import { getOccurrenceStatusMeta } from "@/app/lib/occurrenceStatus";
+import { PaginationControls, type PaginationInfo } from "@/app/components/PaginationControls";
 
 // --- tipos da resposta da api ---
 
@@ -80,6 +81,7 @@ interface OcorrenciaAnexo {
 
 interface OcorrenciaListResponse {
   ocorrencias: Ocorrencia[];
+  paginacao: PaginationInfo;
 }
 
 interface DanoOcorrencia {
@@ -194,13 +196,6 @@ function formatHistoryValue(value: unknown): string {
   return String(value);
 }
 
-const CATEGORIA_ICON: Record<string, string> = {
-  geologico: "terrain",
-  climatico: "thunderstorm",
-  vias_publicas: "directions_car",
-  produtos_perigosos: "science",
-};
-
 function categoriaLabel(categoria: string): string {
   const label = CATEGORIA_LABEL[categoria] ?? categoria.replaceAll("_", " ");
   return label
@@ -219,10 +214,6 @@ function tituloOcorrencia(ocorrencia: Pick<Ocorrencia, "titulo" | "categoria">):
     return `Ocorrência — ${categoriaLabel(ocorrencia.categoria)}`;
   }
   return ocorrencia.titulo;
-}
-
-function statusAccentClass(status: string): string {
-  return getOccurrenceStatusMeta(status).accentClass;
 }
 
 function riskToneFor(value?: string | null): "error" | "warning" | "secondary" {
@@ -283,6 +274,8 @@ function OccurrencesContent() {
 
   // estado dos dados
   const [ocorrencias, setOcorrencias] = useState<Ocorrencia[]>([]);
+  const [ocorrenciasGlobais, setOcorrenciasGlobais] = useState<Ocorrencia[]>([]);
+  const [carregandoIndicadores, setCarregandoIndicadores] = useState(true);
   const [zonaLookup, setZonaLookup] = useState<Map<number, string>>(new Map());
   const [usuarioLookup, setUsuarioLookup] = useState<Map<number, string>>(new Map());
   const [eventos, setEventos] = useState<EventoBasic[]>([]);
@@ -290,6 +283,14 @@ function OccurrencesContent() {
   const [checklistLookup, setChecklistLookup] = useState<Map<number, string>>(new Map());
   const [loading, setLoading] = useState(true);
   const [loadError, setLoadError] = useState("");
+  const [pagina, setPagina] = useState(1);
+  const [quantidadePorPagina, setQuantidadePorPagina] = useState<10 | 25 | 50>(10);
+  const [paginacao, setPaginacao] = useState<PaginationInfo>({
+    pagina: 1,
+    total_paginas: 1,
+    quantidade_por_pagina: 10,
+    total_objetos: 0,
+  });
 
   // estado da ui
   const [filter, setFilter] = useState("todas");
@@ -305,6 +306,7 @@ function OccurrencesContent() {
   const [showCreateModal, setShowCreateModal] = useState(false);
   const [showEditModal, setShowEditModal] = useState(false);
   const [showDeleteModal, setShowDeleteModal] = useState(false);
+  const [showFullDetails, setShowFullDetails] = useState(false);
 
   // busca, filtro por status e agrupamento em evento
   const [busca, setBusca] = useState("");
@@ -320,10 +322,22 @@ function OccurrencesContent() {
     setLoading(true);
     setLoadError("");
     try {
-      const occRes = await api.get<OcorrenciaListResponse>("/ocorrencias/");
+      const params: Record<string, string | number> = {
+        pagina,
+        quantidade_por_pagina: quantidadePorPagina,
+      };
+      if (statusFilter !== "todos") params.status = statusFilter;
+      if (familiaFiltroId != null && familiaFiltroAtivo) params.familia_id = familiaFiltroId;
+      const occRes = await api.get<OcorrenciaListResponse>("/ocorrencias/", { params });
       const lista = occRes.data.ocorrencias ?? [];
 
       setOcorrencias(lista);
+      setPaginacao(occRes.data.paginacao ?? {
+        pagina,
+        total_paginas: 1,
+        quantidade_por_pagina: quantidadePorPagina,
+        total_objetos: lista.length,
+      });
       setSelected((current) =>
         current != null && lista.some((o) => o.id === current)
           ? current
@@ -334,7 +348,7 @@ function OccurrencesContent() {
         api.get<ZonaListResponse>("/zonas/"),
         api.get<UsuarioInfo[]>("/usuarios/"),
         api.get<EventoListResponse>("/eventos/"),
-        api.get<FamiliaListResponse>("/familias/"),
+        api.get<FamiliaListResponse>("/familias/", { params: { quantidade_por_pagina: 50 } }),
         api.get<ChecklistBasic[]>("/entidades/checklist/"),
       ]);
 
@@ -376,7 +390,12 @@ function OccurrencesContent() {
             : [],
         ),
       );
-    } catch {
+    } catch (error) {
+      const status = (error as { response?: { status?: number } })?.response?.status;
+      if (status === 404 && pagina > 1) {
+        setPagina((current) => Math.max(1, current - 1));
+        return;
+      }
       setOcorrencias([]);
       setSelected(null);
       setZonaLookup(new Map());
@@ -388,12 +407,45 @@ function OccurrencesContent() {
     } finally {
       setLoading(false);
     }
+  }, [familiaFiltroAtivo, familiaFiltroId, pagina, quantidadePorPagina, statusFilter]);
+
+  const fetchIndicadoresGlobais = useCallback(async () => {
+    setCarregandoIndicadores(true);
+    try {
+      const primeiraPagina = await api.get<OcorrenciaListResponse>("/ocorrencias/", {
+        params: { pagina: 1, quantidade_por_pagina: 50 },
+      });
+      const totalPaginas = primeiraPagina.data.paginacao?.total_paginas ?? 1;
+      const demaisPaginas = totalPaginas > 1
+        ? await Promise.all(
+            Array.from({ length: totalPaginas - 1 }, (_, index) =>
+              api.get<OcorrenciaListResponse>("/ocorrencias/", {
+                params: { pagina: index + 2, quantidade_por_pagina: 50 },
+              }),
+            ),
+          )
+        : [];
+
+      setOcorrenciasGlobais([
+        ...(primeiraPagina.data.ocorrencias ?? []),
+        ...demaisPaginas.flatMap((response) => response.data.ocorrencias ?? []),
+      ]);
+    } catch {
+      setOcorrenciasGlobais([]);
+    } finally {
+      setCarregandoIndicadores(false);
+    }
   }, []);
 
   useEffect(() => {
     const timer = window.setTimeout(() => void fetchData(), 0);
     return () => window.clearTimeout(timer);
   }, [fetchData]);
+
+  useEffect(() => {
+    const timer = window.setTimeout(() => void fetchIndicadoresGlobais(), 0);
+    return () => window.clearTimeout(timer);
+  }, [fetchIndicadoresGlobais]);
 
   // seleciona ocorrência vinda do mapa da zona (?id=X)
   useEffect(() => {
@@ -481,14 +533,14 @@ function OccurrencesContent() {
   // --- indicadores ---
 
   const indicadores = useMemo(() => {
-    const abertas = ocorrencias.filter(
+    const abertas = ocorrenciasGlobais.filter(
       (o) => o.status === "em_analise" || o.status === "aguardando" || o.status === "alta_prioridade",
     ).length;
-    const andamento = ocorrencias.filter((o) => o.status === "em_andamento").length;
-    const resolvidas = ocorrencias.filter((o) => o.status === "concluida").length;
+    const andamento = ocorrenciasGlobais.filter((o) => o.status === "em_andamento").length;
+    const resolvidas = ocorrenciasGlobais.filter((o) => o.status === "concluida").length;
 
     const porZona = new Map<number, number>();
-    for (const o of ocorrencias) {
+    for (const o of ocorrenciasGlobais) {
       if (o.zona != null) porZona.set(o.zona, (porZona.get(o.zona) ?? 0) + 1);
     }
     const ranking = [...porZona.entries()].sort((a, b) => b[1] - a[1]);
@@ -502,7 +554,7 @@ function OccurrencesContent() {
       topZonaQtd: topZona ? topZona[1] : 0,
       ranking: ranking.slice(0, 4),
     };
-  }, [ocorrencias, zonaLookup]);
+  }, [ocorrenciasGlobais, zonaLookup]);
 
   const statusDisponiveis = useMemo(() => {
     const set = new Set(ocorrencias.map((o) => o.status));
@@ -689,7 +741,7 @@ function OccurrencesContent() {
           <MetaTag className="text-secondary">CENTRAL DE OCORRÊNCIAS</MetaTag>
           <span className="w-1 h-1 rounded-full bg-outline-variant" />
           <MetaTag>
-            {ocorrencias.length} REGISTRO{ocorrencias.length !== 1 ? "S" : ""}
+            {paginacao.total_objetos} REGISTRO{paginacao.total_objetos !== 1 ? "S" : ""}
           </MetaTag>
         </div>
         <div className="flex items-end justify-between gap-6 flex-wrap">
@@ -727,28 +779,28 @@ function OccurrencesContent() {
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-5 mb-6">
         <KPI
           label="Em Aberto"
-          value={indicadores.abertas}
+          value={carregandoIndicadores ? "—" : indicadores.abertas}
           icon="pending"
           tone={indicadores.abertas > 0 ? "warning" : "secondary"}
           sub="Aguardando triagem ou despacho"
         />
         <KPI
           label="Em Andamento"
-          value={indicadores.andamento}
+          value={carregandoIndicadores ? "—" : indicadores.andamento}
           icon="engineering"
           tone={indicadores.andamento > 0 ? "error" : "secondary"}
           sub="Com equipe atuando"
         />
         <KPI
           label="Resolvidas"
-          value={indicadores.resolvidas}
+          value={carregandoIndicadores ? "—" : indicadores.resolvidas}
           icon="task_alt"
           tone="secondary"
           sub="Concluídas pela equipe"
         />
         <KPI
           label="Zona com Mais Registros"
-          value={indicadores.topZonaQtd}
+          value={carregandoIndicadores ? "—" : indicadores.topZonaQtd}
           icon="hub"
           tone="secondary"
           sub={indicadores.topZonaNome}
@@ -854,7 +906,7 @@ function OccurrencesContent() {
           </p>
           <button
             type="button"
-            onClick={() => setFamiliaFiltroAtivo((v) => !v)}
+            onClick={() => { setPagina(1); setFamiliaFiltroAtivo((v) => !v); }}
             className="shrink-0 text-[11px] font-bold uppercase tracking-mono-tight text-secondary hover:underline"
           >
             {filtrandoPorFamilia ? "Ver todas" : "Voltar ao filtro"}
@@ -863,7 +915,7 @@ function OccurrencesContent() {
       )}
 
       {/* filtros fixos: permanecem visíveis durante a leitura da lista */}
-      <section className="sticky top-16 z-20 mb-6 min-w-0 max-w-full overflow-hidden rounded-xl border border-outline-variant/25 bg-surface/95 p-4 shadow-ambient-sm backdrop-blur-xl">
+      <section className="sticky top-2 z-40 mb-6 min-w-0 max-w-full rounded-xl border border-outline-variant/25 bg-surface p-4 shadow-ambient before:absolute before:-inset-x-8 before:-bottom-3 before:-top-3 before:-z-10 before:bg-surface-container-lowest">
         <div className="flex min-w-0 flex-col gap-3 sm:flex-row sm:items-center">
           <div className="hidden h-11 w-11 shrink-0 items-center justify-center rounded-lg bg-primary text-white sm:flex">
             <Icon name="filter_list" className="text-[20px]" />
@@ -900,7 +952,7 @@ function OccurrencesContent() {
             />
             <select
               value={statusFilter}
-              onChange={(e) => setStatusFilter(e.target.value)}
+              onChange={(e) => { setPagina(1); setStatusFilter(e.target.value); }}
               className="h-11 w-full appearance-none rounded-lg border border-outline-variant/25 bg-white pl-10 pr-10 text-xs font-bold text-primary outline-none transition-all hover:border-secondary/40 focus:ring-2 focus:ring-secondary/30 sm:min-w-[180px]"
             >
               {statusDisponiveis.map((st) => (
@@ -940,18 +992,32 @@ function OccurrencesContent() {
             />
           </label>
 
-          <div className="hidden h-11 shrink-0 items-center rounded-lg bg-primary/5 px-3 xl:flex">
-            <span className="text-[10px] font-bold uppercase tracking-mono-tight text-primary">
-              <strong className="text-sm text-secondary">{ocorrenciasFiltradas.length}</strong>{" "}
-              de {ocorrencias.length}
+          <label className="flex h-11 w-full shrink-0 items-center gap-2 rounded-lg border border-outline-variant/25 bg-white pl-3 text-on-surface-variant transition-all hover:border-secondary/40 focus-within:ring-2 focus-within:ring-secondary/30 sm:w-auto">
+            <span className="sr-only">Quantidade de ocorrências por página</span>
+            <span aria-hidden="true" className="whitespace-nowrap text-[10px] font-semibold">Itens por página:</span>
+            <span className="relative h-full">
+              <select
+                value={quantidadePorPagina}
+                onChange={(event) => {
+                  setQuantidadePorPagina(Number(event.target.value) as 10 | 25 | 50);
+                  setPagina(1);
+                }}
+                className="h-full min-w-[66px] appearance-none rounded-r-lg border-none bg-transparent pl-2 pr-9 text-xs font-bold text-primary outline-none"
+              >
+                <option value={10}>10</option>
+                <option value={25}>25</option>
+                <option value={50}>50</option>
+              </select>
+              <Icon name="expand_more" className="pointer-events-none absolute right-2 top-1/2 -translate-y-1/2 text-[17px] text-on-surface-variant" />
             </span>
-          </div>
+          </label>
 
           {(busca || statusFilter !== "todos" || filter !== "todas") && (
             <button
               type="button"
               onClick={() => {
                 setBusca("");
+                setPagina(1);
                 setStatusFilter("todos");
                 setFilter("todas");
               }}
@@ -971,23 +1037,35 @@ function OccurrencesContent() {
           Lista de Ocorrências
         </h2>
         <p className="text-[11px] text-on-surface-variant">
-          {ocorrenciasFiltradas.length} ocorrência{ocorrenciasFiltradas.length !== 1 ? "s" : ""} encontrada{ocorrenciasFiltradas.length !== 1 ? "s" : ""}
+          {paginacao.total_objetos} ocorrência{paginacao.total_objetos !== 1 ? "s" : ""} encontrada{paginacao.total_objetos !== 1 ? "s" : ""}
         </p>
       </div>
 
       {/* Lista + detalhe */}
       {ocorrenciasFiltradas.length === 0 ? (
-        <div className="flex flex-col items-center justify-center py-20 text-center">
-          <Icon name="search_off" className="text-on-surface-variant text-[48px] mb-4" />
-          <p className="text-sm text-on-surface-variant">
-            Nenhuma ocorrência encontrada.
-          </p>
+        <div className="space-y-5">
+          <div className="flex flex-col items-center justify-center py-16 text-center">
+            <Icon name="search_off" className="text-on-surface-variant text-[48px] mb-4" />
+            <p className="text-sm text-on-surface-variant">
+              Nenhuma ocorrência encontrada nesta página.
+            </p>
+          </div>
+          <PaginationControls
+            pagination={paginacao}
+            onPageChange={setPagina}
+            onPageSizeChange={(pageSize) => {
+              setQuantidadePorPagina(pageSize);
+              setPagina(1);
+            }}
+            disabled={loading}
+            showPageSize={false}
+          />
         </div>
       ) : (
         <div className="grid grid-cols-12 gap-5">
           {/* Lista */}
-          <div className="col-span-12 lg:col-span-7 space-y-3">
-            <div className="z-10 flex flex-col gap-3 rounded-xl border border-outline-variant/25 bg-surface/95 p-3 shadow-ambient-sm backdrop-blur-xl lg:sticky lg:top-36 sm:flex-row sm:items-center sm:justify-between">
+          <div className="col-span-12 space-y-4">
+            <div className="flex flex-col gap-3 rounded-xl border border-outline-variant/25 bg-surface p-4 shadow-ambient-sm sm:flex-row sm:items-center sm:justify-between">
               <div className="flex min-w-0 items-center gap-2">
                 <Icon
                   name={modoAgrupar ? "checklist" : "event"}
@@ -1024,110 +1102,81 @@ function OccurrencesContent() {
               </div>
             </div>
 
-            {ocorrenciasFiltradas.map((o) => {
-              const zonaNome =
-                o.zona != null ? zonaLookup.get(o.zona) ?? `#${o.zona}` : null;
-              const autorNome =
-                o.autor != null
-                  ? usuarioLookup.get(o.autor) ?? `#${o.autor}`
-                  : null;
-
-              return (
-                <button
-                  key={o.id}
-                  id={`ocorrencia-${o.id}`}
-                  ref={(elemento) => {
-                    if (!elemento || ocorrenciaParaPosicionar !== o.id) return;
-                    window.requestAnimationFrame(() => {
-                      window.requestAnimationFrame(() => {
-                        elemento.scrollIntoView({ behavior: "smooth", block: "center" });
-                        setOcorrenciaParaPosicionar(null);
-                      });
-                    });
-                  }}
-                  onClick={() => {
-                    if (modoAgrupar) toggleMarcada(o.id);
-                    else {
-                      setSelected(o.id);
-                      setDetailTab("detalhes");
-                    }
-                  }}
-                  className={`w-full scroll-mt-36 card-tonal p-6 shadow-ambient-sm text-left relative overflow-hidden hover:shadow-ambient transition-all ${modoAgrupar && marcadas.includes(o.id)
-                    ? "ring-2 ring-secondary"
-                    : !modoAgrupar && selected === o.id
-                      ? "ring-2 ring-secondary"
-                      : ""
-                    }`}
-                >
-                  <span
-                    className={`absolute top-0 left-0 bottom-0 w-1 ${statusAccentClass(o.status)}`}
-                  />
-                  <div className="pl-3">
-                    <div className="flex items-center justify-between mb-3">
-                      <div className="flex items-center gap-3">
+            <div className="overflow-hidden rounded-xl border border-outline-variant/25 bg-surface shadow-ambient-sm">
+              <div className="overflow-x-auto">
+                <table className="w-full min-w-[900px] text-left">
+                  <thead className="bg-surface-container-low">
+                    <tr className="border-b border-outline-variant/25">
+                      {modoAgrupar && <th className="w-12 px-4 py-3"><MetaTag>SEL.</MetaTag></th>}
+                      <th className="px-4 py-3"><MetaTag>CÓDIGO / OCORRÊNCIA</MetaTag></th>
+                      <th className="px-4 py-3"><MetaTag>CATEGORIA</MetaTag></th>
+                      <th className="px-4 py-3"><MetaTag>ZONA</MetaTag></th>
+                      <th className="px-4 py-3"><MetaTag>STATUS</MetaTag></th>
+                      <th className="px-4 py-3"><MetaTag>DATA</MetaTag></th>
+                      <th className="px-4 py-3 text-left"><MetaTag>AÇÕES</MetaTag></th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {ocorrenciasFiltradas.map((o) => (
+                      <tr
+                        key={o.id}
+                        id={`ocorrencia-${o.id}`}
+                        ref={(elemento) => {
+                          if (!elemento || ocorrenciaParaPosicionar !== o.id) return;
+                          window.requestAnimationFrame(() => {
+                            elemento.scrollIntoView({ behavior: "smooth", block: "center" });
+                            setOcorrenciaParaPosicionar(null);
+                          });
+                        }}
+                        className={`border-b border-outline-variant/15 transition-colors last:border-0 hover:bg-surface-container-low ${marcadas.includes(o.id) ? "bg-secondary/5" : ""}`}
+                      >
                         {modoAgrupar && (
-                          <Icon
-                            name={marcadas.includes(o.id) ? "check_box" : "check_box_outline_blank"}
-                            className={`text-[20px] ${marcadas.includes(o.id) ? "text-secondary" : "text-on-surface-variant"}`}
-                          />
+                          <td className="px-4 py-4">
+                            <button type="button" onClick={() => toggleMarcada(o.id)} aria-label={`Selecionar ocorrência ${o.id}`}>
+                              <Icon name={marcadas.includes(o.id) ? "check_box" : "check_box_outline_blank"} className={`text-[20px] ${marcadas.includes(o.id) ? "text-secondary" : "text-on-surface-variant"}`} />
+                            </button>
+                          </td>
                         )}
-                        <span className="text-[10px] font-mono uppercase tracking-mono font-bold text-slate-400">
-                          #{o.id}
-                        </span>
-                        <Chip tone={getOccurrenceStatusMeta(o.status).tone}>
-                          {getOccurrenceStatusMeta(o.status).label.toUpperCase()}
-                        </Chip>
-                      </div>
-                      <MetaTag>{formatDate(o.created_at)}</MetaTag>
-                    </div>
-                    <h3 className="font-headline font-bold text-lg text-primary mb-2">
-                      {tituloOcorrencia(o)}
-                    </h3>
-                    {o.endereco && (
-                      <p className="text-[12px] text-on-surface-variant mb-2 flex items-start gap-1.5">
-                        <Icon name="home_pin" className="text-[15px] mt-0.5 shrink-0" />
-                        {o.endereco}
-                      </p>
-                    )}
-                    <div className="flex items-center gap-4 text-[11px] text-on-surface-variant flex-wrap">
-                      {zonaNome && (
-                        <span className="flex items-center gap-1.5">
-                          <Icon name="location_on" className="text-[14px]" />
-                          {zonaNome}
-                        </span>
-                      )}
-                      <span className="flex items-center gap-1.5">
-                        <Icon
-                          name={
-                            CATEGORIA_ICON[o.categoria] ?? "help"
-                          }
-                          className="text-[14px]"
-                        />
-                        {categoriaLabel(o.categoria)}
-                      </span>
-                      {autorNome && (
-                        <span className="flex items-center gap-1.5">
-                          <Icon name="person" className="text-[14px]" />
-                          {autorNome}
-                        </span>
-                      )}
-                      {o.anexos.length > 0 && (
-                        <span className="flex items-center gap-1.5">
-                          <Icon name="attach_file" className="text-[14px]" />
-                          {o.anexos.length} anexo{o.anexos.length !== 1 ? "s" : ""}
-                        </span>
-                      )}
-                    </div>
-                  </div>
-                </button>
-              );
-            })}
+                        <td className="max-w-[300px] px-4 py-4">
+                          <p className="text-[13px] font-bold text-primary">#{o.id} · {tituloOcorrencia(o)}</p>
+                          <p className="mt-1 truncate text-[10px] text-on-surface-variant">{o.endereco || "Sem endereço informado"}</p>
+                        </td>
+                        <td className="px-4 py-4 text-[11px] font-medium text-on-surface-variant">{categoriaLabel(o.categoria)}</td>
+                        <td className="px-4 py-4 text-[11px] font-medium text-on-surface-variant">{o.zona != null ? zonaLookup.get(o.zona) ?? `Zona #${o.zona}` : "Sem zona"}</td>
+                        <td className="px-4 py-4"><Chip tone={getOccurrenceStatusMeta(o.status).tone}>{getOccurrenceStatusMeta(o.status).label}</Chip></td>
+                        <td className="whitespace-nowrap px-4 py-4 text-[10px] font-bold text-on-surface-variant">{formatDate(o.created_at)}</td>
+                        <td className="px-4 py-4 text-left">
+                          <Btn variant="secondary" icon="visibility" onClick={() => { setSelected(o.id); setDetailTab("detalhes"); setShowFullDetails(true); }}>
+                            Visualizar
+                          </Btn>
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+              <div className="border-t border-outline-variant/20 p-3">
+                <PaginationControls pagination={paginacao} onPageChange={setPagina} onPageSizeChange={(pageSize) => { setQuantidadePorPagina(pageSize); setPagina(1); }} disabled={loading} showPageSize={false} />
+              </div>
+            </div>
           </div>
 
           {/* painel de detalhe */}
           {selecionada && (
-            <aside className="col-span-12 lg:col-span-5">
-              <div className="card-tonal shadow-ambient-sm overflow-hidden lg:sticky lg:top-36 lg:max-h-[calc(100vh-10rem)] lg:overflow-y-auto">
+            <>
+            {showFullDetails && (
+              <button
+                type="button"
+                className="fixed inset-0 z-[60] cursor-default bg-slate-950/55 backdrop-blur-sm"
+                onClick={() => setShowFullDetails(false)}
+                aria-label="Fechar detalhes completos"
+              />
+            )}
+            <aside className={showFullDetails ? "col-span-12" : "hidden"}>
+              <div className={`card-tonal overflow-hidden shadow-ambient-sm ${showFullDetails
+                ? "fixed left-1/2 top-1/2 z-[70] max-h-[92vh] w-[min(700px,calc(100vw-2rem))] -translate-x-1/2 -translate-y-1/2 overflow-y-auto"
+                : "lg:sticky lg:top-36"
+              }`}>
                 {/* cabeçalho do detalhe */}
                 <div className="bg-gradient-to-br from-primary to-primary-container text-white p-6">
                   <div className="flex items-start justify-between gap-3">
@@ -1135,14 +1184,23 @@ function OccurrencesContent() {
                       {categoriaLabel(selecionada.categoria).toUpperCase()}
                     </Chip>
                     <div className="flex items-center gap-2">
+                      {showFullDetails && (
+                        <Btn variant="ghostDark" icon="close" onClick={() => setShowFullDetails(false)}>
+                          Fechar
+                        </Btn>
+                      )}
                       <Btn
                         variant="ghostDark"
                         icon="delete"
-                        onClick={() => setShowDeleteModal(true)}
+                        onClick={() => {
+                          setShowDeleteModal(true);
+                        }}
                       >
                         Excluir
                       </Btn>
-                      <Btn variant="ghostDark" icon="edit" onClick={() => setShowEditModal(true)}>
+                      <Btn variant="ghostDark" icon="edit" onClick={() => {
+                        setShowEditModal(true);
+                      }}>
                         Editar
                       </Btn>
                     </div>
@@ -1158,6 +1216,8 @@ function OccurrencesContent() {
                   )}
                 </div>
 
+                {showFullDetails ? (
+                <>
                 <div className="sticky top-0 z-10 flex border-b border-outline-variant/20 bg-white px-6 pt-3">
                   <button
                     type="button"
@@ -1294,7 +1354,9 @@ function OccurrencesContent() {
                           <Icon name="payments" filled className="text-[18px] text-secondary" />
                           <MetaTag>DANOS E CUSTOS</MetaTag>
                         </div>
-                        <Btn variant="ghost" icon="edit" onClick={() => setShowDamagesModal(true)}>
+                        <Btn variant="ghost" icon="edit" onClick={() => {
+                          setShowDamagesModal(true);
+                        }}>
                           Gerenciar danos
                         </Btn>
                       </div>
@@ -1599,7 +1661,7 @@ function OccurrencesContent() {
                                   <p className="text-[11px] text-on-surface-variant">
                                     {registro.tipo_acao === "criacao"
                                       ? "Registro inicial da ocorrência."
-                                      : "Nenhum campo alterado foi informado."}
+                                      : "Edição registrada sem alteração nos campos da ocorrência."}
                                   </p>
                                 ) : (
                                   <div className="space-y-3">
@@ -1637,8 +1699,49 @@ function OccurrencesContent() {
                     )}
                   </div>
                 )}
+                </>
+                ) : (
+                  <div className="space-y-5 p-6">
+                    <div className="grid grid-cols-2 gap-3">
+                      <div className="rounded-lg bg-surface-container-low p-3">
+                        <MetaTag className="mb-1 block">STATUS</MetaTag>
+                        <Chip tone={getOccurrenceStatusMeta(selecionada.status).tone}>
+                          {getOccurrenceStatusMeta(selecionada.status).label}
+                        </Chip>
+                      </div>
+                      <div className="rounded-lg bg-surface-container-low p-3">
+                        <MetaTag className="mb-1 block">REGISTRADA EM</MetaTag>
+                        <p className="text-[12px] font-bold text-primary">{formatDate(selecionada.created_at)}</p>
+                      </div>
+                      <div className="rounded-lg bg-surface-container-low p-3">
+                        <MetaTag className="mb-1 block">EVENTO</MetaTag>
+                        <p className="truncate text-[12px] font-bold text-primary">
+                          {selecionada.evento != null
+                            ? eventos.find((evento) => evento.id === selecionada.evento)?.nome ?? `Evento #${selecionada.evento}`
+                            : "Não vinculado"}
+                        </p>
+                      </div>
+                      <div className="rounded-lg bg-surface-container-low p-3">
+                        <MetaTag className="mb-1 block">IMPACTO</MetaTag>
+                        <p className="text-[12px] font-bold text-primary">
+                          {selecionada.total_itens_danos ?? 0} itens · {selecionada.fatalidades ?? 0} fatalidades
+                        </p>
+                      </div>
+                    </div>
+                    <div>
+                      <MetaTag className="mb-2 block">RESUMO DO RELATO</MetaTag>
+                      <p className="line-clamp-4 text-[12px] leading-relaxed text-on-surface-variant">
+                        {relatoSelecionado.relato || "Nenhum relato informado."}
+                      </p>
+                    </div>
+                    <Btn variant="primary" icon="open_in_full" onClick={() => setShowFullDetails(true)} full>
+                      Ver detalhes completos
+                    </Btn>
+                  </div>
+                )}
               </div>
             </aside>
+            </>
           )}
         </div>
       )}
@@ -1649,6 +1752,7 @@ function OccurrencesContent() {
         onCreated={() => {
           setShowCreateModal(false);
           fetchData();
+          fetchIndicadoresGlobais();
         }}
         zonas={Array.from(zonaLookup.entries()).map(([id, nome]) => ({ id, nome }))}
       />
@@ -1721,6 +1825,7 @@ function OccurrencesContent() {
             onSaved={() => {
               setShowEditModal(false);
               fetchData();
+              fetchIndicadoresGlobais();
             }}
             zonas={Array.from(zonaLookup.entries()).map(([id, nome]) => ({ id, nome }))}
             eventos={eventos.map(({ id, nome }) => ({ id, nome }))}
@@ -1731,7 +1836,9 @@ function OccurrencesContent() {
             onClose={() => setShowDeleteModal(false)}
             onDeleted={() => {
               setShowDeleteModal(false);
+              setShowFullDetails(false);
               fetchData();
+              fetchIndicadoresGlobais();
             }}
             ocorrencia={selecionada}
           />
@@ -1739,7 +1846,9 @@ function OccurrencesContent() {
             open={showDamagesModal}
             ocorrenciaId={selecionada.id}
             fatalidades={selecionada.fatalidades ?? 0}
-            onClose={() => setShowDamagesModal(false)}
+            onClose={() => {
+              setShowDamagesModal(false);
+            }}
             onSaved={async () => {
               setDanosReloadKey((key) => key + 1);
               await fetchData();

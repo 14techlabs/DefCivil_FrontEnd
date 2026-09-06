@@ -137,7 +137,7 @@ export function GardianProvider({ children }: { children: ReactNode }) {
       />
 
       {toast && (
-        <div className="fixed bottom-6 left-1/2 -translate-x-1/2 z-50 animate-[fadeIn_200ms_ease]">
+        <div className="fixed bottom-6 left-1/2 z-[100] -translate-x-1/2 animate-[fadeIn_200ms_ease]">
           <div
             className={`px-5 py-3 rounded-lg shadow-ambient flex items-center gap-3 ${
               toast.tone === "error" ? "bg-error text-white" : "bg-secondary text-white"
