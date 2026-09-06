@@ -1,4 +1,3 @@
-// DefCivil_FrontEnd/app/(gardian)/occurrences/page.tsx
 "use client";
 
 import { Suspense, useCallback, useEffect, useMemo, useState } from "react";
@@ -1222,10 +1221,11 @@ function OccurrencesContent() {
                   <button
                     type="button"
                     onClick={() => setDetailTab("detalhes")}
-                    className={`flex flex-1 items-center justify-center gap-2 border-b-2 px-3 py-3 text-[11px] font-black uppercase tracking-mono-tight transition-colors ${detailTab === "detalhes"
+                    className={`flex flex-1 items-center justify-center gap-2 border-b-2 px-3 py-3 text-[11px] font-black uppercase tracking-mono-tight transition-colors ${
+                      detailTab === "detalhes"
                         ? "border-secondary text-secondary"
                         : "border-transparent text-on-surface-variant hover:text-primary"
-                      }`}
+                    }`}
                   >
                     <Icon name="description" className="text-[17px]" />
                     Detalhes
@@ -1233,10 +1233,11 @@ function OccurrencesContent() {
                   <button
                     type="button"
                     onClick={() => setDetailTab("historico")}
-                    className={`flex flex-1 items-center justify-center gap-2 border-b-2 px-3 py-3 text-[11px] font-black uppercase tracking-mono-tight transition-colors ${detailTab === "historico"
+                    className={`flex flex-1 items-center justify-center gap-2 border-b-2 px-3 py-3 text-[11px] font-black uppercase tracking-mono-tight transition-colors ${
+                      detailTab === "historico"
                         ? "border-secondary text-secondary"
                         : "border-transparent text-on-surface-variant hover:text-primary"
-                      }`}
+                    }`}
                   >
                     <Icon name="history" className="text-[17px]" />
                     Histórico
@@ -1247,107 +1248,140 @@ function OccurrencesContent() {
                 </div>
 
                 {detailTab === "detalhes" && (
-                  <div className="p-6 space-y-6">
-                    {/* endereço por extenso */}
-                    <div className="card-recessed p-5">
-                      <div className="mb-3 flex items-center gap-2">
-                        <Icon name="location_on" filled className="text-[18px] text-secondary" />
-                        <MetaTag>LOCALIZAÇÃO</MetaTag>
-                      </div>
-
-                      {selecionada.endereco && (
-                        <p className="mb-4 text-[13px] font-bold leading-relaxed text-primary">
-                          {selecionada.endereco}
-                        </p>
-                      )}
-
-                      {selecionada.coordenadas ? (
-                        <div className="grid grid-cols-2 gap-2">
-                          <div className="rounded-lg border border-outline-variant/20 bg-white p-3">
-                            <MetaTag className="mb-1 block">Latitude</MetaTag>
-                            <p className="font-mono text-sm font-bold text-primary">
-                              {selecionada.coordenadas.lat.toFixed(6).replace(".", ",")}
-                            </p>
-                          </div>
-                          <div className="rounded-lg border border-outline-variant/20 bg-white p-3">
-                            <MetaTag className="mb-1 block">Longitude</MetaTag>
-                            <p className="font-mono text-sm font-bold text-primary">
-                              {selecionada.coordenadas.lng.toFixed(6).replace(".", ",")}
-                            </p>
-                          </div>
-                        </div>
-                      ) : !selecionada.endereco ? (
-                        <p className="text-[13px] font-medium text-on-surface-variant">
-                          Localização não informada
-                        </p>
-                      ) : null}
-
-                      <div className="mt-4 flex flex-wrap gap-2">
-                        <a
-                          href={googleMapsUrl(selecionada.coordenadas, selecionada.endereco)}
-                          target="_blank"
-                          rel="noreferrer"
-                          className="inline-flex items-center gap-2 rounded-lg bg-secondary/10 px-4 py-2.5 text-[11px] font-bold uppercase tracking-mono-tight text-secondary transition-all hover:bg-secondary/15"
-                        >
-                          <Icon name="map" className="text-[16px]" /> Abrir no mapa
-                        </a>
-                      </div>
+                <div className="p-6 space-y-6">
+                  {/* endereço por extenso */}
+                  <div className="card-recessed p-5">
+                    <div className="mb-3 flex items-center gap-2">
+                      <Icon name="location_on" filled className="text-[18px] text-secondary" />
+                      <MetaTag>LOCALIZAÇÃO</MetaTag>
                     </div>
 
-                    {/* descricao (relato) */}
-                    <div>
-                      <MetaTag className="block mb-2">RELATO</MetaTag>
-                      <p className="text-[13px] text-on-surface leading-relaxed">
-                        {relatoSelecionado.relato}
+                    {selecionada.endereco && (
+                      <p className="mb-4 text-[13px] font-bold leading-relaxed text-primary">
+                        {selecionada.endereco}
                       </p>
+                    )}
 
-                      {relatoSelecionado.marcacoes.length > 0 && (
-                        <div className="mt-4 rounded-lg bg-secondary/10 p-4">
-                          <MetaTag className="mb-2 block text-secondary">INFORMAÇÕES MARCADAS NO FORMULÁRIO</MetaTag>
-                          <div className="flex flex-wrap gap-2">
-                            {relatoSelecionado.marcacoes.map((item) => (
-                              <Chip key={item} tone="secondary" icon="check">{item}</Chip>
-                            ))}
-                          </div>
+                    {selecionada.coordenadas ? (
+                      <div className="grid grid-cols-2 gap-2">
+                        <div className="rounded-lg border border-outline-variant/20 bg-white p-3">
+                          <MetaTag className="mb-1 block">Latitude</MetaTag>
+                          <p className="font-mono text-sm font-bold text-primary">
+                            {selecionada.coordenadas.lat.toFixed(6).replace(".", ",")}
+                          </p>
                         </div>
-                      )}
-
-                      {selecionada.autor != null && (
-                        <div className="flex flex-wrap gap-4 mt-3 text-[11px] text-on-surface-variant">
-                          <span className="flex items-center gap-1.5">
-                            <Icon name="person" className="text-[14px]" />
-                            {usuarioLookup.get(selecionada.autor) ??
-                              `Usuário #${selecionada.autor}`}
-                          </span>
+                        <div className="rounded-lg border border-outline-variant/20 bg-white p-3">
+                          <MetaTag className="mb-1 block">Longitude</MetaTag>
+                          <p className="font-mono text-sm font-bold text-primary">
+                            {selecionada.coordenadas.lng.toFixed(6).replace(".", ",")}
+                          </p>
                         </div>
-                      )}
-
-                      <span className="text-[10px] font-mono font-bold text-slate-400 mt-2 block">
-                        {formatDate(selecionada.created_at)}
-                      </span>
-                    </div>
-
-                    <div className="card-recessed p-5">
-                      <div className="mb-3 flex items-center gap-2">
-                        <Icon name="description" filled className="text-[18px] text-secondary" />
-                        <MetaTag>DADOS DO REGISTRO</MetaTag>
                       </div>
-                      <div className="grid grid-cols-2 gap-3 text-[12px]">
-                        <div>
-                          <MetaTag className="mb-1 block">STATUS</MetaTag>
-                          <Chip tone={getOccurrenceStatusMeta(selecionada.status).tone}>
-                            {getOccurrenceStatusMeta(selecionada.status).label}
-                          </Chip>
+                    ) : !selecionada.endereco ? (
+                      <p className="text-[13px] font-medium text-on-surface-variant">
+                        Localização não informada
+                      </p>
+                    ) : null}
+
+                    <div className="mt-4 flex flex-wrap gap-2">
+                      <a
+                        href={googleMapsUrl(selecionada.coordenadas, selecionada.endereco)}
+                        target="_blank"
+                        rel="noreferrer"
+                        className="inline-flex items-center gap-2 rounded-lg bg-secondary/10 px-4 py-2.5 text-[11px] font-bold uppercase tracking-mono-tight text-secondary transition-all hover:bg-secondary/15"
+                      >
+                        <Icon name="map" className="text-[16px]" /> Abrir no mapa
+                      </a>
+                    </div>
+                  </div>
+
+                  {/* descricao (relato) */}
+                  <div>
+                    <MetaTag className="block mb-2">RELATO</MetaTag>
+                    <p className="text-[13px] text-on-surface leading-relaxed">
+                      {relatoSelecionado.relato}
+                    </p>
+
+                    {relatoSelecionado.marcacoes.length > 0 && (
+                      <div className="mt-4 rounded-lg bg-secondary/10 p-4">
+                        <MetaTag className="mb-2 block text-secondary">INFORMAÇÕES MARCADAS NO FORMULÁRIO</MetaTag>
+                        <div className="flex flex-wrap gap-2">
+                          {relatoSelecionado.marcacoes.map((item) => (
+                            <Chip key={item} tone="secondary" icon="check">{item}</Chip>
+                          ))}
                         </div>
-                        <div><MetaTag className="mb-1 block">CATEGORIA</MetaTag><p className="font-bold text-primary">{CATEGORIA_LABEL[selecionada.categoria] ?? selecionada.categoria}</p></div>
-                        <div><MetaTag className="mb-1 block">ORIGEM</MetaTag><p className="font-bold text-primary">{selecionada.cidadao != null && selecionada.autor == null ? "Formulário público" : "Registro interno"}</p></div>
-                        <div><MetaTag className="mb-1 block">EVENTO</MetaTag><p className="font-bold text-primary">{selecionada.evento != null ? eventos.find((evento) => evento.id === selecionada.evento)?.nome ?? `Evento #${selecionada.evento}` : "Não vinculado"}</p></div>
-                        <div><MetaTag className="mb-1 block">ZONA</MetaTag><p className="font-bold text-primary">{selecionada.zona != null ? zonaLookup.get(selecionada.zona) ?? `Zona #${selecionada.zona}` : "Não vinculada"}</p></div>
-                        <div><MetaTag className="mb-1 block">RESPONSÁVEL</MetaTag><p className="font-bold text-primary">{selecionada.tecnico_responsavel != null ? usuarioLookup.get(selecionada.tecnico_responsavel) ?? `Usuário #${selecionada.tecnico_responsavel}` : "Não atribuído"}</p></div>
-                        <div><MetaTag className="mb-1 block">FATALIDADES</MetaTag><p className="font-bold text-primary">{selecionada.fatalidades ?? 0}</p></div>
+                      </div>
+                    )}
+
+                    {selecionada.autor != null && (
+                      <div className="flex flex-wrap gap-4 mt-3 text-[11px] text-on-surface-variant">
+                        <span className="flex items-center gap-1.5">
+                          <Icon name="person" className="text-[14px]" />
+                          {usuarioLookup.get(selecionada.autor) ??
+                            `Usuário #${selecionada.autor}`}
+                        </span>
+                      </div>
+                    )}
+
+                    <span className="text-[10px] font-mono font-bold text-slate-400 mt-2 block">
+                      {formatDate(selecionada.created_at)}
+                    </span>
+                  </div>
+
+                  <div className="card-recessed p-5">
+                    <div className="mb-3 flex items-center gap-2">
+                      <Icon name="description" filled className="text-[18px] text-secondary" />
+                      <MetaTag>DADOS DO REGISTRO</MetaTag>
+                    </div>
+                    <div className="grid grid-cols-2 gap-3 text-[12px]">
+                      <div>
+                        <MetaTag className="mb-1 block">STATUS</MetaTag>
+                        <Chip tone={getOccurrenceStatusMeta(selecionada.status).tone}>
+                          {getOccurrenceStatusMeta(selecionada.status).label}
+                        </Chip>
+                      </div>
+                      <div><MetaTag className="mb-1 block">CATEGORIA</MetaTag><p className="font-bold text-primary">{CATEGORIA_LABEL[selecionada.categoria] ?? selecionada.categoria}</p></div>
+                      <div><MetaTag className="mb-1 block">ORIGEM</MetaTag><p className="font-bold text-primary">{selecionada.cidadao != null && selecionada.autor == null ? "Formulário público" : "Registro interno"}</p></div>
+                      <div><MetaTag className="mb-1 block">EVENTO</MetaTag><p className="font-bold text-primary">{selecionada.evento != null ? eventos.find((evento) => evento.id === selecionada.evento)?.nome ?? `Evento #${selecionada.evento}` : "Não vinculado"}</p></div>
+                      <div><MetaTag className="mb-1 block">ZONA</MetaTag><p className="font-bold text-primary">{selecionada.zona != null ? zonaLookup.get(selecionada.zona) ?? `Zona #${selecionada.zona}` : "Não vinculada"}</p></div>
+                      <div><MetaTag className="mb-1 block">RESPONSÁVEL</MetaTag><p className="font-bold text-primary">{selecionada.tecnico_responsavel != null ? usuarioLookup.get(selecionada.tecnico_responsavel) ?? `Usuário #${selecionada.tecnico_responsavel}` : "Não atribuído"}</p></div>
+                      <div><MetaTag className="mb-1 block">FATALIDADES</MetaTag><p className="font-bold text-primary">{selecionada.fatalidades ?? 0}</p></div>
+                    </div>
+                  </div>
+
+                  <div className="card-recessed p-5">
+                    <div className="mb-3 flex items-center justify-between gap-3">
+                      <div className="flex items-center gap-2">
+                        <Icon name="payments" filled className="text-[18px] text-secondary" />
+                        <MetaTag>DANOS E CUSTOS</MetaTag>
+                      </div>
+                      <Btn variant="ghost" icon="edit" onClick={() => setShowDamagesModal(true)}>
+                        Gerenciar danos
+                      </Btn>
+                    </div>
+                    <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
+                      <div className="rounded-lg bg-white p-3">
+                        <MetaTag className="mb-1 block">CUSTO DOS DANOS</MetaTag>
+                        <p className="font-headline text-lg font-black text-primary">
+                          {Number(selecionada.custo_danos || 0).toLocaleString("pt-BR", {
+                            style: "currency",
+                            currency: "BRL",
+                          })}
+                        </p>
+                      </div>
+                      <div className="rounded-lg bg-white p-3">
+                        <MetaTag className="mb-1 block">ITENS REGISTRADOS</MetaTag>
+                        <p className="font-headline text-lg font-black text-primary">
+                          {selecionada.total_itens_danos ?? 0}
+                        </p>
+                      </div>
+                      <div className="rounded-lg bg-white p-3">
+                        <MetaTag className="mb-1 block">FATALIDADES</MetaTag>
+                        <p className="font-headline text-lg font-black text-primary">
+                          {selecionada.fatalidades ?? 0}
+                        </p>
                       </div>
                     </div>
-
                     <div className="card-recessed p-5">
                       <div className="mb-3 flex items-center justify-between gap-3">
                         <div className="flex items-center gap-2">
@@ -1384,117 +1418,114 @@ function OccurrencesContent() {
                         </div>
                       </div>
 
-                      <div className="mt-4 border-t border-outline-variant/20 pt-4">
-                        <MetaTag className="mb-3 block">ITENS DE DANOS</MetaTag>
-
-                        {carregandoDanos ? (
-                          <p className="text-xs text-on-surface-variant">Carregando itens…</p>
-                        ) : erroDanos ? (
-                          <p className="text-xs font-semibold text-error">{erroDanos}</p>
-                        ) : danosSelecionados.length === 0 ? (
-                          <p className="text-xs text-on-surface-variant">
-                            Nenhum item de dano foi registrado nesta ocorrência.
-                          </p>
-                        ) : (
-                          <div className="space-y-2">
-                            {(mostrarTodosDanos ? danosSelecionados : danosSelecionados.slice(0, 4)).map((dano) => (
-                              <div key={dano.id} className="rounded-lg bg-white p-3">
-                                <div className="flex items-start justify-between gap-3">
-                                  <div className="min-w-0 flex-1">
-                                    <p className="truncate text-[12px] font-bold text-primary">
-                                      {dano.item_nome}
-                                    </p>
-                                    <p className="mt-0.5 text-[10px] text-on-surface-variant">
-                                      {categoriaLabel(dano.categoria)} · {formatDate(dano.created_at)}
-                                    </p>
-                                  </div>
-                                  <p className="shrink-0 text-[12px] font-black text-primary">
-                                    {Number(dano.valor_total || 0).toLocaleString("pt-BR", {
-                                      style: "currency",
-                                      currency: "BRL",
-                                    })}
+                      {carregandoDanos ? (
+                        <p className="text-xs text-on-surface-variant">Carregando itens…</p>
+                      ) : erroDanos ? (
+                        <p className="text-xs font-semibold text-error">{erroDanos}</p>
+                      ) : danosSelecionados.length === 0 ? (
+                        <p className="text-xs text-on-surface-variant">
+                          Nenhum item de dano foi registrado nesta ocorrência.
+                        </p>
+                      ) : (
+                        <div className="space-y-2">
+                          {(mostrarTodosDanos ? danosSelecionados : danosSelecionados.slice(0, 4)).map((dano) => (
+                            <div key={dano.id} className="rounded-lg bg-white p-3">
+                              <div className="flex items-start justify-between gap-3">
+                                <div className="min-w-0 flex-1">
+                                  <p className="truncate text-[12px] font-bold text-primary">
+                                    {dano.item_nome}
+                                  </p>
+                                  <p className="mt-0.5 text-[10px] text-on-surface-variant">
+                                    {categoriaLabel(dano.categoria)} · {formatDate(dano.created_at)}
                                   </p>
                                 </div>
-                                <p className="mt-2 text-[11px] text-on-surface-variant">
-                                  {dano.quantidade} {dano.unidade} × {Number(dano.valor_unitario_aplicado || 0).toLocaleString("pt-BR", {
+                                <p className="shrink-0 text-[12px] font-black text-primary">
+                                  {Number(dano.valor_total || 0).toLocaleString("pt-BR", {
                                     style: "currency",
                                     currency: "BRL",
                                   })}
                                 </p>
-                                {dano.observacoes && (
-                                  <p className="mt-2 rounded-md bg-surface-container-low px-3 py-2 text-[11px] leading-relaxed text-on-surface-variant">
-                                    {dano.observacoes}
-                                  </p>
-                                )}
                               </div>
-                            ))}
+                              <p className="mt-2 text-[11px] text-on-surface-variant">
+                                {dano.quantidade} {dano.unidade} × {Number(dano.valor_unitario_aplicado || 0).toLocaleString("pt-BR", {
+                                  style: "currency",
+                                  currency: "BRL",
+                                })}
+                              </p>
+                              {dano.observacoes && (
+                                <p className="mt-2 rounded-md bg-surface-container-low px-3 py-2 text-[11px] leading-relaxed text-on-surface-variant">
+                                  {dano.observacoes}
+                                </p>
+                              )}
+                            </div>
+                          ))}
 
-                            {danosSelecionados.length > 4 && (
-                              <button
-                                type="button"
-                                onClick={() => setMostrarTodosDanos((atual) => !atual)}
-                                className="flex w-full items-center justify-center gap-1.5 rounded-lg px-3 py-2 text-[10px] font-bold uppercase tracking-mono-tight text-secondary transition-colors hover:bg-secondary/10"
-                              >
-                                {mostrarTodosDanos ? "Mostrar menos" : `Ver todos os ${danosSelecionados.length} itens`}
-                                <Icon name={mostrarTodosDanos ? "expand_less" : "expand_more"} className="text-[16px]" />
-                              </button>
-                            )}
-                          </div>
+                          {danosSelecionados.length > 4 && (
+                            <button
+                              type="button"
+                              onClick={() => setMostrarTodosDanos((atual) => !atual)}
+                              className="flex w-full items-center justify-center gap-1.5 rounded-lg px-3 py-2 text-[10px] font-bold uppercase tracking-mono-tight text-secondary transition-colors hover:bg-secondary/10"
+                            >
+                              {mostrarTodosDanos ? "Mostrar menos" : `Ver todos os ${danosSelecionados.length} itens`}
+                              <Icon name={mostrarTodosDanos ? "expand_less" : "expand_more"} className="text-[16px]" />
+                            </button>
+                          )}
+                        </div>
+                      )}
+                    </div>
+                  </div>
+
+                  {/* analise de ia */}
+                  {selecionada.feito_ia && (
+                    <div className="card-recessed p-4 border-l-4 border-secondary">
+                      <div className="flex items-center gap-2 mb-2">
+                        <Icon
+                          name="psychology"
+                          filled
+                          className="text-secondary text-[18px]"
+                        />
+                        <MetaTag className="text-secondary">
+                          ANÁLISE DE IA
+                        </MetaTag>
+                      </div>
+
+                      {selecionada.analise_ia && (
+                        <p className="text-[13px] text-on-surface leading-relaxed mb-3">
+                          {selecionada.analise_ia}
+                        </p>
+                      )}
+
+                      <div className="flex flex-wrap gap-2">
+                        {selecionada.nivel_perigo_ia && (
+                          <Chip tone={riskToneFor(selecionada.nivel_perigo_ia)}>
+                            {selecionada.nivel_perigo_ia}
+                          </Chip>
                         )}
+                        <Chip tone={selecionada.valido_ia ? "secondary" : "warning"}>
+                          {selecionada.valido_ia
+                            ? "VALIDA"
+                            : "INVÁLIDA"}
+                        </Chip>
                       </div>
                     </div>
+                  )}
 
-                    {/* analise de ia */}
-                    {selecionada.feito_ia && (
-                      <div className="card-recessed p-4 border-l-4 border-secondary">
-                        <div className="flex items-center gap-2 mb-2">
-                          <Icon
-                            name="psychology"
-                            filled
-                            className="text-secondary text-[18px]"
-                          />
-                          <MetaTag className="text-secondary">
-                            ANÁLISE DE IA
-                          </MetaTag>
-                        </div>
-
-                        {selecionada.analise_ia && (
-                          <p className="text-[13px] text-on-surface leading-relaxed mb-3">
-                            {selecionada.analise_ia}
-                          </p>
-                        )}
-
-                        <div className="flex flex-wrap gap-2">
-                          {selecionada.nivel_perigo_ia && (
-                            <Chip tone={riskToneFor(selecionada.nivel_perigo_ia)}>
-                              {selecionada.nivel_perigo_ia}
-                            </Chip>
-                          )}
-                          <Chip tone={selecionada.valido_ia ? "secondary" : "warning"}>
-                            {selecionada.valido_ia
-                              ? "VALIDA"
-                              : "INVÁLIDA"}
-                          </Chip>
-                        </div>
+                  {!selecionada.feito_ia && (
+                    <div className="card-recessed p-4 border-l-4 border-outline-variant">
+                      <div className="flex items-center gap-2 mb-2">
+                        <Icon
+                          name="psychology"
+                          className="text-on-surface-variant text-[18px]"
+                        />
+                        <MetaTag>ANÁLISE DE IA</MetaTag>
                       </div>
-                    )}
+                      <p className="text-[12px] text-on-surface-variant">
+                        Análise de IA pendente para esta ocorrência.
+                      </p>
+                    </div>
+                  )}
 
-                    {!selecionada.feito_ia && (
-                      <div className="card-recessed p-4 border-l-4 border-outline-variant">
-                        <div className="flex items-center gap-2 mb-2">
-                          <Icon
-                            name="psychology"
-                            className="text-on-surface-variant text-[18px]"
-                          />
-                          <MetaTag>ANÁLISE DE IA</MetaTag>
-                        </div>
-                        <p className="text-[12px] text-on-surface-variant">
-                          Análise de IA pendente para esta ocorrência.
-                        </p>
-                      </div>
-                    )}
-
-                    {/* analise tecnica */}
+                  {/* analise tecnica */}
                     <div className="card-recessed p-4 border-l-4 border-primary">
                       <div className="flex items-center gap-2 mb-2">
                         <Icon
@@ -1526,76 +1557,76 @@ function OccurrencesContent() {
                       </div>
                     </div>
 
-                    {/* anexos */}
-                    <div>
-                      <MetaTag className="block mb-2">
-                        ANEXOS ({selecionada.anexos.length})
-                      </MetaTag>
-                      {selecionada.anexos.length === 0 ? (
-                        <p className="text-[12px] text-on-surface-variant italic">
-                          Nenhum arquivo anexado a esta ocorrência.
-                        </p>
-                      ) : (
-                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
-                          {(selecionada.anexos as OcorrenciaAnexo[]).map((a, i) => {
-                            const nome = a.arquivo?.nome ?? `Arquivo ${i + 1}`;
-                            const extensao = nome.split(".").pop()?.toLowerCase() ?? "";
-                            const tipo = ["mp4", "webm", "mov", "avi"].includes(extensao)
-                              ? "video"
-                              : ["jpg", "jpeg", "png", "gif", "webp", "bmp", "svg"].includes(extensao)
-                                ? "foto"
-                                : "documento";
-                            const icone =
-                              tipo === "video"
-                                ? "movie"
-                                : tipo === "documento"
-                                  ? "description"
-                                  : "image";
-                            return (
-                              <button
-                                key={i}
-                                type="button"
-                                onClick={() => void abrirAnexo(a)}
-                                className="flex items-center gap-3 p-3 rounded-lg bg-surface-container-low hover:bg-surface-container transition-all text-left"
+                  {/* anexos */}
+                  <div>
+                    <MetaTag className="block mb-2">
+                      ANEXOS ({selecionada.anexos.length})
+                    </MetaTag>
+                    {selecionada.anexos.length === 0 ? (
+                      <p className="text-[12px] text-on-surface-variant italic">
+                        Nenhum arquivo anexado a esta ocorrência.
+                      </p>
+                    ) : (
+                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                        {(selecionada.anexos as OcorrenciaAnexo[]).map((a, i) => {
+                          const nome = a.arquivo?.nome ?? `Arquivo ${i + 1}`;
+                          const extensao = nome.split(".").pop()?.toLowerCase() ?? "";
+                          const tipo = ["mp4", "webm", "mov", "avi"].includes(extensao)
+                            ? "video"
+                            : ["jpg", "jpeg", "png", "gif", "webp", "bmp", "svg"].includes(extensao)
+                              ? "foto"
+                              : "documento";
+                          const icone =
+                            tipo === "video"
+                              ? "movie"
+                              : tipo === "documento"
+                                ? "description"
+                                : "image";
+                          return (
+                            <button
+                              key={i}
+                              type="button"
+                              onClick={() => void abrirAnexo(a)}
+                              className="flex items-center gap-3 p-3 rounded-lg bg-surface-container-low hover:bg-surface-container transition-all text-left"
+                            >
+                              <div
+                                className={`w-10 h-10 rounded-md flex items-center justify-center shrink-0 ${tipo === "video"
+                                  ? "bg-orange-100"
+                                  : tipo === "documento"
+                                    ? "bg-primary/8"
+                                    : "bg-secondary/10"
+                                  }`}
                               >
-                                <div
-                                  className={`w-10 h-10 rounded-md flex items-center justify-center shrink-0 ${tipo === "video"
-                                    ? "bg-orange-100"
-                                    : tipo === "documento"
-                                      ? "bg-primary/8"
-                                      : "bg-secondary/10"
-                                    }`}
-                                >
-                                  <Icon
-                                    name={icone}
-                                    filled
-                                    className={`text-[20px] ${tipo === "video"
-                                      ? "text-orange-700"
-                                      : tipo === "documento"
-                                        ? "text-primary"
-                                        : "text-secondary"
-                                      }`}
-                                  />
-                                </div>
-                                <div className="min-w-0 flex-1">
-                                  <p className="text-[12px] font-bold text-primary truncate">
-                                    {nome}
-                                  </p>
-                                  <p className="text-[10px] font-mono font-bold text-slate-400 uppercase">
-                                    {tipo} · {extensao || "arquivo"}
-                                  </p>
-                                </div>
                                 <Icon
-                                  name="open_in_new"
-                                  className="text-on-surface-variant text-[16px] shrink-0"
+                                  name={icone}
+                                  filled
+                                  className={`text-[20px] ${tipo === "video"
+                                    ? "text-orange-700"
+                                    : tipo === "documento"
+                                      ? "text-primary"
+                                      : "text-secondary"
+                                    }`}
                                 />
-                              </button>
-                            );
-                          })}
-                        </div>
-                      )}
-                    </div>
+                              </div>
+                              <div className="min-w-0 flex-1">
+                                <p className="text-[12px] font-bold text-primary truncate">
+                                  {nome}
+                                </p>
+                                <p className="text-[10px] font-mono font-bold text-slate-400 uppercase">
+                                  {tipo} · {extensao || "arquivo"}
+                                </p>
+                              </div>
+                              <Icon
+                                name="open_in_new"
+                                className="text-on-surface-variant text-[16px] shrink-0"
+                              />
+                            </button>
+                          );
+                        })}
+                      </div>
+                    )}
                   </div>
+                </div>
                 )}
 
                 {detailTab === "historico" && (
@@ -1784,8 +1815,9 @@ function OccurrencesContent() {
                   setErroAgrupamento("");
                 }}
                 disabled={agrupando}
-                className={`w-full appearance-none rounded-lg border-none bg-surface-container-low py-3.5 pl-4 pr-12 text-sm font-bold focus:ring-2 focus:ring-secondary ${eventoAgrupamentoId === null ? "text-on-surface-variant" : "text-primary"
-                  }`}
+                className={`w-full appearance-none rounded-lg border-none bg-surface-container-low py-3.5 pl-4 pr-12 text-sm font-bold focus:ring-2 focus:ring-secondary ${
+                  eventoAgrupamentoId === null ? "text-on-surface-variant" : "text-primary"
+                }`}
               >
                 <option value="">Selecione um evento</option>
                 {eventos.map((evento) => (
@@ -1829,6 +1861,7 @@ function OccurrencesContent() {
             }}
             zonas={Array.from(zonaLookup.entries()).map(([id, nome]) => ({ id, nome }))}
             eventos={eventos.map(({ id, nome }) => ({ id, nome }))}
+            familias={Array.from(familiaLookup.entries()).map(([id, nome]) => ({ id, nome }))}
             ocorrencia={selecionada}
           />
           <DeleteOccurrenceModal

@@ -31,11 +31,19 @@ interface PointsMapProps {
   points: MapPoint[];
   height?: number;
   showFilters?: boolean;
+  /** mostra popup ao clicar no marcador (padrão). Desligue quando a seleção for controlada pelo pai. */
+  showPopups?: boolean;
+  /** id do marcador selecionado (ganha destaque visual) */
+  selectedId?: number | string | null;
+  /** chamado ao clicar num marcador */
+  onSelect?: (ponto: MapPoint) => void;
+  /** pedido de foco: ao mudar a versão, voa até o marcador */
+  focusRequest?: { id: number | string; versao: number } | null;
 }
 
 /* ────────────── Config visual por tipo ────────────── */
 
-const KIND_META: Record<
+export const KIND_META: Record<
   MapPoint["kind"],
   { label: string; color: string; icon: string }
 > = {
@@ -48,12 +56,107 @@ const KIND_META: Record<
   ponto_apoio: { label: "Pontos de apoio", color: "#7C4DFF", icon: "home_work" },
 };
 
+/* ────────────── helpers de zona ────────────── */
+
+function centroidDoPoligono(polygon: GeoJSON.Polygon): [number, number] {
+  const ring = polygon.coordinates[0];
+  let cx = 0;
+  let cy = 0;
+  for (const [lon, lat] of ring) {
+    cx += lon;
+    cy += lat;
+  }
+  return [cx / ring.length, cy / ring.length];
+}
+
+// desenha todas as zonas acinzentadas com o nome, como nos outros mapas
+function desenharZonasAcinzentadas(
+  map: maplibregl.Map,
+  zonas: { id: number; nome: string; area: GeoJSON.Polygon | null }[],
+) {
+  const features: GeoJSON.Feature<GeoJSON.Polygon>[] = [];
+  const centroides: GeoJSON.Feature<GeoJSON.Point>[] = [];
+
+  for (const z of zonas) {
+    if (!z.area || !z.area.coordinates?.length) continue;
+    const ring = z.area.coordinates[0];
+    const deg = ring.every(
+      (c, i) => i === 0 || (c[0] === ring[0][0] && c[1] === ring[0][1]),
+    );
+    if (deg) continue;
+    features.push({
+      type: "Feature",
+      properties: { nome: z.nome },
+      geometry: z.area,
+    });
+    const [cx, cy] = centroidDoPoligono(z.area);
+    centroides.push({
+      type: "Feature",
+      properties: { nome: z.nome },
+      geometry: { type: "Point", coordinates: [cx, cy] },
+    });
+  }
+
+  if (features.length === 0) return;
+
+  map.addSource("pontos-zonas", {
+    type: "geojson",
+    data: { type: "FeatureCollection", features },
+  });
+  map.addLayer({
+    id: "pontos-zonas-fill",
+    type: "fill",
+    source: "pontos-zonas",
+    paint: { "fill-color": "#888", "fill-opacity": 0.12 },
+  });
+  map.addLayer({
+    id: "pontos-zonas-line",
+    type: "line",
+    source: "pontos-zonas",
+    paint: { "line-color": "#888", "line-width": 1.2, "line-dasharray": [3, 2] },
+  });
+  map.addSource("pontos-zonas-centroides", {
+    type: "geojson",
+    data: { type: "FeatureCollection", features: centroides },
+  });
+  map.addLayer({
+    id: "pontos-zonas-label",
+    type: "symbol",
+    source: "pontos-zonas-centroides",
+    layout: {
+      "text-field": ["get", "nome"],
+      "text-size": 9,
+      "text-offset": [0, -0.5],
+      "text-anchor": "bottom",
+      "text-font": ["Open Sans Bold", "Arial Unicode MS Bold"],
+    },
+    paint: {
+      "text-color": "#666",
+      "text-halo-color": "#fff",
+      "text-halo-width": 1.5,
+    },
+  });
+}
+
 /* ────────────── Componente ────────────── */
 
-export function PointsMap({ points, height = 420, showFilters = true }: PointsMapProps) {
+export function PointsMap({
+  points,
+  height = 420,
+  showFilters = true,
+  showPopups = true,
+  selectedId = null,
+  onSelect,
+  focusRequest = null,
+}: PointsMapProps) {
   const containerRef = useRef<HTMLDivElement>(null);
   const mapRef = useRef<maplibregl.Map | null>(null);
   const markersRef = useRef<maplibregl.Marker[]>([]);
+  const onSelectRef = useRef(onSelect);
+  // atualiza a ref fora da renderização (regra react-hooks/refs)
+  useEffect(() => {
+    onSelectRef.current = onSelect;
+  }, [onSelect]);
   const { user } = useGardian();
 
   const [visible, setVisible] = useState<Record<MapPoint["kind"], boolean>>({
@@ -128,10 +231,14 @@ export function PointsMap({ points, height = 420, showFilters = true }: PointsMa
         resizeMap();
         if (user?.entidade) {
           api
-            .get<{ area: { id: number; area: GeoJSON.MultiPolygon } }>(
-              "/entidades/areas/",
-            )
-            .then((res) => addBoundaryLayer(map, res.data.area.area))
+            .get<{
+              area: { id: number; area: GeoJSON.MultiPolygon };
+              zonas: { id: number; nome: string; area: GeoJSON.Polygon | null }[];
+            }>("/entidades/areas/")
+            .then((res) => {
+              addBoundaryLayer(map, res.data.area.area);
+              desenharZonasAcinzentadas(map, res.data.zonas);
+            })
             .catch(() => {});
         }
       });
@@ -155,7 +262,7 @@ export function PointsMap({ points, height = 420, showFilters = true }: PointsMa
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  // (re)desenha marcadores conforme filtro (e quando o mapa fica pronto)
+  // (re)desenha marcadores conforme filtro/seleção (e quando o mapa fica pronto)
   useEffect(() => {
     const map = mapRef.current;
     if (!map || !mapReady) return;
@@ -165,16 +272,24 @@ export function PointsMap({ points, height = 420, showFilters = true }: PointsMa
 
     if (filtered.length === 0) return;
 
-    const bounds = new maplibregl.LngLatBounds();
-
     for (const p of filtered) {
       const meta = KIND_META[p.kind];
+      const selecionado = selectedId != null && String(selectedId) === String(p.id);
 
       const el = document.createElement("div");
       el.style.cssText =
         "width:30px;height:30px;border-radius:10px;display:flex;align-items:center;justify-content:center;" +
-        `background:${meta.color};box-shadow:0 4px 12px rgba(0,0,0,0.28);border:2px solid #fff;cursor:pointer;`;
+        `background:${meta.color};border:2px solid #fff;cursor:pointer;` +
+        (selecionado
+          ? "box-shadow:0 0 0 4px #fff, 0 0 0 8px rgba(2,132,199,0.9), 0 4px 12px rgba(0,0,0,0.35);transform:scale(1.15);z-index:20;"
+          : "box-shadow:0 4px 12px rgba(0,0,0,0.28);");
       el.innerHTML = `<span class="material-symbols-outlined" style="font-size:16px;color:#fff;font-variation-settings:'FILL' 1">${meta.icon}</span>`;
+
+      // clicar no marcador seleciona (o pai decide o que fazer com a seleção)
+      el.addEventListener("click", (ev) => {
+        ev.stopPropagation();
+        onSelectRef.current?.(p);
+      });
 
       const popupHtml = `
         <div style="font-family:inherit;min-width:180px">
@@ -191,21 +306,46 @@ export function PointsMap({ points, height = 420, showFilters = true }: PointsMa
           }
         </div>`;
 
-      const marker = new maplibregl.Marker({ element: el })
-        .setLngLat([p.lng, p.lat])
-        .setPopup(new maplibregl.Popup({ offset: 18, closeButton: false }).setHTML(popupHtml))
-        .addTo(map);
+      const marker = new maplibregl.Marker({ element: el }).setLngLat([p.lng, p.lat]);
+      if (showPopups) {
+        marker.setPopup(
+          new maplibregl.Popup({ offset: 18, closeButton: false }).setHTML(popupHtml),
+        );
+      }
+      marker.addTo(map);
 
       markersRef.current.push(marker);
-      bounds.extend([p.lng, p.lat]);
     }
+  }, [filtered, mapReady, selectedId, showPopups]);
 
+  // enquadra a lista quando ela muda de verdade (não a cada seleção)
+  useEffect(() => {
+    const map = mapRef.current;
+    if (!map || !mapReady || filtered.length === 0) return;
+    // quando há foco pendente o voo até o marcador cuida do enquadramento
+    if (focusRequest && filtered.some((p) => String(p.id) === String(focusRequest.id))) {
+      return;
+    }
+    const bounds = new maplibregl.LngLatBounds();
+    filtered.forEach((p) => bounds.extend([p.lng, p.lat]));
     if (filtered.length === 1) {
       map.easeTo({ center: [filtered[0].lng, filtered[0].lat], zoom: 13 });
     } else {
       map.fitBounds(bounds, { padding: 60, maxZoom: 14, duration: 500 });
     }
-  }, [filtered, mapReady]);
+  }, [filtered, mapReady, focusRequest]);
+
+  // foca um marcador quando o pai pede (lista ou link profundo)
+  useEffect(() => {
+    if (!focusRequest || !mapReady) return;
+    const alvo = filtered.find((p) => String(p.id) === String(focusRequest.id));
+    if (!alvo) return;
+    mapRef.current?.easeTo({
+      center: [alvo.lng, alvo.lat],
+      zoom: Math.max(mapRef.current?.getZoom() ?? 13, 14),
+      duration: 600,
+    });
+  }, [focusRequest, mapReady, filtered]);
 
   // tipos presentes nos dados (pra não mostrar filtro de algo que não existe)
   const kindsPresent = useMemo(() => {

@@ -1,7 +1,8 @@
+// DefCivil_FrontEnd/app/components/EditOccurrenceModal.tsx
 "use client";
 
 import { useEffect, useState } from "react";
-import { Btn, Icon, MetaTag } from "@/app/components/Primitives";
+import { Btn, MetaTag, Icon } from "@/app/components/Primitives";
 import { ModalShell } from "@/app/components/Modals";
 import { useGardian } from "@/app/components/GardianContext";
 import { api } from "@/app/services/Api";
@@ -19,6 +20,8 @@ interface OcorrenciaEdit {
   coordenadas: { lat: number; lng: number } | null;
   zona: number | null;
   evento: number | null;
+  /** M2M: todas as famílias atingidas. A FK `familia` é legado. */
+  familias?: number[];
   anexos: unknown[];
 }
 
@@ -50,12 +53,21 @@ interface Props {
   onSaved: () => void;
   zonas: { id: number; nome: string }[];
   eventos: { id: number; nome: string }[];
+  familias?: { id: number; nome: string; endereco?: string }[];
   ocorrencia: OcorrenciaEdit;
 }
 
 /* ───────────── componente ───────────── */
 
-export function EditOccurrenceModal({ open, onClose, onSaved, zonas, eventos, ocorrencia }: Props) {
+export function EditOccurrenceModal({
+  open,
+  onClose,
+  onSaved,
+  zonas,
+  eventos,
+  familias = [],
+  ocorrencia,
+}: Props) {
   const { showToast } = useGardian();
 
   // form state
@@ -67,6 +79,13 @@ export function EditOccurrenceModal({ open, onClose, onSaved, zonas, eventos, oc
   const [zonaId, setZonaId] = useState<number | null>(null);
   const [eventoId, setEventoId] = useState<number | null>(null);
   const [detectedZonaIds, setDetectedZonaIds] = useState<number[]>([]);
+
+  /**
+   * Um deslizamento atinge o barranco inteiro: a ocorrência é uma só, mas as
+   * famílias afetadas são várias. O backend sincroniza a FK `familia` sozinho,
+   * então enviamos apenas `familias`.
+   */
+  const [familiaIds, setFamiliaIds] = useState<number[]>([]);
   const [lat, setLat] = useState("");
   const [lng, setLng] = useState("");
   const [anexos, setAnexos] = useState<AnexoEditavel[]>([]);
@@ -78,8 +97,7 @@ export function EditOccurrenceModal({ open, onClose, onSaved, zonas, eventos, oc
 
   // popula o formulário com os dados da ocorrência ao abrir
   useEffect(() => {
-    if (!open) return;
-    const timer = window.setTimeout(() => {
+    if (open) {
       setCategoria(ocorrencia.categoria ?? "");
       setTitulo(ocorrencia.titulo ?? "");
       setStatus(ocorrencia.status ?? "");
@@ -87,6 +105,7 @@ export function EditOccurrenceModal({ open, onClose, onSaved, zonas, eventos, oc
       setAnaliseTecnico(ocorrencia.analise_tecnico ?? "");
       setZonaId(ocorrencia.zona ?? null);
       setEventoId(ocorrencia.evento ?? null);
+      setFamiliaIds(ocorrencia.familias ?? []);
       setDetectedZonaIds([]);
       setLat(ocorrencia.coordenadas ? String(ocorrencia.coordenadas.lat) : "");
       setLng(ocorrencia.coordenadas ? String(ocorrencia.coordenadas.lng) : "");
@@ -103,8 +122,7 @@ export function EditOccurrenceModal({ open, onClose, onSaved, zonas, eventos, oc
       setReferenciasExcluir([]);
       setSaving(false);
       setError("");
-    }, 0);
-    return () => window.clearTimeout(timer);
+    }
   }, [open, ocorrencia]);
 
   const handleFiles = (files: FileList | null) => {
@@ -156,6 +174,7 @@ export function EditOccurrenceModal({ open, onClose, onSaved, zonas, eventos, oc
         coordenadas: { lat: parsedLat, lng: parsedLng },
       };
       if (zonaId !== null) body.zona = zonaId;
+      body.familias = familiaIds;
 
       await api.patch(`/ocorrencias/${ocorrencia.id}/`, body);
 
@@ -173,11 +192,11 @@ export function EditOccurrenceModal({ open, onClose, onSaved, zonas, eventos, oc
           };
         }),
         ...referenciasExcluir.map((referenceId) =>
-        ({
-          tipo: "excluir" as const,
-          referenceId,
-          promise: api.delete("/api/arquivo", { params: { reference_id: referenceId } }),
-        }),
+          ({
+            tipo: "excluir" as const,
+            referenceId,
+            promise: api.delete("/api/arquivo", { params: { reference_id: referenceId } }),
+          }),
         ),
       ];
       const resultados = await Promise.allSettled(operacoes.map((operacao) => operacao.promise));
@@ -253,7 +272,9 @@ export function EditOccurrenceModal({ open, onClose, onSaved, zonas, eventos, oc
               <div className="relative">
                 <select
                   value={eventoId ?? ""}
-                  onChange={(event) => setEventoId(event.target.value ? Number(event.target.value) : null)}
+                  onChange={(event) =>
+                    setEventoId(event.target.value ? Number(event.target.value) : null)
+                  }
                   className="w-full appearance-none rounded-lg border-none bg-surface-container-low py-3.5 pl-4 pr-12 text-sm font-bold text-primary focus:ring-2 focus:ring-secondary"
                 >
                   <option value="">Não vinculado</option>
@@ -263,14 +284,68 @@ export function EditOccurrenceModal({ open, onClose, onSaved, zonas, eventos, oc
                     </option>
                   ))}
                 </select>
-                <Icon name="keyboard_arrow_down" className="pointer-events-none absolute right-4 top-1/2 -translate-y-1/2 text-[20px] text-primary" />
+                <Icon
+                  name="keyboard_arrow_down"
+                  className="pointer-events-none absolute right-4 top-1/2 -translate-y-1/2 text-[20px] text-primary"
+                />
               </div>
               {ocorrencia.evento != null && eventoId === null && (
                 <p className="mt-2 text-[11px] font-medium text-on-surface-variant">
-                  Ao salvar, a ocorrência será desvinculada e o evento manterá esse registro na timeline.
+                  Ao salvar, a ocorrência será desvinculada e o evento manterá esse
+                  registro na timeline.
                 </p>
               )}
             </label>
+
+            <div>
+            <MetaTag className="mb-2 block">
+              Famílias atingidas ({familiaIds.length})
+            </MetaTag>
+            {familias.length === 0 ? (
+              <p className="mb-4 text-[12px] italic text-on-surface-variant">
+                Nenhuma família cadastrada nesta entidade.
+              </p>
+            ) : (
+              <div className="mb-4 max-h-40 space-y-1.5 overflow-y-auto pr-1">
+                {familias.map((f) => {
+                  const marcada = familiaIds.includes(f.id);
+                  return (
+                    <button
+                      key={f.id}
+                      type="button"
+                      onClick={() =>
+                        setFamiliaIds((atual) =>
+                          marcada
+                            ? atual.filter((x) => x !== f.id)
+                            : [...atual, f.id],
+                        )
+                      }
+                      className={`flex w-full items-center gap-3 rounded-lg p-2.5 text-left transition-colors ${
+                        marcada
+                          ? "bg-secondary/12 ring-2 ring-secondary"
+                          : "bg-surface-container-low hover:bg-secondary/8"
+                      }`}
+                    >
+                      <Icon
+                        name={marcada ? "check_box" : "check_box_outline_blank"}
+                        className="text-[18px] text-secondary"
+                      />
+                      <span className="min-w-0 flex-1 truncate text-[12px] font-bold text-primary">
+                        {f.nome}
+                      </span>
+                      {f.endereco && (
+                        <span className="shrink-0 truncate text-[10px] text-on-surface-variant">
+                          {f.endereco}
+                        </span>
+                      )}
+                    </button>
+                  );
+                })}
+              </div>
+            )}
+
+            </div>
+
             <div>
               <MetaTag className="mb-2 block">Parecer técnico</MetaTag>
               <textarea
