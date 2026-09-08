@@ -186,6 +186,7 @@ export default function DamagesPage() {
   const [falhaItens, setFalhaItens] = useState<string | null>(null);
   const [recarga, setRecarga] = useState(0);
   const [resumoDanos, setResumoDanos] = useState<ResumoDanosResponse | null>(null);
+  const [carregandoResumoInicial, setCarregandoResumoInicial] = useState(true);
   const [busca, setBusca] = useState("");
   const [verInativos, setVerInativos] = useState(false);
 
@@ -229,6 +230,9 @@ export default function DamagesPage() {
       })
       .catch(() => {
         if (!cancelado) setResumoDanos(null);
+      })
+      .finally(() => {
+        if (!cancelado) setCarregandoResumoInicial(false);
       });
     return () => {
       cancelado = true;
@@ -342,6 +346,10 @@ export default function DamagesPage() {
   );
 
 
+  if (carregandoOcorrencias || carregandoEventos || carga === null || carregandoResumoInicial) {
+    return <DataLoading />;
+  }
+
   return (
     <div className="p-8 space-y-8 max-w-[1600px] mx-auto">
       <header>
@@ -388,7 +396,7 @@ export default function DamagesPage() {
       {/* ── Por ocorrência ── */}
       {tab === "ocorrencias" && (
         <div className="space-y-3">
-          {carregandoOcorrencias && <DataLoading description="Carregando danos registrados..." />}
+          {carregandoOcorrencias && <DataLoading />}
           {!carregandoOcorrencias && erroOcorrencias && (
             <div className="card-tonal p-6 text-sm text-error">{erroOcorrencias}</div>
           )}
@@ -451,7 +459,7 @@ export default function DamagesPage() {
       {/* ── Por evento ── */}
       {tab === "eventos" && (
         <div className="space-y-5">
-          {carregandoEventos && <DataLoading description="Agrupando danos por evento..." />}
+          {carregandoEventos && <DataLoading />}
           {!carregandoEventos && erroEventos && (
             <div className="card-tonal p-6 text-sm text-error">{erroEventos}</div>
           )}

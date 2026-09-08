@@ -729,7 +729,7 @@ function OccurrencesContent() {
   // --- renderização ---
 
   if (loading) {
-    return <DataLoading description="Preparando as ocorrências..." />;
+    return <DataLoading />;
   }
 
   return (

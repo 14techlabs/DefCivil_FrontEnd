@@ -191,7 +191,7 @@ export default function MonitoringPage() {
   // --- renderização ---
 
   if (loading) {
-    return <DataLoading description="Preparando o monitoramento..." />;
+    return <DataLoading />;
   }
 
   return (

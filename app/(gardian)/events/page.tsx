@@ -645,7 +645,7 @@ export default function EventsPage() {
   };
 
   if (loading) {
-    return <DataLoading description="Preparando os eventos..." />;
+    return <DataLoading />;
   }
 
   const route = evento?.rota_ia ?? EMPTY_ROUTE;

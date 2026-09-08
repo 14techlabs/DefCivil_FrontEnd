@@ -265,7 +265,7 @@ export default function TeamPage() {
   }
 
   if (carregandoDados) {
-    return <DataLoading description="Preparando o panorama da equipe..." />;
+    return <DataLoading />;
   }
 
   return (

@@ -870,7 +870,7 @@ function EntityPageContent() {
   );
 
   if (entidadeLoading || responsaveisLoading || contasLoading || pontosLoading || planoLoading) {
-    return <DataLoading description="Preparando os dados da entidade..." />;
+    return <DataLoading />;
   }
 
   if (!entidade) {

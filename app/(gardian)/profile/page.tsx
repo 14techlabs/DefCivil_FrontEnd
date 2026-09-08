@@ -3,6 +3,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { Chip, Icon, KPI, MetaTag, SectionHeader, StatusDot } from "@/app/components/Primitives";
 import { useGardian } from "@/app/components/GardianContext";
+import { DataLoading } from "@/app/components/DataLoading";
 import { api } from "@/app/services/Api";
 import { getOccurrenceStatusMeta } from "@/app/lib/occurrenceStatus";
 
@@ -120,6 +121,10 @@ export default function ProfilePage() {
   const zonaNome = (zonaId: number | null) =>
     zonaId == null ? "Sem zona" : zonas.get(zonaId) ?? `Zona #${zonaId}`;
 
+  if (loading) {
+    return <DataLoading />;
+  }
+
   return (
     <div className="p-8 space-y-8 max-w-[1600px] mx-auto">
       <header>
@@ -185,9 +190,7 @@ export default function ProfilePage() {
           title="Ocorrências em que estou agindo"
           action={agindo.length > 0 ? <Chip tone="error" icon="podcasts">{agindo.length} ATIVA(S)</Chip> : undefined}
         />
-        {loading ? (
-          <p className="text-[12px] text-on-surface-variant italic">Carregando ocorrências…</p>
-        ) : agindo.length === 0 ? (
+        {agindo.length === 0 ? (
           <p className="text-[12px] text-on-surface-variant italic">Nenhuma ocorrência ativa no momento.</p>
         ) : (
           <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
@@ -221,9 +224,7 @@ export default function ProfilePage() {
           action={agiu.length > 0 ? <Chip tone="secondary">{agiu.length} REGISTRO(S)</Chip> : undefined}
         />
         <div className="card-tonal overflow-hidden shadow-ambient-sm">
-          {loading ? (
-            <p className="p-8 text-center text-sm text-on-surface-variant">Carregando ocorrências…</p>
-          ) : agiu.length === 0 ? (
+          {agiu.length === 0 ? (
             <div className="flex flex-col items-center justify-center px-6 py-12 text-center">
               <Icon name="task_alt" className="mb-3 text-[38px] text-on-surface-variant/50" />
               <p className="text-sm font-medium text-on-surface-variant">

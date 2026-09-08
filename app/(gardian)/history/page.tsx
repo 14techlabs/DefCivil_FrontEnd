@@ -436,7 +436,7 @@ export default function HistoryPage() {
     usuarioLookup.get(usuarioId) ?? (usuarioId ? tecnicoNome(usuarioId) : "Sistema");
 
   if (carregandoBase || carregandoMeteorologia) {
-    return <DataLoading description="Preparando o histórico do sistema..." />;
+    return <DataLoading />;
   }
 
   return (

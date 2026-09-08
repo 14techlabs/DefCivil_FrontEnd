@@ -198,7 +198,7 @@ export default function DashboardPage() {
   // --- renderização ---
 
   if (loading) {
-    return <DataLoading description="Preparando o centro de comando..." />;
+    return <DataLoading />;
   }
 
   return (

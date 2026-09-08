@@ -104,7 +104,7 @@ export default function ZonesPage() {
   ];
 
   if (loading) {
-    return <DataLoading description="Preparando as zonas..." />;
+    return <DataLoading />;
   }
 
   return (

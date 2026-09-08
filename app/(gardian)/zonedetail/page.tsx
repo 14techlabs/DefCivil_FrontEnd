@@ -475,7 +475,7 @@ function ZoneDetailContent() {
   }
 
   if (loading) {
-    return <DataLoading description="Preparando os detalhes da zona..." />;
+    return <DataLoading />;
   }
 
   if (!z) {

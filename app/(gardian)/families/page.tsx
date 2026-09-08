@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { Btn, Chip, Icon, KPI, MetaTag } from "@/app/components/Primitives";
 import { useGardian } from "@/app/components/GardianContext";
+import { DataLoading } from "@/app/components/DataLoading";
 import Link from "next/link";
 import { api } from "@/app/services/Api";
 import { CreateFamilyModal } from "@/app/components/CreateFamilyModal";
@@ -114,6 +115,8 @@ export default function FamiliesPage() {
   const [dados, setDados] = useState<ListaResposta | null>(null);
   const [totaisGlobais, setTotaisGlobais] = useState<TotaisFamilias | null>(null);
   const [zonas, setZonas] = useState<ZonaResumo[]>([]);
+  const [carregandoTotaisInicial, setCarregandoTotaisInicial] = useState(true);
+  const [carregandoZonasInicial, setCarregandoZonasInicial] = useState(true);
   const [erro, setErro] = useState<string | null>(null);
   const [recarga, setRecarga] = useState(0);
 
@@ -212,6 +215,9 @@ export default function FamiliesPage() {
       })
       .catch(() => {
         if (!cancelado) setTotaisGlobais(null);
+      })
+      .finally(() => {
+        if (!cancelado) setCarregandoTotaisInicial(false);
       });
     return () => {
       cancelado = true;
@@ -228,6 +234,9 @@ export default function FamiliesPage() {
       })
       .catch(() => {
         if (!cancelado) setZonas([]);
+      })
+      .finally(() => {
+        if (!cancelado) setCarregandoZonasInicial(false);
       });
     return () => {
       cancelado = true;
@@ -367,15 +376,8 @@ export default function FamiliesPage() {
     );
   }
 
-  if (!dados) {
-    return (
-      <div className="p-8 max-w-[1600px] mx-auto">
-        <div className="card-tonal p-12 shadow-ambient-sm text-center">
-          <Icon name="progress_activity" className="text-secondary text-[32px] animate-spin" />
-          <p className="text-sm text-on-surface-variant mt-3">Carregando famílias…</p>
-        </div>
-      </div>
-    );
+  if (!dados || carregandoTotaisInicial || carregandoZonasInicial) {
+    return <DataLoading />;
   }
 
   return (
