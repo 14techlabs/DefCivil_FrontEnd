@@ -1382,42 +1382,7 @@ function OccurrencesContent() {
                         </p>
                       </div>
                     </div>
-                    <div className="card-recessed p-5">
-                      <div className="mb-3 flex items-center justify-between gap-3">
-                        <div className="flex items-center gap-2">
-                          <Icon name="payments" filled className="text-[18px] text-secondary" />
-                          <MetaTag>DANOS E CUSTOS</MetaTag>
-                        </div>
-                        <Btn variant="ghost" icon="edit" onClick={() => {
-                          setShowDamagesModal(true);
-                        }}>
-                          Gerenciar danos
-                        </Btn>
-                      </div>
-                      <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
-                        <div className="rounded-lg bg-white p-3">
-                          <MetaTag className="mb-1 block">CUSTO DOS DANOS</MetaTag>
-                          <p className="font-headline text-lg font-black text-primary">
-                            {Number(selecionada.custo_danos || 0).toLocaleString("pt-BR", {
-                              style: "currency",
-                              currency: "BRL",
-                            })}
-                          </p>
-                        </div>
-                        <div className="rounded-lg bg-white p-3">
-                          <MetaTag className="mb-1 block">ITENS REGISTRADOS</MetaTag>
-                          <p className="font-headline text-lg font-black text-primary">
-                            {selecionada.total_itens_danos ?? 0}
-                          </p>
-                        </div>
-                        <div className="rounded-lg bg-white p-3">
-                          <MetaTag className="mb-1 block">FATALIDADES</MetaTag>
-                          <p className="font-headline text-lg font-black text-primary">
-                            {selecionada.fatalidades ?? 0}
-                          </p>
-                        </div>
-                      </div>
-
+                    <div className="mt-4">
                       {carregandoDanos ? (
                         <p className="text-xs text-on-surface-variant">Carregando itens…</p>
                       ) : erroDanos ? (
