@@ -109,6 +109,14 @@ interface ZonaListResponse {
   zonas: ZonaBasic[];
 }
 
+interface ResumoOcorrencias {
+  total: number;
+  abertas: number;
+  andamento: number;
+  resolvidas: number;
+  por_zona: { zona_id: number; zona_nome: string | null; total: number }[];
+}
+
 interface FamiliaBasic {
   id: number;
   nome: string;
@@ -273,7 +281,7 @@ function OccurrencesContent() {
 
   // estado dos dados
   const [ocorrencias, setOcorrencias] = useState<Ocorrencia[]>([]);
-  const [ocorrenciasGlobais, setOcorrenciasGlobais] = useState<Ocorrencia[]>([]);
+  const [resumo, setResumo] = useState<ResumoOcorrencias | null>(null);
   const [carregandoIndicadores, setCarregandoIndicadores] = useState(true);
   const [zonaLookup, setZonaLookup] = useState<Map<number, string>>(new Map());
   const [usuarioLookup, setUsuarioLookup] = useState<Map<number, string>>(new Map());
@@ -344,7 +352,7 @@ function OccurrencesContent() {
       );
 
       const [zonRes, usuRes, eventosRes, familiasRes, checklistRes] = await Promise.allSettled([
-        api.get<ZonaListResponse>("/zonas/"),
+        api.get<ZonaListResponse>("/zonas/", { params: { lookup: "1" } }),
         api.get<UsuarioInfo[]>("/usuarios/"),
         api.get<EventoListResponse>("/eventos/"),
         api.get<FamiliaListResponse>("/familias/", { params: { quantidade_por_pagina: 50 } }),
@@ -408,29 +416,13 @@ function OccurrencesContent() {
     }
   }, [familiaFiltroAtivo, familiaFiltroId, pagina, quantidadePorPagina, statusFilter]);
 
-  const fetchIndicadoresGlobais = useCallback(async () => {
+  const fetchResumo = useCallback(async () => {
     setCarregandoIndicadores(true);
     try {
-      const primeiraPagina = await api.get<OcorrenciaListResponse>("/ocorrencias/", {
-        params: { pagina: 1, quantidade_por_pagina: 50 },
-      });
-      const totalPaginas = primeiraPagina.data.paginacao?.total_paginas ?? 1;
-      const demaisPaginas = totalPaginas > 1
-        ? await Promise.all(
-            Array.from({ length: totalPaginas - 1 }, (_, index) =>
-              api.get<OcorrenciaListResponse>("/ocorrencias/", {
-                params: { pagina: index + 2, quantidade_por_pagina: 50 },
-              }),
-            ),
-          )
-        : [];
-
-      setOcorrenciasGlobais([
-        ...(primeiraPagina.data.ocorrencias ?? []),
-        ...demaisPaginas.flatMap((response) => response.data.ocorrencias ?? []),
-      ]);
+      const response = await api.get<ResumoOcorrencias>("/ocorrencias/resumo/");
+      setResumo(response.data);
     } catch {
-      setOcorrenciasGlobais([]);
+      setResumo(null);
     } finally {
       setCarregandoIndicadores(false);
     }
@@ -442,9 +434,9 @@ function OccurrencesContent() {
   }, [fetchData]);
 
   useEffect(() => {
-    const timer = window.setTimeout(() => void fetchIndicadoresGlobais(), 0);
+    const timer = window.setTimeout(() => void fetchResumo(), 0);
     return () => window.clearTimeout(timer);
-  }, [fetchIndicadoresGlobais]);
+  }, [fetchResumo]);
 
   // seleciona ocorrência vinda do mapa da zona (?id=X)
   useEffect(() => {
@@ -532,28 +524,21 @@ function OccurrencesContent() {
   // --- indicadores ---
 
   const indicadores = useMemo(() => {
-    const abertas = ocorrenciasGlobais.filter(
-      (o) => o.status === "em_analise" || o.status === "aguardando" || o.status === "alta_prioridade",
-    ).length;
-    const andamento = ocorrenciasGlobais.filter((o) => o.status === "em_andamento").length;
-    const resolvidas = ocorrenciasGlobais.filter((o) => o.status === "concluida").length;
-
-    const porZona = new Map<number, number>();
-    for (const o of ocorrenciasGlobais) {
-      if (o.zona != null) porZona.set(o.zona, (porZona.get(o.zona) ?? 0) + 1);
-    }
-    const ranking = [...porZona.entries()].sort((a, b) => b[1] - a[1]);
+    const ranking: [number, number][] = (resumo?.por_zona ?? []).map((item) => [
+      item.zona_id,
+      item.total,
+    ]);
     const topZona = ranking[0];
 
     return {
-      abertas,
-      andamento,
-      resolvidas,
+      abertas: resumo?.abertas ?? 0,
+      andamento: resumo?.andamento ?? 0,
+      resolvidas: resumo?.resolvidas ?? 0,
       topZonaNome: topZona ? zonaLookup.get(topZona[0]) ?? `Zona #${topZona[0]}` : "—",
       topZonaQtd: topZona ? topZona[1] : 0,
       ranking: ranking.slice(0, 4),
     };
-  }, [ocorrenciasGlobais, zonaLookup]);
+  }, [resumo, zonaLookup]);
 
   const statusDisponiveis = useMemo(() => {
     const set = new Set(ocorrencias.map((o) => o.status));
@@ -1748,7 +1733,7 @@ function OccurrencesContent() {
         onCreated={() => {
           setShowCreateModal(false);
           fetchData();
-          fetchIndicadoresGlobais();
+          fetchResumo();
         }}
         zonas={Array.from(zonaLookup.entries()).map(([id, nome]) => ({ id, nome }))}
       />
@@ -1822,7 +1807,7 @@ function OccurrencesContent() {
             onSaved={() => {
               setShowEditModal(false);
               fetchData();
-              fetchIndicadoresGlobais();
+              fetchResumo();
             }}
             zonas={Array.from(zonaLookup.entries()).map(([id, nome]) => ({ id, nome }))}
             eventos={eventos.map(({ id, nome }) => ({ id, nome }))}
@@ -1836,7 +1821,7 @@ function OccurrencesContent() {
               setShowDeleteModal(false);
               setShowFullDetails(false);
               fetchData();
-              fetchIndicadoresGlobais();
+              fetchResumo();
             }}
             ocorrencia={selecionada}
           />
