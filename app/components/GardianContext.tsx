@@ -32,6 +32,11 @@ export interface UserData {
   tipo: number;
   entidade: number | null;
   cargo: number | null;
+  cargo_label?: string | null;
+  matricula?: string | null;
+  zona_base?: number | null;
+  status_campo?: string | null;
+  status_campo_label?: string | null;
 }
 
 type GardianContextValue = {
