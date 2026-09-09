@@ -169,16 +169,13 @@ export function ZoneMap({
     let cancelled = false;
 
     Promise.all([
-      api.get<{ area: { id: number; area: GeoJSON.MultiPolygon } }>(
-        "/entidades/areas/",
-      ),
+      api.get<{
+        area: { id: number; area: GeoJSON.MultiPolygon };
+        zonas: { id: number; nome: string; area: GeoJSON.Polygon | null }[];
+      }>("/entidades/areas/"),
       api.get<ZoneDetailResponse>(`/zonas/${zoneId}/`),
-      // zonas list é necessária para desenhar as vizinhas junto com o mapa (fallback vazio em erro)
-      api.get<{ zonas: { id: number; nome: string; area: GeoJSON.Polygon | null }[] }>(
-        "/zonas/",
-      ).catch(() => ({ data: { zonas: [] } })),
     ])
-      .then(([areaRes, zoneRes, zonasRes]) => {
+      .then(([areaRes, zoneRes]) => {
         if (cancelled) return;
         const area = areaRes.data.area.area;
         setEntityArea(area);
@@ -186,7 +183,7 @@ export function ZoneMap({
         setZoneData(zoneRes.data.zonas);
         // zonas vizinhas (cinza): todas exceto a atual
         const currentId = Number(zoneId);
-        const vizinhas = (zonasRes.data.zonas ?? [])
+        const vizinhas = (areaRes.data.zonas ?? [])
           .filter(
             (z) =>
               z.id !== currentId &&

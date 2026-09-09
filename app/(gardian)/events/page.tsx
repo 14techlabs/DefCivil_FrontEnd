@@ -365,7 +365,7 @@ export default function EventsPage() {
 
       const [occurrenceResult, zoneResult] = await Promise.allSettled([
         api.get<OcorrenciaListResponse>("/ocorrencias/"),
-        api.get<{ zonas: Zona[] }>("/zonas/"),
+        api.get<{ zonas: { id: number; nome: string }[] }>("/zonas/", { params: { lookup: "1" } }),
       ]);
 
       setOcorrencias(

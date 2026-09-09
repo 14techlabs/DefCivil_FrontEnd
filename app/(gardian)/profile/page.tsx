@@ -87,7 +87,7 @@ export default function ProfilePage() {
     let cancelled = false;
     Promise.allSettled([
       api.get<ProfileOccurrencesResponse>("/ocorrencias/", { params: { pagina: 1 } }),
-      api.get<{ zonas: { id: number; nome: string }[] }>("/zonas/"),
+      api.get<{ zonas: { id: number; nome: string }[] }>("/zonas/", { params: { lookup: "1" } }),
     ]).then(([occResult, zoneResult]) => {
       if (cancelled) return;
       setOcorrencias(

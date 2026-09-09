@@ -112,7 +112,7 @@ export default function MonitoringPage() {
       try {
         const [monRes, zonRes] = await Promise.all([
           api.get<MonitoramentoListResponse>("/monitoramentos/"),
-          api.get<ZonaListResponse>("/zonas/"),
+          api.get<ZonaListResponse>("/zonas/", { params: { lookup: "1" } }),
         ]);
 
         if (cancelled) return;

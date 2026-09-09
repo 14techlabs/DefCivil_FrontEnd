@@ -325,32 +325,8 @@ function OccurrencesContent() {
   const [agrupando, setAgrupando] = useState(false);
   const [erroAgrupamento, setErroAgrupamento] = useState("");
 
-  const fetchData = useCallback(async () => {
-    setLoading(true);
-    setLoadError("");
+  const fetchLookups = useCallback(async () => {
     try {
-      const params: Record<string, string | number> = {
-        pagina,
-        quantidade_por_pagina: quantidadePorPagina,
-      };
-      if (statusFilter !== "todos") params.status = statusFilter;
-      if (familiaFiltroId != null && familiaFiltroAtivo) params.familia_id = familiaFiltroId;
-      const occRes = await api.get<OcorrenciaListResponse>("/ocorrencias/", { params });
-      const lista = occRes.data.ocorrencias ?? [];
-
-      setOcorrencias(lista);
-      setPaginacao(occRes.data.paginacao ?? {
-        pagina,
-        total_paginas: 1,
-        quantidade_por_pagina: quantidadePorPagina,
-        total_objetos: lista.length,
-      });
-      setSelected((current) =>
-        current != null && lista.some((o) => o.id === current)
-          ? current
-          : lista[0]?.id ?? null,
-      );
-
       const [zonRes, usuRes, eventosRes, familiasRes, checklistRes] = await Promise.allSettled([
         api.get<ZonaListResponse>("/zonas/", { params: { lookup: "1" } }),
         api.get<UsuarioInfo[]>("/usuarios/"),
@@ -397,6 +373,36 @@ function OccurrencesContent() {
             : [],
         ),
       );
+    } catch {
+      // falha silenciosa: a página usa fallbacks como Zona #id e Usuário #id
+    }
+  }, []);
+
+  const fetchData = useCallback(async () => {
+    setLoading(true);
+    setLoadError("");
+    try {
+      const params: Record<string, string | number> = {
+        pagina,
+        quantidade_por_pagina: quantidadePorPagina,
+      };
+      if (statusFilter !== "todos") params.status = statusFilter;
+      if (familiaFiltroId != null && familiaFiltroAtivo) params.familia_id = familiaFiltroId;
+      const occRes = await api.get<OcorrenciaListResponse>("/ocorrencias/", { params });
+      const lista = occRes.data.ocorrencias ?? [];
+
+      setOcorrencias(lista);
+      setPaginacao(occRes.data.paginacao ?? {
+        pagina,
+        total_paginas: 1,
+        quantidade_por_pagina: quantidadePorPagina,
+        total_objetos: lista.length,
+      });
+      setSelected((current) =>
+        current != null && lista.some((o) => o.id === current)
+          ? current
+          : lista[0]?.id ?? null,
+      );
     } catch (error) {
       const status = (error as { response?: { status?: number } })?.response?.status;
       if (status === 404 && pagina > 1) {
@@ -405,11 +411,6 @@ function OccurrencesContent() {
       }
       setOcorrencias([]);
       setSelected(null);
-      setZonaLookup(new Map());
-      setUsuarioLookup(new Map());
-      setEventos([]);
-      setFamiliaLookup(new Map());
-      setChecklistLookup(new Map());
       setLoadError("Não foi possível carregar as ocorrências.");
     } finally {
       setLoading(false);
@@ -427,6 +428,11 @@ function OccurrencesContent() {
       setCarregandoIndicadores(false);
     }
   }, []);
+
+  useEffect(() => {
+    const timer = window.setTimeout(() => void fetchLookups(), 0);
+    return () => window.clearTimeout(timer);
+  }, [fetchLookups]);
 
   useEffect(() => {
     const timer = window.setTimeout(() => void fetchData(), 0);

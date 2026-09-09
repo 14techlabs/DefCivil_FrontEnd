@@ -119,23 +119,22 @@ export function MonitoringMap({ height = 520 }: MonitoringMapProps) {
     let cancelled = false;
 
     Promise.all([
-      api.get<{ area: { id: number; area: GeoJSON.MultiPolygon } }>("/entidades/areas/"),
-      // zonas vêm do /zonas/ para ter nome + area (fallback vazio em erro)
-      api
-        .get<{ zonas: { id: number; nome: string; area: GeoJSON.Polygon | null }[] }>("/zonas/")
-        .catch(() => ({ data: { zonas: [] } })),
+      api.get<{
+        area: { id: number; area: GeoJSON.MultiPolygon };
+        zonas: { id: number; nome: string; area: GeoJSON.Polygon | null }[];
+      }>("/entidades/areas/"),
       // ocorrências não bloqueiam o mapa (fallback vazio em erro)
       api
         .get<{ ocorrencias: MonitoringOcorrencia[] }>("/ocorrencias/")
         .catch(() => ({ data: { ocorrencias: [] } })),
     ])
-      .then(([areaRes, zonasRes, occRes]) => {
+      .then(([areaRes, occRes]) => {
         if (cancelled) return;
         const area = areaRes.data.area.area;
         setEntityArea(area);
         setEntityCenter(getMultiPolygonCenter(area));
         setZonas(
-          (zonasRes.data.zonas ?? []).filter(
+          (areaRes.data.zonas ?? []).filter(
             (z) =>
               z.area &&
               z.area.type === "Polygon" &&

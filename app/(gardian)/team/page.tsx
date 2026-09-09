@@ -144,7 +144,7 @@ export default function TeamPage() {
         const [panoramaResult, ocorrenciasResult, zonasResult] = await Promise.allSettled([
           api.get<EquipePanoramaApi>("/equipe/panorama/"),
           api.get<EquipeOcorrencia[] | { ocorrencias: EquipeOcorrencia[] }>("/ocorrencias/"),
-          api.get<EquipeZona[] | { zonas: EquipeZona[] }>("/zonas/"),
+          api.get<EquipeZona[] | { zonas: EquipeZona[] }>("/zonas/", { params: { lookup: "1" } }),
         ]);
         if (cancelado) return;
 

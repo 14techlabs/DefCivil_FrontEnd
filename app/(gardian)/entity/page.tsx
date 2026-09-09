@@ -400,7 +400,7 @@ function EntityPageContent() {
   }, []);
 
   useEffect(() => {
-    if (!entidadeId) return;
+    if (!entidadeId || tab !== "contas") return;
     let cancelled = false;
     Promise.allSettled([
       api.get<{ eventos: EventoFinanceiro[] }>("/eventos/"),
@@ -455,7 +455,7 @@ function EntityPageContent() {
     return () => {
       cancelled = true;
     };
-  }, [entidadeId]);
+  }, [entidadeId, tab]);
 
   /* ── pontos de apoio ── */
 
@@ -489,15 +489,16 @@ function EntityPageContent() {
   }, []);
 
   useEffect(() => {
+    if (tab !== "apoios") return;
     const timer = window.setTimeout(() => fetchPontos(), 0);
     return () => window.clearTimeout(timer);
-  }, [fetchPontos]);
+  }, [fetchPontos, tab]);
 
   useEffect(() => {
-    if (!entidadeId) return;
+    if (!entidadeId || tab !== "plano") return;
     let cancelled = false;
     Promise.allSettled([
-      api.get<PlanoZona[] | { zonas: PlanoZona[] }>("/zonas/"),
+      api.get<PlanoZona[] | { zonas: PlanoZona[] }>("/zonas/", { params: { cards: "1" } }),
       api.get<PlanoEvento[] | { eventos: PlanoEvento[] }>("/eventos/"),
       api.get<PlanoFamiliasResumo & { familias: unknown[] }>("/familias/"),
       api.get<PlanoMonitoramento[] | { monitoramentos: PlanoMonitoramento[] }>("/monitoramentos/"),
@@ -534,7 +535,7 @@ function EntityPageContent() {
     return () => {
       cancelled = true;
     };
-  }, [entidadeId]);
+  }, [entidadeId, tab]);
 
   const excluirPonto = async (ponto: Apoio) => {
     try {
