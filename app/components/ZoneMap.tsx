@@ -79,7 +79,9 @@ const NEIGHBOR_LABEL = "zone-neighbor-label";
 /* ────────────── helpers dos pins (estilos vêm do PointsMap) ────────────── */
 
 function isDegenerateRing(ring: number[][]): boolean {
-  return ring.every((c, i) => i === 0 || (c[0] === ring[0][0] && c[1] === ring[0][1]));
+  return ring.every(
+    (c, i) => i === 0 || (c[0] === ring[0][0] && c[1] === ring[0][1]),
+  );
 }
 
 /* ────────────── Component ────────────── */
@@ -111,18 +113,28 @@ export function ZoneMap({
   const [zoneData, setZoneData] = useState<ZoneData | null>(null);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [toast, setToast] = useState<{ msg: string; tone: "error" | "secondary" } | null>(null);
+  const [toast, setToast] = useState<{
+    msg: string;
+    tone: "error" | "secondary";
+  } | null>(null);
   const [neighborZones, setNeighborZones] = useState<NeighborZone[]>([]);
   const { user } = useGardian();
 
-  const [entityArea, setEntityArea] = useState<GeoJSON.MultiPolygon | null>(null);
-  const [entityCenter, setEntityCenter] = useState<[number, number] | null>(null);
+  const [entityArea, setEntityArea] = useState<GeoJSON.MultiPolygon | null>(
+    null,
+  );
+  const [entityCenter, setEntityCenter] = useState<[number, number] | null>(
+    null,
+  );
   const [dataReady, setDataReady] = useState(false);
 
-  const showToast = useCallback((msg: string, tone: "error" | "secondary" = "secondary") => {
-    setToast({ msg, tone });
-    setTimeout(() => setToast(null), 3000);
-  }, []);
+  const showToast = useCallback(
+    (msg: string, tone: "error" | "secondary" = "secondary") => {
+      setToast({ msg, tone });
+      setTimeout(() => setToast(null), 3000);
+    },
+    [],
+  );
 
   const renderZonePolygon = useCallback(
     (map: maplibregl.Map, data: ZoneData) => {
@@ -134,8 +146,7 @@ export function ZoneMap({
       );
       if (isDegenerate) return;
 
-      const colors =
-        ZONE_STATUS_COLORS[data.status] ?? DEFAULT_ZONE_COLOR;
+      const colors = ZONE_STATUS_COLORS[data.status] ?? DEFAULT_ZONE_COLOR;
 
       addPolygonLayer(
         map,
@@ -192,7 +203,11 @@ export function ZoneMap({
               z.area.coordinates?.length > 0 &&
               !isDegenerateRing(z.area.coordinates[0]),
           )
-          .map((z) => ({ id: z.id, nome: z.nome, area: z.area as GeoJSON.Polygon }));
+          .map((z) => ({
+            id: z.id,
+            nome: z.nome,
+            area: z.area as GeoJSON.Polygon,
+          }));
         setNeighborZones(vizinhas);
         setMode("view");
         setDataReady(true);
@@ -209,7 +224,9 @@ export function ZoneMap({
           setDataReady(true);
         }
       });
-    return () => { cancelled = true; };
+    return () => {
+      cancelled = true;
+    };
   }, [zoneId, user?.entidade]);
 
   /* ── iniciar o mapa (uma vez, após dataReady) ── */
@@ -268,10 +285,18 @@ export function ZoneMap({
     const apply = () => {
       // limpa camadas anteriores se existirem
       for (const id of [NEIGHBOR_LABEL, NEIGHBOR_LINE, NEIGHBOR_FILL]) {
-        try { if (map.getLayer(id)) map.removeLayer(id); } catch { /* ok */ }
+        try {
+          if (map.getLayer(id)) map.removeLayer(id);
+        } catch {
+          /* ok */
+        }
       }
       for (const src of [NEIGHBOR_SOURCE, NEIGHBOR_CENTROIDS_SOURCE]) {
-        try { if (map.getSource(src)) map.removeSource(src); } catch { /* ok */ }
+        try {
+          if (map.getSource(src)) map.removeSource(src);
+        } catch {
+          /* ok */
+        }
       }
 
       if (neighborZones.length === 0) return;
@@ -322,7 +347,11 @@ export function ZoneMap({
           id: NEIGHBOR_LINE,
           type: "line",
           source: NEIGHBOR_SOURCE,
-          paint: { "line-color": "#888", "line-width": 1.5, "line-dasharray": [3, 2] },
+          paint: {
+            "line-color": "#888",
+            "line-width": 1.5,
+            "line-dasharray": [3, 2],
+          },
         },
         beforeId,
       );
@@ -357,10 +386,18 @@ export function ZoneMap({
 
     return () => {
       for (const id of [NEIGHBOR_LABEL, NEIGHBOR_LINE, NEIGHBOR_FILL]) {
-        try { if (map.getLayer(id)) map.removeLayer(id); } catch { /* ok */ }
+        try {
+          if (map.getLayer(id)) map.removeLayer(id);
+        } catch {
+          /* ok */
+        }
       }
       for (const src of [NEIGHBOR_SOURCE, NEIGHBOR_CENTROIDS_SOURCE]) {
-        try { if (map.getSource(src)) map.removeSource(src); } catch { /* ok */ }
+        try {
+          if (map.getSource(src)) map.removeSource(src);
+        } catch {
+          /* ok */
+        }
       }
     };
   }, [neighborZones, dataReady]);
@@ -421,7 +458,8 @@ export function ZoneMap({
     const map = mapRef.current;
     if (!map || !dataReady || mode !== "view") return;
 
-    const chave = pontoSelecionadoId != null ? String(pontoSelecionadoId) : null;
+    const chave =
+      pontoSelecionadoId != null ? String(pontoSelecionadoId) : null;
 
     // realce visual sem recriar os marcadores
     pinsRef.current.forEach(({ marker, ponto }) => {
@@ -601,7 +639,7 @@ export function ZoneMap({
         {/* overlay do botão de edição view-mode */}
         {mode === "view" && editable && zoneData?.area && (
           <div className="absolute top-2 right-12 z-10">
-            <Btn variant="primary" icon="map_edit" onClick={enterEditMode}>
+            <Btn variant="primary" icon="edit_square" onClick={enterEditMode}>
               Editar Zona
             </Btn>
           </div>
@@ -617,10 +655,20 @@ export function ZoneMap({
         {/* overlay dos botões de salvar/cancelar edit-mode */}
         {mode === "edit" && editable && (
           <div className="absolute top-2 right-12 z-10 flex gap-2">
-            <Btn variant="secondary" icon="close" onClick={exitEditMode} disabled={saving}>
+            <Btn
+              variant="secondary"
+              icon="close"
+              onClick={exitEditMode}
+              disabled={saving}
+            >
               Cancelar
             </Btn>
-            <Btn variant="primary" icon="save" onClick={handleSave} disabled={saving}>
+            <Btn
+              variant="primary"
+              icon="save"
+              onClick={handleSave}
+              disabled={saving}
+            >
               {saving ? "Salvando…" : "Salvar Alterações"}
             </Btn>
           </div>
@@ -729,7 +777,9 @@ export function ZoneMap({
           <div className="absolute bottom-4 left-1/2 -translate-x-1/2 z-20">
             <div
               className={`px-4 py-2 rounded-lg shadow-ambient flex items-center gap-2 ${
-                toast.tone === "error" ? "bg-error text-white" : "bg-secondary text-white"
+                toast.tone === "error"
+                  ? "bg-error text-white"
+                  : "bg-secondary text-white"
               }`}
             >
               <span
