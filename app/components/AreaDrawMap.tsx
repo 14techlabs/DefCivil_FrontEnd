@@ -208,7 +208,7 @@ export function AreaDrawMap({ height = 420 }: { height?: number }) {
   const handleLoadLatest = async () => {
     setLoading(true);
     try {
-      const res = await api.get<{ zonas: ZonaAreaRecord[] }>("/zonas/");
+      const res = await api.get<{ zonas: ZonaAreaRecord[] }>("/zonas/", { params: { areas: "1" } });
       const latest = res.data.zonas
         .filter((z) => z.area?.type === "Polygon" && z.area.coordinates?.length)
         .sort((a, b) => b.id - a.id)[0];

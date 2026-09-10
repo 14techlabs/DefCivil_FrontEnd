@@ -319,7 +319,8 @@ function EntityPageContent() {
   const [fichaDraft, setFichaDraft] = useState<EntidadeDraft>({ sigla: "", telefone: "", email: "", endereco: "", responsavel: null });
   const [responsaveis, setResponsaveis] = useState<UsuarioResponsavel[]>([]);
   const [responsaveisLoading, setResponsaveisLoading] = useState(true);
-  const [contasLoading, setContasLoading] = useState(true);
+  const [contasLoading, setContasLoading] = useState(false);
+  const [contasCarregadas, setContasCarregadas] = useState(false);
   const [prestacaoEditando, setPrestacaoEditando] = useState<ContaEventoView | null>(null);
 
   // rascunho da mudança de status
@@ -333,7 +334,8 @@ function EntityPageContent() {
 
   // pontos de apoio
   const [pontos, setPontos] = useState<Apoio[]>([]);
-  const [pontosLoading, setPontosLoading] = useState(true);
+  const [pontosLoading, setPontosLoading] = useState(false);
+  const [pontosCarregados, setPontosCarregados] = useState(false);
   const [pontoFormOpen, setPontoFormOpen] = useState(false);
   const [pontoEditando, setPontoEditando] = useState<Apoio | null>(null);
   const [pontoExcluindo, setPontoExcluindo] = useState<Apoio | null>(null);
@@ -342,7 +344,8 @@ function EntityPageContent() {
   const [focoVersao, setFocoVersao] = useState(0);
   // id de ponto pedido pela URL (?ponto=) enquanto a lista ainda não carregou
   const pontoUrlRef = useRef<number | null>(null);
-  const [planoLoading, setPlanoLoading] = useState(true);
+  const [planoLoading, setPlanoLoading] = useState(false);
+  const [planoCarregado, setPlanoCarregado] = useState(false);
   const [planoZonas, setPlanoZonas] = useState<PlanoZona[]>([]);
   const [planoEventos, setPlanoEventos] = useState<PlanoEvento[]>([]);
   const [planoFamilias, setPlanoFamilias] = useState<PlanoFamiliasResumo>({
@@ -355,7 +358,12 @@ function EntityPageContent() {
   const [planoEquipe, setPlanoEquipe] = useState<PlanoEquipeKpis | null>(null);
 
   const fetchEntidadeEChecklist = useCallback(async () => {
-    if (!entidadeId) return;
+    if (!entidadeId) {
+      if (user !== null) {
+        setEntidadeLoading(false);
+      }
+      return;
+    }
     setEntidadeLoading(true);
     const [entidadeResult, checklistResult, configResult] = await Promise.allSettled([
       api.get<EntityApiData>(`/entidades/${entidadeId}/`),
@@ -385,7 +393,7 @@ function EntityPageContent() {
       ? normalizeFormConfig(configFormulario, checklistFormulario)
       : { ...current, checklist: checklistFormulario });
     setEntidadeLoading(false);
-  }, [entidadeId]);
+  }, [entidadeId, user]);
 
   useEffect(() => {
     const timer = window.setTimeout(() => void fetchEntidadeEChecklist(), 0);
@@ -400,14 +408,16 @@ function EntityPageContent() {
   }, []);
 
   useEffect(() => {
-    if (!entidadeId) return;
+    if (!entidadeId || tab !== "contas" || contasCarregadas) return;
     let cancelled = false;
+    setContasLoading(true);
     Promise.allSettled([
       api.get<{ eventos: EventoFinanceiro[] }>("/eventos/"),
       api.get<{ ocorrencias: OcorrenciaFinanceira[] }>("/ocorrencias/"),
       api.get<{ prestacoes: PrestacaoApi[] }>("/eventos/prestacoes/"),
     ]).then(([eventoResult, ocorrenciaResult, prestacaoResult]) => {
       if (cancelled) return;
+      setContasCarregadas(true);
       const eventos = eventoResult.status === "fulfilled" ? eventoResult.value.data.eventos ?? [] : [];
       const ocorrencias = ocorrenciaResult.status === "fulfilled" ? ocorrenciaResult.value.data.ocorrencias ?? [] : [];
       const prestacoes = prestacaoResult.status === "fulfilled"
@@ -449,13 +459,15 @@ function EntityPageContent() {
           };
         }),
       );
+    }).catch(() => {
+      if (!cancelled) setContasCarregadas(true);
     }).finally(() => {
       if (!cancelled) setContasLoading(false);
     });
     return () => {
       cancelled = true;
     };
-  }, [entidadeId]);
+  }, [entidadeId, tab, contasCarregadas]);
 
   /* ── pontos de apoio ── */
 
@@ -465,20 +477,26 @@ function EntityPageContent() {
     api
       .get<Apoio[]>("/apoios/")
       .then((res) => {
-        if (!cancelled) setPontos(res.data);
-    // link profundo: seleciona e foca o ponto pedido pela URL ao fim do carregamento
-    const idPendente = pontoUrlRef.current;
-    if (idPendente != null && !cancelled) {
-      pontoUrlRef.current = null;
-      const alvo = res.data.find((p) => p.id === idPendente);
-      if (alvo) {
-        setPontoSelecionadoId(alvo.id);
-        setFocoVersao((v) => v + 1);
-      }
-    }
+        if (!cancelled) {
+          setPontos(res.data);
+          setPontosCarregados(true);
+        }
+        // link profundo: seleciona e foca o ponto pedido pela URL ao fim do carregamento
+        const idPendente = pontoUrlRef.current;
+        if (idPendente != null && !cancelled) {
+          pontoUrlRef.current = null;
+          const alvo = res.data.find((p) => p.id === idPendente);
+          if (alvo) {
+            setPontoSelecionadoId(alvo.id);
+            setFocoVersao((v) => v + 1);
+          }
+        }
       })
       .catch(() => {
-        if (!cancelled) setPontos([]);
+        if (!cancelled) {
+          setPontos([]);
+          setPontosCarregados(true);
+        }
       })
       .finally(() => {
         if (!cancelled) setPontosLoading(false);
@@ -489,21 +507,24 @@ function EntityPageContent() {
   }, []);
 
   useEffect(() => {
+    if ((tab !== "apoios" && tab !== "plano") || pontosCarregados) return;
     const timer = window.setTimeout(() => fetchPontos(), 0);
     return () => window.clearTimeout(timer);
-  }, [fetchPontos]);
+  }, [fetchPontos, tab, pontosCarregados]);
 
   useEffect(() => {
-    if (!entidadeId) return;
+    if (!entidadeId || tab !== "plano" || planoCarregado) return;
     let cancelled = false;
+    setPlanoLoading(true);
     Promise.allSettled([
-      api.get<PlanoZona[] | { zonas: PlanoZona[] }>("/zonas/"),
+      api.get<PlanoZona[] | { zonas: PlanoZona[] }>("/zonas/", { params: { cards: "1" } }),
       api.get<PlanoEvento[] | { eventos: PlanoEvento[] }>("/eventos/"),
       api.get<PlanoFamiliasResumo & { familias: unknown[] }>("/familias/"),
       api.get<PlanoMonitoramento[] | { monitoramentos: PlanoMonitoramento[] }>("/monitoramentos/"),
       api.get<{ kpis: PlanoEquipeKpis }>("/equipe/panorama/"),
     ]).then(([zonasResult, eventosResult, familiasResult, monitoramentosResult, equipeResult]) => {
       if (cancelled) return;
+      setPlanoCarregado(true);
       if (zonasResult.status === "fulfilled") {
         const data = zonasResult.value.data;
         setPlanoZonas(Array.isArray(data) ? data : data.zonas ?? []);
@@ -528,13 +549,15 @@ function EntityPageContent() {
       if (equipeResult.status === "fulfilled") {
         setPlanoEquipe(equipeResult.value.data.kpis);
       }
+    }).catch(() => {
+      if (!cancelled) setPlanoCarregado(true);
     }).finally(() => {
       if (!cancelled) setPlanoLoading(false);
     });
     return () => {
       cancelled = true;
     };
-  }, [entidadeId]);
+  }, [entidadeId, tab, planoCarregado]);
 
   const excluirPonto = async (ponto: Apoio) => {
     try {
@@ -869,7 +892,7 @@ function EntityPageContent() {
     [contasBackend],
   );
 
-  if (entidadeLoading || responsaveisLoading || contasLoading || pontosLoading || planoLoading) {
+  if (entidadeLoading) {
     return <DataLoading />;
   }
 
@@ -1322,7 +1345,13 @@ function EntityPageContent() {
 
       {/* ─────────── PRESTAÇÃO DE CONTAS ─────────── */}
       {tab === "contas" && (
-        <div className="space-y-6">
+        !contasCarregadas || contasLoading ? (
+          <div className="flex flex-col items-center justify-center p-12 card-tonal shadow-ambient-sm">
+            <Icon name="progress_activity" className="animate-spin text-[28px] text-secondary mb-3" />
+            <p className="text-sm text-on-surface-variant font-medium">Carregando prestação de contas…</p>
+          </div>
+        ) : (
+          <div className="space-y-6">
           {/* filtro por exercício */}
           <div className="flex flex-wrap items-center gap-2">
             <MetaTag className="mr-1">EXERCÍCIO</MetaTag>
@@ -1525,7 +1554,8 @@ function EntityPageContent() {
             de Danos. O valor fecha automaticamente quando o evento é encerrado.
           </p>
         </div>
-      )}
+      )
+    )}
 
       {/* ─────────── PLANO DE CONTINGÊNCIA ─────────── */}
       {tab === "plano" && (
@@ -1548,7 +1578,14 @@ function EntityPageContent() {
         </div>
       )}
 
-      {tab === "plano" && planoModo === "documento" && (
+      {tab === "plano" && planoLoading && (
+        <div className="flex flex-col items-center justify-center p-12 card-tonal shadow-ambient-sm">
+          <Icon name="progress_activity" className="animate-spin text-[28px] text-secondary mb-3" />
+          <p className="text-sm text-on-surface-variant font-medium">Carregando plano de contingência…</p>
+        </div>
+      )}
+
+      {tab === "plano" && !planoLoading && planoModo === "documento" && (
         <PlanContingenciaEditor
           entidadeId={entidade.id}
           entidadeNome={entidade.nome}
@@ -1564,7 +1601,7 @@ function EntityPageContent() {
         />
       )}
 
-      {tab === "plano" && planoModo === "operacional" && (
+      {tab === "plano" && !planoLoading && planoModo === "operacional" && (
         <div className="space-y-5">
           <section className="card-tonal p-7 shadow-ambient-sm">
             <div className="flex items-start justify-between gap-6 flex-wrap">

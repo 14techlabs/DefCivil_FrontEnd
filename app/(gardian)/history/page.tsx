@@ -268,7 +268,7 @@ export default function HistoryPage() {
       try {
         const [ocorrenciasResult, zonasResult, usuariosResult, alertasResult, eventosResult] = await Promise.allSettled([
           api.get<HistoryOccurrence[] | { ocorrencias: HistoryOccurrence[] }>("/ocorrencias/"),
-          api.get<Array<{ id: number; nome: string }> | { zonas: Array<{ id: number; nome: string }> }>("/zonas/"),
+          api.get<Array<{ id: number; nome: string }> | { zonas: Array<{ id: number; nome: string }> }>("/zonas/", { params: { lookup: "1" } }),
           api.get<HistoryUser[] | { usuarios: HistoryUser[] }>("/usuarios/"),
           api.get<AlertApi[] | { alertas: AlertApi[] }>("/alertas/"),
           api.get<Array<{ id: number; nome: string }> | { eventos: Array<{ id: number; nome: string }> }>("/eventos/"),

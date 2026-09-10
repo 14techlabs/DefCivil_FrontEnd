@@ -15,6 +15,7 @@ import {
 
 interface DanoPorOcorrencia {
   ocorrencia_id: number;
+  evento_id?: number | null;
   protocolo: string;
   titulo: string;
   status: string;
@@ -114,64 +115,54 @@ export default function DamagesPage() {
 
   useEffect(() => {
     let cancelado = false;
-    api.get<RelatorioOcorrenciasResponse>("/danos/registros/por-ocorrencia/")
-      .then((response) => {
+
+    const carregarTudo = async () => {
+      try {
+        const [relatorioResponse, eventosResponse] = await Promise.all([
+          api.get<RelatorioOcorrenciasResponse>("/danos/registros/por-ocorrencia/"),
+          api.get<EventoListResponse>("/eventos/"),
+        ]);
+
         if (cancelado) return;
-        setRelatorioOcorrencias(response.data.ocorrencias ?? []);
-        setTotaisOcorrencias(response.data.totais ?? {
+
+        const ocorrencias = relatorioResponse.data.ocorrencias ?? [];
+        setRelatorioOcorrencias(ocorrencias);
+        setTotaisOcorrencias(relatorioResponse.data.totais ?? {
           custo_total: 0,
           total_itens: 0,
           ocorrencias_com_dano: 0,
         });
         setErroOcorrencias("");
-      })
-      .catch(() => {
-        if (cancelado) return;
-        setRelatorioOcorrencias([]);
-        setErroOcorrencias("Não foi possível carregar os danos registrados.");
-      })
-      .finally(() => {
-        if (!cancelado) setCarregandoOcorrencias(false);
-      });
-    return () => {
-      cancelado = true;
-    };
-  }, []);
 
-  useEffect(() => {
-    let cancelado = false;
-
-    const carregarDanosPorEvento = async () => {
-      try {
-        const eventosResponse = await api.get<EventoListResponse>("/eventos/");
         const eventos = eventosResponse.data.eventos ?? [];
-        const respostas = await Promise.all(
-          eventos.map(async (evento) => {
-            const response = await api.get<RelatorioOcorrenciasResponse>(
-              "/danos/registros/por-ocorrencia/",
-              { params: { evento_id: evento.id } },
-            );
-            return {
-              evento,
-              ocorrenciasComDano: Number(response.data.totais?.ocorrencias_com_dano || 0),
-              custo: Number(response.data.totais?.custo_total || 0),
-              ocorrencias: response.data.ocorrencias ?? [],
-            };
-          }),
-        );
-        if (cancelado) return;
-        setDanosPorEvento(respostas.filter((grupo) => grupo.ocorrenciasComDano > 0));
+        const grupos = eventos.map((evento) => {
+          const ocorrenciasDoEvento = ocorrencias.filter((o) => o.evento_id === evento.id);
+          const custo = ocorrenciasDoEvento.reduce((acc, o) => acc + Number(o.custo_total || 0), 0);
+          return {
+            evento,
+            ocorrenciasComDano: ocorrenciasDoEvento.length,
+            custo,
+            ocorrencias: ocorrenciasDoEvento,
+          };
+        });
+
+        setDanosPorEvento(grupos.filter((grupo) => grupo.ocorrenciasComDano > 0));
         setErroEventos("");
       } catch {
         if (cancelado) return;
+        setRelatorioOcorrencias([]);
         setDanosPorEvento([]);
+        setErroOcorrencias("Não foi possível carregar os danos registrados.");
         setErroEventos("Não foi possível carregar os danos agrupados por evento.");
       } finally {
-        if (!cancelado) setCarregandoEventos(false);
+        if (!cancelado) {
+          setCarregandoOcorrencias(false);
+          setCarregandoEventos(false);
+        }
       }
     };
 
-    carregarDanosPorEvento();
+    carregarTudo();
     return () => {
       cancelado = true;
     };

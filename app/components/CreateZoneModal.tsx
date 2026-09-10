@@ -80,7 +80,7 @@ export function CreateZoneModal({ open, onClose, onCreated }: CreateZoneModalPro
     setError("");
     setStep(1);
     // busca zonas existentes para mostrar como referência no mapa
-    api.get<{ zonas: { id: number; nome: string; area: GeoJSON.Polygon | null }[] }>("/zonas/")
+    api.get<{ zonas: { id: number; nome: string; area: GeoJSON.Polygon | null }[] }>("/zonas/", { params: { areas: "1" } })
       .then((res) => {
         const validas = res.data.zonas.filter((z): z is { id: number; nome: string; area: GeoJSON.Polygon } =>
           z.area !== null && z.area.type === "Polygon" && z.area.coordinates?.length > 0

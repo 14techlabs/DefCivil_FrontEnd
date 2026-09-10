@@ -228,7 +228,7 @@ export default function FamiliesPage() {
   useEffect(() => {
     let cancelado = false;
     api
-      .get<{ zonas: ZonaResumo[] }>("/zonas/")
+      .get<{ zonas: ZonaResumo[] }>("/zonas/", { params: { lookup: "1" } })
       .then((res) => {
         if (!cancelado) setZonas(res.data.zonas ?? []);
       })
