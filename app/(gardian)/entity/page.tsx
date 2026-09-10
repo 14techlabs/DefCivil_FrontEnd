@@ -2011,10 +2011,16 @@ function EntityPageContent() {
                       variant="ghost"
                       icon="open_in_new"
                       className="w-full"
-                      onClick={() =>
-                        // sem noopener: nova aba herda a sessionStorage (senão cai no login)
-                        window.open(`/zonedetail?zone=${pontoSelecionado.zona}`, "_blank")
-                      }
+                      onClick={() => {
+                        // workaround anterior mantido comentado
+                        // // sem noopener: nova aba herda a sessionStorage (senão cai no login)
+                        // window.open(`/zonedetail?zone=${pontoSelecionado.zona}`, "_blank")
+                        window.open(
+                          `/zonedetail?zone=${pontoSelecionado.zona}`,
+                          "_blank",
+                          "noopener,noreferrer",
+                        );
+                      }}
                     >
                       Ver a zona no mapa
                     </Btn>

@@ -713,13 +713,19 @@ function ZoneDetailContent() {
                     variant="primary"
                     icon="open_in_new"
                     className="w-full"
-                    onClick={() =>
-                      // sem noopener: nova aba herda a sessionStorage (senão cai no login)
+                    onClick={() => {
+                      // workaround anterior mantido comentado
+                      // // sem noopener: nova aba herda a sessionStorage (senão cai no login)
+                      // window.open(
+                      //   `/occurrences?id=${selecionadoOcorrencia.id}`,
+                      //   "_blank",
+                      // )
                       window.open(
                         `/occurrences?id=${selecionadoOcorrencia.id}`,
                         "_blank",
-                      )
-                    }
+                        "noopener,noreferrer",
+                      );
+                    }}
                   >
                     Ver ocorrência completa
                   </Btn>
@@ -728,13 +734,19 @@ function ZoneDetailContent() {
                     variant="secondary"
                     icon="open_in_new"
                     className="w-full"
-                    onClick={() =>
-                      // sem noopener: nova aba herda a sessionStorage (senão cai no login)
+                    onClick={() => {
+                      // workaround anterior mantido comentado
+                      // // sem noopener: nova aba herda a sessionStorage (senão cai no login)
+                      // window.open(
+                      //   `/entity?tab=apoios&ponto=${selecionadoApoio.id}`,
+                      //   "_blank",
+                      // )
                       window.open(
                         `/entity?tab=apoios&ponto=${selecionadoApoio.id}`,
                         "_blank",
-                      )
-                    }
+                        "noopener,noreferrer",
+                      );
+                    }}
                   >
                     Abrir ficha completa
                   </Btn>

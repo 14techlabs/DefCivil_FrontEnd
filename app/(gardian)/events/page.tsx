@@ -299,10 +299,12 @@ function OcorrenciaDetalhePanel({ ocorrencia }: { ocorrencia: OcorrenciaDetalhad
         variant="secondary"
         icon="open_in_new"
         className="mt-4 w-full"
-        onClick={() =>
-          // sem noopener: nova aba herda a sessionStorage (senão cai no login)
-          window.open(`/occurrences?id=${ocorrencia.id}`, "_blank")
-        }
+        onClick={() => {
+          // workaround anterior mantido comentado
+          // // sem noopener: nova aba herda a sessionStorage (senão cai no login)
+          // window.open(`/occurrences?id=${ocorrencia.id}`, "_blank")
+          window.open(`/occurrences?id=${ocorrencia.id}`, "_blank", "noopener,noreferrer");
+        }}
       >
         Ver ocorrência completa
       </Btn>
@@ -764,10 +766,12 @@ export default function EventsPage() {
                           key={zoneId}
                           type="button"
                           title={`Abrir página da zona ${zonaLookup.get(zoneId) ?? `#${zoneId}`}`}
-                          onClick={() =>
-                            // sem noopener: nova aba herda a sessionStorage (senão cai no login)
-                            window.open(`/zonedetail?zone=${zoneId}`, "_blank")
-                          }
+                          onClick={() => {
+                            // workaround anterior mantido comentado
+                            // // sem noopener: nova aba herda a sessionStorage (senão cai no login)
+                            // window.open(`/zonedetail?zone=${zoneId}`, "_blank")
+                            window.open(`/zonedetail?zone=${zoneId}`, "_blank", "noopener,noreferrer");
+                          }}
                           className="rounded-full transition hover:brightness-95 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-secondary"
                         >
                           <Chip tone="neutral" icon="link">
