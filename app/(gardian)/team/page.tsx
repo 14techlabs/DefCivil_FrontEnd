@@ -317,7 +317,7 @@ export default function TeamPage() {
                       </div>
                       {atuando.length > 0 && (
                         <p className="text-[11px] text-error font-bold mt-2 flex items-center gap-1.5">
-                          <StatusDot tone="error" /> Atuando em #{atuando.map((o) => o.id).join(", #")}
+                          <StatusDot tone="error" /> Atuando em {atuando.map((o) => o.id).join(", ")}
                         </p>
                       )}
                     </div>
@@ -388,7 +388,7 @@ export default function TeamPage() {
                   return (
                     <tr key={o.id} className="border-b border-outline-variant/15 hover:bg-surface-container-low transition-colors">
                       <td className="py-3.5 pr-4">
-                        <p className="text-[13px] font-bold text-primary">#{o.id} · {o.titulo}</p>
+                        <p className="text-[13px] font-bold text-primary">{o.id} · {o.titulo}</p>
                       </td>
                       <td className="py-3.5 pr-4 text-[12px] text-on-surface">{tec?.nome ?? "—"}</td>
                       <td className="py-3.5 pr-4 text-[12px] text-on-surface-variant">{nomeZona(o.zona)}</td>

@@ -114,7 +114,7 @@ export function EventFormModal({ open, onClose, onSaved, evento }: Props) {
   return (
     <ModalShell open={open} onClose={handleClose} maxWidth="max-w-2xl">
       <div className="bg-surface-container-low px-8 py-6">
-        <MetaTag>{evento ? `EDITAR EVENTO · #${evento.id}` : "NOVO EVENTO"}</MetaTag>
+        <MetaTag>{evento ? `EDITAR EVENTO · ${evento.id}` : "NOVO EVENTO"}</MetaTag>
         <h2 className="mt-2 font-headline text-2xl font-black tracking-tighter text-primary">
           {evento ? "Editar evento" : "Registrar evento"}
         </h2>

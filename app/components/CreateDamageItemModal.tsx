@@ -149,7 +149,7 @@ export function CreateDamageItemModal({
       <div className="bg-gradient-to-br from-primary to-primary-container text-white p-6 flex items-start justify-between gap-4">
         <div>
           <Chip tone="primarySoft" className="!bg-white/15 !text-white">
-            {editando ? `ITEM #${item.id}` : passo === "buscar" ? "PASSO 1 DE 2" : "PASSO 2 DE 2"}
+            {editando ? `ITEM ${item.id}` : passo === "buscar" ? "PASSO 1 DE 2" : "PASSO 2 DE 2"}
           </Chip>
           <h2 className="font-headline font-black text-2xl tracking-tighter mt-2">
             {editando ? "Editar item" : passo === "buscar" ? "Novo item" : nome}

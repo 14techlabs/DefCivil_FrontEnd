@@ -59,25 +59,25 @@ export function OccurrenceReportModal({ items, zones, users, events, categories,
   });
   const statuses = [...new Map(items.map((o) => { const meta = getOccurrenceStatusMeta(o.status); return [meta.key, meta.label]; })).entries()];
   const selects = [
-    { key: "event" as const, label: "Evento", options: [...new Set(items.map((o) => o.evento))].map((id) => [String(id ?? "none"), id == null ? "Sem evento" : reportText(events.find((e) => e.id === id)?.nome ?? `Evento #${id}`)]) },
+    { key: "event" as const, label: "Evento", options: [...new Set(items.map((o) => o.evento))].map((id) => [String(id ?? "none"), id == null ? "Sem evento" : reportText(events.find((e) => e.id === id)?.nome ?? `Evento ${id}`)]) },
     { key: "origin" as const, label: "Origem", options: Object.entries(originLabels) },
     { key: "status" as const, label: "Status", options: statuses },
     { key: "category" as const, label: "Categoria", options: [...new Set(items.map((o) => o.categoria))].map((c) => [c, categories[c] ?? reportLabel(c)]) },
-    { key: "zone" as const, label: "Zona", options: [...new Set(items.map((o) => o.zona))].map((id) => [String(id ?? "none"), id === null ? "Sem zona" : reportText(zones.get(id) ?? `Zona #${id}`)]) },
-    { key: "user" as const, label: "Responsável", options: [...new Set(items.map((o) => o.tecnico_responsavel))].map((id) => [String(id ?? "none"), id === null ? "Não atribuído" : users.get(id) ?? `Usuário #${id}`]) },
+    { key: "zone" as const, label: "Zona", options: [...new Set(items.map((o) => o.zona))].map((id) => [String(id ?? "none"), id === null ? "Sem zona" : reportText(zones.get(id) ?? `Zona ${id}`)]) },
+    { key: "user" as const, label: "Responsável", options: [...new Set(items.map((o) => o.tecnico_responsavel))].map((id) => [String(id ?? "none"), id === null ? "Não atribuído" : users.get(id) ?? `Usuário ${id}`]) },
   ];
   const generate = () => {
     if (invalidPeriod || !filtered.length) return;
     const popup = window.open("", "_blank");
     if (!popup) { setError("Permita pop-ups para abrir o relatório."); return; }
     popup.opener = null;
-    const rows = filtered.map((o) => `<section class="occurrence"><header><small>OCORRÊNCIA #${o.id}</small><h2>${escape(reportTitle(o.titulo))}</h2><span>${escape(getOccurrenceStatusMeta(o.status).label)}</span></header><dl>${[
+    const rows = filtered.map((o) => `<section class="occurrence"><header><small>OCORRÊNCIA ${o.id}</small><h2>${escape(reportTitle(o.titulo))}</h2><span>${escape(getOccurrenceStatusMeta(o.status).label)}</span></header><dl>${[
       ["Categoria", categories[o.categoria] ?? reportLabel(o.categoria)],
-      ["Evento", o.evento == null ? "Sem evento" : reportText(events.find((e) => e.id === o.evento)?.nome ?? `Evento #${o.evento}`)],
+      ["Evento", o.evento == null ? "Sem evento" : reportText(events.find((e) => e.id === o.evento)?.nome ?? `Evento ${o.evento}`)],
       ["Origem", originLabels[origin(o)]],
       ["Registrada em", localDay(o.created_at) ? new Date(o.created_at).toLocaleString("pt-BR") : "Não informada"],
-      ["Responsável", o.tecnico_responsavel == null ? "Não atribuído" : users.get(o.tecnico_responsavel) ?? `Usuário #${o.tecnico_responsavel}`],
-      ["Zona", o.zona == null ? "Sem zona" : reportText(zones.get(o.zona) ?? `Zona #${o.zona}`)],
+      ["Responsável", o.tecnico_responsavel == null ? "Não atribuído" : users.get(o.tecnico_responsavel) ?? `Usuário ${o.tecnico_responsavel}`],
+      ["Zona", o.zona == null ? "Sem zona" : reportText(zones.get(o.zona) ?? `Zona ${o.zona}`)],
       ["Endereço", o.endereco || "Não informado"],
     ].map(([label, value]) => `<div><dt>${escape(label)}</dt><dd>${escape(value)}</dd></div>`).join("")}</dl><p class="description">${escape(o.descricao || "Descrição não informada")}</p><footer>Danos: ${escape(money(Number(o.custo_danos) || 0))} · Fatalidades: ${o.fatalidades ?? 0}</footer></section>`).join("");
     popup.document.write(`<!doctype html><html lang="pt-BR"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Relatório de ocorrências - Gardian</title><style>

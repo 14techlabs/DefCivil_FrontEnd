@@ -131,7 +131,7 @@ function PainelOcorrencia({
       >
         <Icon name="arrow_back" className="text-[14px]" /> Voltar
       </button>
-      <MetaTag className="block mb-3">OCORRÊNCIA #{ocorrencia.id}</MetaTag>
+      <MetaTag className="block mb-3">OCORRÊNCIA {ocorrencia.id}</MetaTag>
       <span
         className="inline-flex items-center gap-2 text-[10px] font-black uppercase tracking-mono-tight mb-3"
         style={{ color: meta.color }}
@@ -140,7 +140,7 @@ function PainelOcorrencia({
         {meta.label}
       </span>
       <h3 className="font-headline font-black text-xl text-primary tracking-tighter mb-4">
-        {ocorrencia.titulo || `Ocorrência #${ocorrencia.id}`}
+        {ocorrencia.titulo || `Ocorrência ${ocorrencia.id}`}
       </h3>
       <dl className="space-y-3">
         <div>
@@ -385,7 +385,7 @@ function ZoneDetailContent() {
         id: `oc-${o.id}`,
         lat: o.coordenadas.lat,
         lng: o.coordenadas.lng,
-        titulo: o.titulo || `Ocorrência #${o.id}`,
+        titulo: o.titulo || `Ocorrência ${o.id}`,
         subtitulo: [
           CATEGORIA_LABEL[o.categoria] ?? o.categoria,
           getOccurrenceStatusMeta(o.status).label,
@@ -520,7 +520,7 @@ function ZoneDetailContent() {
           <Icon name="arrow_back" className="text-[16px]" /> Voltar para Zonas
         </button>
         <div className="flex items-center gap-2 mb-3">
-          <MetaTag>ZONA #{z.id}</MetaTag>
+          <MetaTag>ZONA {z.id}</MetaTag>
           <span className="w-1 h-1 rounded-full bg-outline-variant" />
           <Chip tone={tone}>{STATUS_LABEL[z.status]}</Chip>
           <span className="w-1 h-1 rounded-full bg-outline-variant" />
@@ -645,7 +645,7 @@ function ZoneDetailContent() {
                           />
                           <span className="flex-1 min-w-0">
                             <span className="block font-bold text-[13px] text-primary truncate">
-                              {o.titulo || `Ocorrência #${o.id}`}
+                              {o.titulo || `Ocorrência ${o.id}`}
                             </span>
                             <span className="block text-[11px] text-on-surface-variant truncate mt-0.5">
                               {CATEGORIA_LABEL[o.categoria] ?? o.categoria} ·{" "}

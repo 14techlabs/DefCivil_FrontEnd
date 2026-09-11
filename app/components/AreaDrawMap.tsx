@@ -279,7 +279,7 @@ export function AreaDrawMap({ height = 420 }: { height?: number }) {
                   Última área exibida
                 </p>
                 <p className="text-[11px] font-bold text-primary">
-                  #{loadedMeta.id} · {loadedMeta.nome}
+                  {loadedMeta.id} · {loadedMeta.nome}
                 </p>
               </div>
             </div>

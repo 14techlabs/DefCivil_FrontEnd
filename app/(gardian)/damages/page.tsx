@@ -460,7 +460,7 @@ export default function DamagesPage() {
           {danosPorEvento.map(({ evento, ocorrenciasComDano, ocorrencias, custo }) => (
             <div key={evento.id} className="card-tonal p-7 shadow-ambient-sm">
               <SectionHeader
-                overline={`EVENTO #${evento.id} · ${ocorrenciasComDano} OCORRÊNCIAS COM DANOS`}
+                overline={`EVENTO ${evento.id} · ${ocorrenciasComDano} OCORRÊNCIAS COM DANOS`}
                 title={evento.nome}
                 action={
                   <div className="text-right">

@@ -55,7 +55,7 @@ export function DeleteZoneModal({ open, onClose, onDeleted, zona }: Props) {
           <Icon name="delete" filled className="text-[24px]" />
         </div>
 
-        <MetaTag>EXCLUIR ZONA · #{zona.id}</MetaTag>
+        <MetaTag>EXCLUIR ZONA · {zona.id}</MetaTag>
         <h2 className="mt-2 font-headline text-2xl font-black tracking-tighter text-primary">
           Confirmar exclusão
         </h2>

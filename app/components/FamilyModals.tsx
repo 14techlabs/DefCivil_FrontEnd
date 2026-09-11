@@ -94,7 +94,7 @@ export function EditFamilyModal({
       <div className="bg-gradient-to-br from-primary to-primary-container text-white p-6 flex items-start justify-between gap-4">
         <div>
           <Chip tone="primarySoft" className="!bg-white/15 !text-white">
-            FAMÍLIA #{familia.id}
+            FAMÍLIA {familia.id}
           </Chip>
           <h2 className="font-headline font-black text-2xl tracking-tighter mt-2">
             Editar família

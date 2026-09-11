@@ -250,12 +250,12 @@ function OcorrenciaDetalhePanel({ ocorrencia }: { ocorrencia: OcorrenciaDetalhad
   const custo = formatarReais(ocorrencia.custo_danos);
   const coordenadas = formatarCoordenadas(ocorrencia.coordenadas);
   const titulo =
-    formatOccurrenceTitle(ocorrencia.titulo ?? "") || `Ocorrência #${ocorrencia.id}`;
+    formatOccurrenceTitle(ocorrencia.titulo ?? "") || `Ocorrência ${ocorrencia.id}`;
 
   return (
     <div className="h-fit rounded-xl bg-surface-container-low p-5">
       <div className="flex flex-wrap items-center gap-2">
-        <MetaTag className="text-secondary">OCORRÊNCIA #{ocorrencia.id}</MetaTag>
+        <MetaTag className="text-secondary">OCORRÊNCIA {ocorrencia.id}</MetaTag>
         <Chip tone={meta.tone}>{meta.label}</Chip>
       </div>
       <h3 className="mt-2 font-headline text-lg font-bold leading-snug text-primary">{titulo}</h3>
@@ -762,7 +762,7 @@ export default function EventsPage() {
               <div className="card-tonal p-7 shadow-ambient-sm">
                 <div className="grid items-start gap-6 md:grid-cols-[minmax(0,1fr)_280px]">
                   <div className="min-w-0">
-                    <MetaTag className="mb-2 block text-secondary">EVENTO #{evento.id}</MetaTag>
+                    <MetaTag className="mb-2 block text-secondary">EVENTO {evento.id}</MetaTag>
                     <h2 className="font-headline text-3xl font-black tracking-tighter text-primary">{evento.nome}</h2>
                     <p className="mt-2 text-sm leading-relaxed text-on-surface-variant">{evento.descricao}</p>
                     <div className="mt-3 flex flex-wrap gap-2">
@@ -770,7 +770,7 @@ export default function EventsPage() {
                         <button
                           key={zoneId}
                           type="button"
-                          title={`Abrir página da zona ${zonaLookup.get(zoneId) ?? `#${zoneId}`}`}
+                          title={`Abrir página da zona ${zonaLookup.get(zoneId) ?? `${zoneId}`}`}
                           onClick={() => {
                             // workaround anterior mantido comentado
                             // // sem noopener: nova aba herda a sessionStorage (senão cai no login)
@@ -780,7 +780,7 @@ export default function EventsPage() {
                           className="rounded-full transition hover:brightness-95 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-secondary"
                         >
                           <Chip tone="neutral" icon="link">
-                            {zonaLookup.get(zoneId) ?? `Zona #${zoneId}`}
+                            {zonaLookup.get(zoneId) ?? `Zona ${zoneId}`}
                           </Chip>
                         </button>
                       ))}
@@ -839,7 +839,7 @@ export default function EventsPage() {
                   )}
                   <div className="mt-6 border-t border-outline-variant/20 pt-5">
                     <MetaTag className="mb-3 block">OCORRÊNCIAS VINCULADAS ({ocorrenciasVinculadas.length})</MetaTag>
-                    {ocorrenciasVinculadas.length === 0 ? <p className="text-[12px] italic text-on-surface-variant">Nenhuma ocorrência vinculada.</p> : <div className="grid grid-cols-1 gap-2 md:grid-cols-2">{ocorrenciasVinculadas.map((occurrence) => <div key={occurrence.id} className="flex items-center gap-2 rounded-lg bg-surface-container-low p-2.5 text-[12px]"><Icon name="emergency" className="shrink-0 text-[16px] text-error" /><span className="font-bold text-primary">#{occurrence.id}</span><span className="truncate">{formatOccurrenceTitle(occurrence.titulo)}</span></div>)}</div>}
+                    {ocorrenciasVinculadas.length === 0 ? <p className="text-[12px] italic text-on-surface-variant">Nenhuma ocorrência vinculada.</p> : <div className="grid grid-cols-1 gap-2 md:grid-cols-2">{ocorrenciasVinculadas.map((occurrence) => <div key={occurrence.id} className="flex items-center gap-2 rounded-lg bg-surface-container-low p-2.5 text-[12px]"><Icon name="emergency" className="shrink-0 text-[16px] text-error" /><span className="font-bold text-primary">{occurrence.id}</span><span className="truncate">{formatOccurrenceTitle(occurrence.titulo)}</span></div>)}</div>}
                   </div>
                 </div>
               )}
@@ -912,7 +912,7 @@ export default function EventsPage() {
                                     <Icon name={tipoMeta?.icon ?? "history"} className="text-[16px] text-secondary" />
                                     <MetaTag>{tipoMeta?.label ?? item.tipo}</MetaTag>
                                     <MetaTag className="text-secondary">{formatTimelineDate(item.data_hora)}</MetaTag>
-                                    {ocorrenciaId != null && <MetaTag>OCORRÊNCIA #{ocorrenciaId}</MetaTag>}
+                                    {ocorrenciaId != null && <MetaTag>OCORRÊNCIA {ocorrenciaId}</MetaTag>}
                                   </div>
                                   <p className="mt-2 text-[13px] font-bold text-primary">{item.titulo}</p>
                                   {item.detalhe && <p className="mt-1 text-[12px] leading-relaxed text-on-surface-variant">{item.detalhe}</p>}
@@ -1001,10 +1001,10 @@ export default function EventsPage() {
                               <span className="mt-1 h-2.5 w-2.5 shrink-0 rounded-full" style={{ background: meta.color }} />
                               <span className="min-w-0 flex-1">
                                 <span className="block truncate text-[13px] font-bold text-primary">
-                                  {formatOccurrenceTitle(item.titulo ?? "") || `Ocorrência #${item.id}`}
+                                  {formatOccurrenceTitle(item.titulo ?? "") || `Ocorrência ${item.id}`}
                                 </span>
                                 <span className="mt-0.5 block truncate text-[11px] text-on-surface-variant">
-                                  #{item.id} · {item.categoria ? OCCURRENCE_CATEGORY_LABEL[item.categoria] ?? item.categoria : "Sem categoria"} · {meta.label}
+                                  {item.id} · {item.categoria ? OCCURRENCE_CATEGORY_LABEL[item.categoria] ?? item.categoria : "Sem categoria"} · {meta.label}
                                 </span>
                                 <span className="mt-1 block font-mono text-[10px] text-slate-400">
                                   {formatTimelineDate(item.created_at ?? "")}

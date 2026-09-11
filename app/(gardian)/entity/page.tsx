@@ -920,7 +920,7 @@ function EntityPageContent() {
       {/* ── Cabeçalho ── */}
       <header>
         <div className="flex items-center gap-2 mb-3">
-          <MetaTag className="text-secondary">ENTIDADE · #{entidade.id}</MetaTag>
+          <MetaTag className="text-secondary">ENTIDADE · {entidade.id}</MetaTag>
           <span className="w-1 h-1 rounded-full bg-outline-variant" />
           <MetaTag>CNPJ {entidade.cnpj}</MetaTag>
         </div>
@@ -1928,7 +1928,7 @@ function EntityPageContent() {
                             </dt>
                             <dd className="text-primary font-medium mt-0.5">
                               {planoZonas.find((z) => z.id === pontoSelecionado.zona)?.nome ??
-                                `Zona #${pontoSelecionado.zona}`}
+                                `Zona ${pontoSelecionado.zona}`}
                             </dd>
                           </div>
                         </div>

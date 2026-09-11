@@ -355,7 +355,7 @@ function OccurrencesContent() {
             u.user_sys?.username ??
             u.nome_anonimo ??
             u.telefone ??
-            `Usuário #${u.id}`;
+            `Usuário ${u.id}`;
           uLookup.set(u.id, nome);
         }
       }
@@ -377,7 +377,7 @@ function OccurrencesContent() {
         ),
       );
     } catch {
-      // falha silenciosa: a página usa fallbacks como Zona #id e Usuário #id
+      // falha silenciosa: a página usa fallbacks como Zona id e Usuário id
     }
   }, []);
 
@@ -543,7 +543,7 @@ function OccurrencesContent() {
       abertas: resumo?.abertas ?? 0,
       andamento: resumo?.andamento ?? 0,
       resolvidas: resumo?.resolvidas ?? 0,
-      topZonaNome: topZona ? zonaLookup.get(topZona[0]) ?? `Zona #${topZona[0]}` : "—",
+      topZonaNome: topZona ? zonaLookup.get(topZona[0]) ?? `Zona ${topZona[0]}` : "—",
       topZonaQtd: topZona ? topZona[1] : 0,
       ranking: ranking.slice(0, 4),
     };
@@ -819,7 +819,7 @@ function OccurrencesContent() {
 
           <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-4">
             {indicadores.ranking.map(([zid, qtd], index) => {
-              const nome = zonaLookup.get(zid) ?? `Zona #${zid}`;
+              const nome = zonaLookup.get(zid) ?? `Zona ${zid}`;
               const maiorQuantidade = indicadores.ranking[0]?.[1] ?? 1;
               const proporcao = Math.max(8, (qtd / maiorQuantidade) * 100);
 
@@ -884,7 +884,7 @@ function OccurrencesContent() {
                 <strong>
                   {familiaFiltroNome ||
                     familiaLookup.get(familiaFiltroId) ||
-                    `família #${familiaFiltroId}`}
+                    `família ${familiaFiltroId}`}
                 </strong>
                 .
               </>
@@ -894,7 +894,7 @@ function OccurrencesContent() {
                 <strong>
                   {familiaFiltroNome ||
                     familiaLookup.get(familiaFiltroId) ||
-                    `família #${familiaFiltroId}`}
+                    `família ${familiaFiltroId}`}
                 </strong>{" "}
                 desativado.
               </>
@@ -1134,11 +1134,11 @@ function OccurrencesContent() {
                           </td>
                         )}
                         <td className="max-w-[300px] px-4 py-4">
-                          <p className="text-[13px] font-bold text-primary">#{o.id} · {tituloOcorrencia(o)}</p>
+                          <p className="text-[13px] font-bold text-primary">{o.id} · {tituloOcorrencia(o)}</p>
                           <p className="mt-1 truncate text-[10px] text-on-surface-variant">{o.endereco || "Sem endereço informado"}</p>
                         </td>
                         <td className="px-4 py-4 text-[11px] font-medium text-on-surface-variant">{categoriaLabel(o.categoria)}</td>
-                        <td className="px-4 py-4 text-[11px] font-medium text-on-surface-variant">{o.zona != null ? zonaLookup.get(o.zona) ?? `Zona #${o.zona}` : "Sem zona"}</td>
+                        <td className="px-4 py-4 text-[11px] font-medium text-on-surface-variant">{o.zona != null ? zonaLookup.get(o.zona) ?? `Zona ${o.zona}` : "Sem zona"}</td>
                         <td className="px-4 py-4"><Chip tone={getOccurrenceStatusMeta(o.status).tone}>{getOccurrenceStatusMeta(o.status).label}</Chip></td>
                         <td className="whitespace-nowrap px-4 py-4 text-[10px] font-bold text-on-surface-variant">{formatDate(o.created_at)}</td>
                         <td className="px-4 py-4 text-left">
@@ -1207,7 +1207,7 @@ function OccurrencesContent() {
                     {selecionada.zona != null && (
                       <p className="text-white/70 text-xs mt-2 flex items-center gap-1.5">
                         <Icon name="location_on" className="text-[14px]" />
-                        {zonaLookup.get(selecionada.zona) ?? `Zona #${selecionada.zona}`}
+                        {zonaLookup.get(selecionada.zona) ?? `Zona ${selecionada.zona}`}
                       </p>
                     )}
                   </div>
@@ -1313,7 +1313,7 @@ function OccurrencesContent() {
                                 <span className="flex items-center gap-1.5">
                                   <Icon name="person" className="text-[14px]" />
                                   {usuarioLookup.get(selecionada.autor) ??
-                                    `Usuário #${selecionada.autor}`}
+                                    `Usuário ${selecionada.autor}`}
                                 </span>
                               </div>
                             )}
@@ -1337,9 +1337,9 @@ function OccurrencesContent() {
                               </div>
                               <div><MetaTag className="mb-1 block">CATEGORIA</MetaTag><p className="font-bold text-primary">{CATEGORIA_LABEL[selecionada.categoria] ?? selecionada.categoria}</p></div>
                               <div><MetaTag className="mb-1 block">ORIGEM</MetaTag><p className="font-bold text-primary">{selecionada.cidadao != null && selecionada.autor == null ? "Formulário público" : "Registro interno"}</p></div>
-                              <div><MetaTag className="mb-1 block">EVENTO</MetaTag><p className="font-bold text-primary">{selecionada.evento != null ? eventos.find((evento) => evento.id === selecionada.evento)?.nome ?? `Evento #${selecionada.evento}` : "Não vinculado"}</p></div>
-                              <div><MetaTag className="mb-1 block">ZONA</MetaTag><p className="font-bold text-primary">{selecionada.zona != null ? zonaLookup.get(selecionada.zona) ?? `Zona #${selecionada.zona}` : "Não vinculada"}</p></div>
-                              <div><MetaTag className="mb-1 block">RESPONSÁVEL</MetaTag><p className="font-bold text-primary">{selecionada.tecnico_responsavel != null ? usuarioLookup.get(selecionada.tecnico_responsavel) ?? `Usuário #${selecionada.tecnico_responsavel}` : "Não atribuído"}</p></div>
+                              <div><MetaTag className="mb-1 block">EVENTO</MetaTag><p className="font-bold text-primary">{selecionada.evento != null ? eventos.find((evento) => evento.id === selecionada.evento)?.nome ?? `Evento ${selecionada.evento}` : "Não vinculado"}</p></div>
+                              <div><MetaTag className="mb-1 block">ZONA</MetaTag><p className="font-bold text-primary">{selecionada.zona != null ? zonaLookup.get(selecionada.zona) ?? `Zona ${selecionada.zona}` : "Não vinculada"}</p></div>
+                              <div><MetaTag className="mb-1 block">RESPONSÁVEL</MetaTag><p className="font-bold text-primary">{selecionada.tecnico_responsavel != null ? usuarioLookup.get(selecionada.tecnico_responsavel) ?? `Usuário ${selecionada.tecnico_responsavel}` : "Não atribuído"}</p></div>
                               <div><MetaTag className="mb-1 block">FATALIDADES</MetaTag><p className="font-bold text-primary">{selecionada.fatalidades ?? 0}</p></div>
                             </div>
                           </div>
@@ -1640,7 +1640,7 @@ function OccurrencesContent() {
                                         <p className="text-[12px] font-bold text-primary">{acaoLabel}</p>
                                         <p className="mt-1 text-[10px] font-medium text-on-surface-variant">
                                           {formatDate(registro.criado_em)} · {registro.usuario != null
-                                            ? usuarioLookup.get(registro.usuario) ?? `Usuário #${registro.usuario}`
+                                            ? usuarioLookup.get(registro.usuario) ?? `Usuário ${registro.usuario}`
                                             : "Sistema"}
                                         </p>
                                       </div>
@@ -1708,7 +1708,7 @@ function OccurrencesContent() {
                           <MetaTag className="mb-1 block">EVENTO</MetaTag>
                           <p className="truncate text-[12px] font-bold text-primary">
                             {selecionada.evento != null
-                              ? eventos.find((evento) => evento.id === selecionada.evento)?.nome ?? `Evento #${selecionada.evento}`
+                              ? eventos.find((evento) => evento.id === selecionada.evento)?.nome ?? `Evento ${selecionada.evento}`
                               : "Não vinculado"}
                           </p>
                         </div>
@@ -1790,7 +1790,7 @@ function OccurrencesContent() {
                 <option value="">Selecione um evento</option>
                 {eventos.map((evento) => (
                   <option key={evento.id} value={evento.id}>
-                    #{evento.id} · {evento.nome}
+                    {evento.id} · {evento.nome}
                   </option>
                 ))}
               </select>

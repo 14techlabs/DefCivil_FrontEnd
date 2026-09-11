@@ -133,7 +133,7 @@ export default function ProfilePage() {
   const cargo = user?.cargo_label?.trim()
     || (user?.cargo != null ? CARGO_LABEL[user.cargo] ?? "Cargo não identificado" : "Cargo não informado");
   const matricula = user?.matricula?.trim() || "Não informada";
-  const zonaBase = user?.zona_base == null ? "Não informada" : zonas.get(user.zona_base) ?? `Zona #${user.zona_base}`;
+  const zonaBase = user?.zona_base == null ? "Não informada" : zonas.get(user.zona_base) ?? `Zona ${user.zona_base}`;
   const statusCampo = user?.status_campo_label?.trim()
     || (user?.status_campo ? STATUS_CAMPO_LABEL[user.status_campo] ?? "Status não identificado" : "Não informado");
   const iniciais = nomeExibicao
@@ -143,7 +143,7 @@ export default function ProfilePage() {
     .join("")
     .toUpperCase();
   const zonaNome = (zonaId: number | null) =>
-    zonaId == null ? "Sem zona" : zonas.get(zonaId) ?? `Zona #${zonaId}`;
+    zonaId == null ? "Sem zona" : zonas.get(zonaId) ?? `Zona ${zonaId}`;
 
   if (loading) {
     return <DataLoading />;
@@ -269,7 +269,7 @@ export default function ProfilePage() {
                   <Link href={`/occurrences?id=${o.id}`} className="group flex items-center gap-3 px-5 py-4 transition-colors hover:bg-surface-container-low focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-secondary">
                     <div className="min-w-0 flex-1">
                       <p className="break-words text-sm font-bold text-primary group-hover:text-secondary">
-                        <span className="mr-2 font-mono text-xs font-medium text-on-surface-variant">#{o.id}</span>
+                        <span className="mr-2 font-mono text-xs font-medium text-on-surface-variant">{o.id}</span>
                         {o.titulo}
                       </p>
                       <p className="mt-1 break-words text-xs text-on-surface-variant">
@@ -316,7 +316,7 @@ export default function ProfilePage() {
                         <time dateTime={a.criado_em} className="text-xs text-on-surface-variant">{formatDate(a.criado_em)}</time>
                       </div>
                       <Link href={`/occurrences?id=${a.ocorrencia.id}`} className="mt-1 block break-words rounded text-sm text-on-surface-variant hover:text-secondary hover:underline focus-visible:ring-2 focus-visible:ring-secondary">
-                        #{a.ocorrencia.id} · {a.ocorrencia.titulo}
+                        {a.ocorrencia.id} · {a.ocorrencia.titulo}
                       </Link>
                       {a.tipo_acao === "edicao" && campos.length > 0 && (
                         <details className="mt-2 text-xs text-on-surface-variant">

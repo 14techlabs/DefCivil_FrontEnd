@@ -430,7 +430,7 @@ export default function DashboardPage() {
           {selectedZone ? (
             <>
               <SectionHeader
-                overline={`ZONA #${selectedZone.id}`}
+                overline={`ZONA ${selectedZone.id}`}
                 title={selectedZone.nome}
                 action={
                   <button

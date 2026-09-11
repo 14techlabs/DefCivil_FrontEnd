@@ -75,7 +75,7 @@ export function EditZoneModal({ open, onClose, onSaved, zona }: Props) {
   return (
     <ModalShell open={open} onClose={handleClose} maxWidth="max-w-xl">
       <div className="bg-surface-container-low px-8 py-6">
-        <MetaTag>EDITAR ZONA · #{zona.id}</MetaTag>
+        <MetaTag>EDITAR ZONA · {zona.id}</MetaTag>
         <h2 className="mt-2 font-headline text-2xl font-black tracking-tighter text-primary">
           Informações da Zona
         </h2>

@@ -244,7 +244,7 @@ export function OccurrenceFormFields({
               <option value="">Selecione uma zona</option>
               {detectedZonaIds.map((id) => {
                 const z = zonas.find((z) => z.id === id);
-                return <option key={id} value={id}>{z?.nome ?? `Zona #${id}`}</option>;
+                return <option key={id} value={id}>{z?.nome ?? `Zona ${id}`}</option>;
               })}
             </select>
             <Icon
@@ -263,7 +263,7 @@ export function OccurrenceFormFields({
       {detectedZonaIds.length === 1 && (
         <div className="text-[11px] text-secondary font-bold flex items-center gap-1.5">
           <span className="material-symbols-outlined text-[14px]" style={{fontVariationSettings: "'FILL' 1"}}>check_circle</span>
-          Zona detectada: {zonas.find((z) => z.id === detectedZonaIds[0])?.nome ?? `Zona #${detectedZonaIds[0]}`}
+          Zona detectada: {zonas.find((z) => z.id === detectedZonaIds[0])?.nome ?? `Zona ${detectedZonaIds[0]}`}
         </div>
       )}
 

@@ -253,7 +253,7 @@ export function PontoApoioFormModal({
               <Icon name="my_location" className="shrink-0 text-[14px]" />
               Zona detectada:{" "}
               {zonas.find((z) => z.id === zonasDetectadas[0])?.nome ??
-                `Zona #${zonasDetectadas[0]}`}
+                `Zona ${zonasDetectadas[0]}`}
             </p>
           )}
           {zonasDetectadas.length > 1 && (
@@ -270,7 +270,7 @@ export function PontoApoioFormModal({
                   <option value="">Selecione uma zona</option>
                   {zonasDetectadas.map((id) => {
                     const z = zonas.find((z) => z.id === id);
-                    return <option key={id} value={id}>{z?.nome ?? `Zona #${id}`}</option>;
+                    return <option key={id} value={id}>{z?.nome ?? `Zona ${id}`}</option>;
                   })}
                 </select>
                 <Icon

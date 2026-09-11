@@ -613,7 +613,7 @@ export function ZoneMap({
   }, [zoneId, showToast, onSave]);
 
   /* ── label (só em view mode) ── */
-  const zoneLabel = zoneData?.nome ?? _zoneName ?? `Zona #${zoneId}`;
+  const zoneLabel = zoneData?.nome ?? _zoneName ?? `Zona ${zoneId}`;
 
   /* ── render ── */
 

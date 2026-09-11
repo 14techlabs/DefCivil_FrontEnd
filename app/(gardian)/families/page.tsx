@@ -523,7 +523,7 @@ export default function FamiliesPage() {
                   <tbody>
                     {filtradas.map((f) => (
                       <tr key={f.id} className="border-b border-outline-variant/15 transition-colors last:border-0 hover:bg-surface-container-low">
-                        <td className="px-4 py-4"><p className="text-[13px] font-bold text-primary">#{f.id} · {f.nome}</p><p className="mt-1 text-[10px] text-on-surface-variant">{f.telefone || "Sem telefone"}</p></td>
+                        <td className="px-4 py-4"><p className="text-[13px] font-bold text-primary">{f.id} · {f.nome}</p><p className="mt-1 text-[10px] text-on-surface-variant">{f.telefone || "Sem telefone"}</p></td>
                         <td className="max-w-[280px] px-4 py-4 text-[11px] text-on-surface-variant"><p className="truncate">{f.endereco || "Sem endereço"}</p></td>
                         <td className="px-4 py-4 text-[11px] font-medium text-on-surface-variant">{f.zona_nome ?? "Sem zona"}</td>
                         <td className="px-4 py-4 text-[12px] font-bold text-primary">{f.total_cidadaos}</td>
@@ -562,7 +562,7 @@ export default function FamiliesPage() {
                 <div className="flex items-start justify-between gap-4">
                   <div className="min-w-0">
                     <Chip tone="primarySoft" className="!bg-white/15 !text-white">
-                      FAMÍLIA #{familia.id}
+                      FAMÍLIA {familia.id}
                     </Chip>
                     <h2 className="font-headline font-black text-2xl tracking-tighter mt-3">
                       {familia.nome}
@@ -644,7 +644,7 @@ export default function FamiliesPage() {
                           className="flex items-center gap-3 p-3 rounded-lg bg-surface-container-low hover:bg-secondary/8 text-[12px] transition-colors"
                         >
                           <Icon name="emergency" className="text-error text-[16px] shrink-0" />
-                          <span className="font-bold text-primary shrink-0">#{oc.id}</span>
+                          <span className="font-bold text-primary shrink-0">{oc.id}</span>
                           <span className="text-on-surface truncate flex-1 min-w-0">{oc.titulo}</span>
                           <Chip tone="neutral">{oc.status}</Chip>
                           <Icon

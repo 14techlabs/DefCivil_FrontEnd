@@ -63,7 +63,7 @@ export function DeleteOccurrenceModal({
           <Icon name="delete" filled className="text-[24px]" />
         </div>
 
-        <MetaTag>EXCLUIR OCORRÊNCIA · #{ocorrencia.id}</MetaTag>
+        <MetaTag>EXCLUIR OCORRÊNCIA · {ocorrencia.id}</MetaTag>
         <h2 className="mt-2 font-headline text-2xl font-black tracking-tighter text-primary">
           Confirmar exclusão
         </h2>

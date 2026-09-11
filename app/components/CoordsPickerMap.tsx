@@ -198,7 +198,7 @@ export function CoordsPickerMap({
       const centroids: GeoJSON.Feature<GeoJSON.Point>[] = [];
 
       zonePolygonsRef.current.forEach((poly, id) => {
-        const nome = zonasNamesRef.current?.find((z) => z.id === id)?.nome ?? `Zona #${id}`;
+        const nome = zonasNamesRef.current?.find((z) => z.id === id)?.nome ?? `Zona ${id}`;
         const [cx, cy] = polygonCentroid(poly);
         features.push({
           type: "Feature",

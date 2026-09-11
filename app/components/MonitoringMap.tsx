@@ -84,7 +84,7 @@ function popupOcorrenciaHtml(o: MonitoringOcorrencia, color: string): string {
       : escapeHtml(o.descricao ?? "");
   return `
     <div style="font-family:inherit;min-width:220px">
-      <p style="font-size:9px;font-weight:800;letter-spacing:0.08em;text-transform:uppercase;color:${color};margin:0 0 2px">Ocorrência #${o.id} · ${status}</p>
+      <p style="font-size:9px;font-weight:800;letter-spacing:0.08em;text-transform:uppercase;color:${color};margin:0 0 2px">Ocorrência ${o.id} · ${status}</p>
       <p style="font-size:13px;font-weight:700;color:#0f172a;margin:0 0 4px">${titulo}</p>
       <p style="font-size:11px;color:#475569;margin:0 0 4px">${categoria}${coords ? ` · ${coords}` : ""}</p>
       ${descricao ? `<p style="font-size:11px;color:#64748b;margin:0 0 8px;line-height:1.4">${descricao}</p>` : ""}

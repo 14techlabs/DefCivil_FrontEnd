@@ -25,7 +25,7 @@ export const MOCK_ZONAS: MockZona[] = [
 ];
 
 export const zonaNome = (id: number | null | undefined) =>
-  MOCK_ZONAS.find((z) => z.id === id)?.nome ?? (id != null ? `Zona #${id}` : "—");
+  MOCK_ZONAS.find((z) => z.id === id)?.nome ?? (id != null ? `Zona ${id}` : "—");
 
 /* ═══════════ EQUIPE / TÉCNICOS ═══════════ */
 
@@ -53,7 +53,7 @@ export const MOCK_TECNICOS: MockTecnico[] = [
 ];
 
 export const tecnicoNome = (id: number | null | undefined) =>
-  MOCK_TECNICOS.find((t) => t.id === id)?.nome ?? (id != null ? `Técnico #${id}` : "—");
+  MOCK_TECNICOS.find((t) => t.id === id)?.nome ?? (id != null ? `Técnico ${id}` : "—");
 
 /* ═══════════ EVENTOS ═══════════ */
 
