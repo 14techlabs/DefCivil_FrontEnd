@@ -38,11 +38,23 @@ export class Api {
       (error) => {
         const status = error.response?.status;
 
-        // Tratar erro 401 (não autorizado)
+        // tratar erro 401 nao autorizado
         if (status === 401) {
-          const hasToken = Boolean(Cookies.get("token"));
-          if (!isLoggingOut() && hasToken) {
-            toast.error("Não autorizado, redirecionando para login...");
+          const isLoginPage = typeof window !== "undefined" && window.location.pathname.startsWith("/login");
+          if (!isLoginPage && !isLoggingOut()) {
+            if (typeof window !== "undefined") {
+              window.sessionStorage.setItem(LOGOUT_KEY, "true");
+            }
+            toast.error("Sessão expirada, redirecionando para login...");
+            Cookies.remove("token", { path: "/" });
+            Cookies.remove("refresh_token", { path: "/" });
+            Cookies.remove("token");
+            Cookies.remove("refresh_token");
+            if (typeof window !== "undefined") {
+              sessionStorage.removeItem("gardian:session");
+              const next = encodeURIComponent(window.location.pathname + window.location.search);
+              window.location.href = `/login?next=${next}`;
+            }
           }
         }
         // Tratar erro 403 (sem permissão)

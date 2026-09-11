@@ -13,7 +13,7 @@ import { CriticalAlertModal } from "./Modals";
 import { Tweaks } from "./Tweaks";
 import { api } from "@/app/services/Api";
 import { authService } from "@/app/services/Authservice";
-import { clearSession } from "@/app/lib/session";
+import { clearSession, broadcastLogout } from "@/app/lib/session";
 
 type ToastTone = "error" | "secondary";
 
@@ -104,9 +104,10 @@ export function GardianProvider({ children }: { children: ReactNode }) {
     // Clear client-side auth state
     authService.logout();
     clearSession();
+    broadcastLogout();
     setUser(null);
     // Redirect to login
-    router.push("/login");
+    router.replace("/login");
   }, [router]);
 
   const value: GardianContextValue = {
