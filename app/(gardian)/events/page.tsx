@@ -7,6 +7,7 @@ import { Btn, Chip, Icon, MetaTag, SectionHeader, StatusDot, Tab } from "@/app/c
 import { useGardian } from "@/app/components/GardianContext";
 import { api } from "@/app/services/Api";
 import { EventFormModal } from "@/app/components/EventFormModal";
+import { EventReportModal } from "@/app/components/EventReportModal";
 import { DeleteEventModal } from "@/app/components/DeleteEventModal";
 import { DataLoading } from "@/app/components/DataLoading";
 import { PRIORIDADE_META, type RouteStop } from "@/app/components/RouteMap";
@@ -311,7 +312,8 @@ function OcorrenciaDetalhePanel({ ocorrencia }: { ocorrencia: OcorrenciaDetalhad
 }
 
 export default function EventsPage() {
-  const { showToast } = useGardian();
+  const { showToast, user } = useGardian();
+  const [showReport, setShowReport] = useState(false);
   const [eventos, setEventos] = useState<Evento[]>([]);
   const [eventoVinculadoId, setEventoVinculadoId] = useState<number | null>(null);
   const [ocorrencias, setOcorrencias] = useState<Ocorrencia[]>([]);
@@ -661,9 +663,12 @@ export default function EventsPage() {
         </div>
         <div className="flex flex-wrap items-end justify-between gap-5">
           <h1 className="font-headline text-5xl font-black tracking-tighter text-primary">Eventos</h1>
-          <Btn variant="primary" icon="add" onClick={() => setShowCreateModal(true)}>
-            Novo evento
-          </Btn>
+          <div className="flex flex-wrap gap-3">
+            <Btn variant="secondary" icon="description" disabled={Boolean(loadError) || !eventos.length} onClick={() => setShowReport(true)}>Emitir relatório</Btn>
+            <Btn variant="primary" icon="add" onClick={() => setShowCreateModal(true)}>
+              Novo evento
+            </Btn>
+          </div>
         </div>
       </header>
 
@@ -1024,6 +1029,7 @@ export default function EventsPage() {
       )}
 
       {showCreateModal && <EventFormModal open onClose={() => setShowCreateModal(false)} onSaved={fetchData} />}
+      {showReport && <EventReportModal events={eventos} zones={Array.from(zonaLookup, ([id, nome]) => ({ id, nome }))} issuedBy={user?.user_sys?.first_name || user?.user_sys?.username || "Usuário"} onClose={() => setShowReport(false)} />}
       {showEditModal && evento && <EventFormModal open onClose={() => setShowEditModal(false)} onSaved={fetchData} evento={evento} />}
       {showDeleteModal && evento && (
         <DeleteEventModal
