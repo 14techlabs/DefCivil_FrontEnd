@@ -52,7 +52,7 @@ const ACTION_META = {
 };
 
 const CAMPO_LABEL: Record<string, string> = {
-  status: "situação",
+  status: "status",
   titulo: "título",
   descricao: "relato",
   endereco: "endereço",
@@ -233,7 +233,7 @@ export default function ProfilePage() {
         <div className="card-tonal overflow-hidden shadow-ambient-sm">
           <div className="flex flex-wrap items-center gap-x-4 gap-y-3 border-b border-outline-variant/20 bg-surface-container-low/40 px-5 py-3">
             <div className="flex w-full flex-wrap items-center gap-3 sm:w-auto">
-              <label htmlFor="profile-occurrence-status" className="sr-only">Situação da ocorrência</label>
+              <label htmlFor="profile-occurrence-status" className="sr-only">Status da ocorrência</label>
               <div className="relative min-w-0 flex-1 sm:w-60 sm:flex-none">
                 <span aria-hidden="true" className="pointer-events-none absolute inset-y-0 left-3 flex items-center text-secondary"><Icon name="filter_list" className="text-[20px]" /></span>
                 <select

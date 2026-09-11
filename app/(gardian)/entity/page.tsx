@@ -646,7 +646,7 @@ function EntityPageContent() {
       return;
     }
     if (statusMudou && !motivoStatus.trim()) {
-      showToast("Informe o motivo da mudança de situação.", "error");
+      showToast("Informe o motivo da mudança de status.", "error");
       return;
     }
     try {
@@ -931,7 +931,7 @@ function EntityPageContent() {
           <div className="flex items-center gap-2 px-4 py-3 rounded-lg card-tonal shadow-ambient-sm">
             <StatusDot tone={statusMeta.tone} />
             <div>
-              <MetaTag className="block">SITUAÇÃO DO MUNICÍPIO</MetaTag>
+              <MetaTag className="block">STATUS DO MUNICÍPIO</MetaTag>
               <p className="text-[13px] font-black tracking-tight" style={{ color: statusMeta.cor }}>
                 {statusMeta.label}
               </p>
@@ -965,7 +965,7 @@ function EntityPageContent() {
             { icon: "location_on", l: "UF", v: entidade.uf || "Não informada" },
             { icon: "markunread_mailbox", l: "CEP", v: entidade.cep || "Não informado" },
             { icon: "badge", l: "CNPJ", v: entidade.cnpj },
-            { icon: "emergency_home", l: "Situação", v: statusMeta.label },
+            { icon: "emergency_home", l: "Status", v: statusMeta.label },
           ].map((it, i) => (
             <div key={i} className="card-recessed p-4 flex items-start gap-3">
               <Icon name={it.icon} className="text-secondary text-[18px] mt-0.5 shrink-0" />
@@ -981,7 +981,7 @@ function EntityPageContent() {
       {/* ── Abas ── */}
       <div className="flex flex-wrap gap-2">
         <Tab active={tab === "status"} onClick={() => trocarTab("status")} icon="emergency_home">
-          Situação do Município
+          Status do Município
         </Tab>
         <Tab active={tab === "formulario"} onClick={() => trocarTab("formulario")} icon="dynamic_form">
           Formulário Externo
@@ -997,7 +997,7 @@ function EntityPageContent() {
         </Tab>
       </div>
 
-      {/* ─────────── SITUAÇÃO DO MUNICÍPIO ─────────── */}
+      {/* ─────────── STATUS DO MUNICÍPIO ─────────── */}
       {tab === "status" && (
         <div className="grid grid-cols-12 gap-5 items-start">
           <section className="col-span-12 lg:col-span-7 card-tonal p-7 shadow-ambient-sm">
@@ -1078,7 +1078,7 @@ function EntityPageContent() {
                   value={motivoStatus}
                   onChange={(event) => setMotivoStatus(event.target.value)}
                   rows={3}
-                  placeholder="Descreva o motivo da mudança de situação"
+                  placeholder="Descreva o motivo da mudança de status"
                   className="w-full resize-none rounded-lg bg-white px-4 py-3 text-sm font-medium text-primary outline-none focus:ring-2 focus:ring-secondary"
                 />
               </div>
@@ -1101,7 +1101,7 @@ function EntityPageContent() {
               <SectionHeader overline="RASTREABILIDADE" title="Histórico de Status" />
               {entidade.status_historico.length === 0 ? (
                 <p className="text-[12px] leading-relaxed text-on-surface-variant">
-                  Nenhuma alteração de situação foi registrada até o momento.
+                  Nenhuma alteração de status foi registrada até o momento.
                 </p>
               ) : (
                 <div className="space-y-3">
@@ -1619,7 +1619,7 @@ function EntityPageContent() {
                 </p>
               </div>
               <div className="card-recessed px-5 py-4 min-w-[220px]">
-                <MetaTag className="block">SITUAÇÃO OPERACIONAL</MetaTag>
+                <MetaTag className="block">STATUS OPERACIONAL</MetaTag>
                 <p className="mt-1 flex items-center gap-2 text-sm font-black" style={{ color: statusMeta.cor }}>
                   <StatusDot tone={statusMeta.tone} live={false} /> {statusMeta.label}
                 </p>
@@ -2130,7 +2130,7 @@ function EntityPageContent() {
                 <input type="date" value={prestacaoEditando.prazoIso} onChange={(e) => setPrestacaoEditando((p) => p && ({ ...p, prazoIso: e.target.value }))} className="w-full rounded-lg bg-surface-container-low px-4 py-3 text-sm outline-none focus:ring-2 focus:ring-secondary" />
               </label>
               <label className="md:col-span-2">
-                <MetaTag className="mb-1.5 block">SITUAÇÃO</MetaTag>
+                <MetaTag className="mb-1.5 block">STATUS</MetaTag>
                 <select value={prestacaoEditando.statusPrestacao} onChange={(e) => setPrestacaoEditando((p) => p && ({ ...p, statusPrestacao: e.target.value as ContaEvento["statusPrestacao"] }))} className="w-full rounded-lg bg-surface-container-low px-4 py-3 text-sm outline-none focus:ring-2 focus:ring-secondary">
                   <option value="em_curso">Em curso</option><option value="em_elaboracao">Em elaboração</option><option value="enviada">Enviada</option><option value="aprovada">Aprovada</option>
                 </select>
