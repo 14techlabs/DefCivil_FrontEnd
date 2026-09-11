@@ -17,9 +17,9 @@ export function ModalShell({
 }) {
   if (!open) return null;
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-6 animate-[fadeIn_150ms_ease]">
+    <div className="fixed inset-0 z-[80] flex items-center justify-center p-4 sm:p-6 animate-[fadeIn_150ms_ease]">
       <div className="absolute inset-0 bg-primary/40 backdrop-blur-sm animate-[fadeIn_1000ms_ease]" onClick={onClose} />
-      <div className={`relative ${maxWidth} w-full bg-white rounded-xl shadow-ambient overflow-hidden`}>
+      <div className={`relative ${maxWidth} w-full max-h-[calc(100dvh-2rem)] sm:max-h-[calc(100dvh-3rem)] flex flex-col bg-white rounded-xl shadow-ambient overflow-x-hidden overflow-y-auto`}>
         {children}
       </div>
     </div>
@@ -245,11 +245,11 @@ export function NewOccurrenceModal({
 
   return (
     <ModalShell open={open} onClose={onClose} maxWidth="max-w-2xl">
-      <div className="bg-surface-container-low px-8 py-6">
+      <div className="bg-surface-container-low px-8 py-6 shrink-0">
         <MetaTag>NOVA OCORRÊNCIA · PROTOCOLO #PRT-2026-{Math.floor(Math.random()*9000+1000)}</MetaTag>
         <h2 className="font-headline font-black text-2xl tracking-tighter mt-2 text-primary">Registrar Nova Ocorrência</h2>
       </div>
-      <div className="p-8 space-y-5 max-h-[70vh] overflow-y-auto">
+      <div className="p-8 space-y-5 flex-1 min-h-0 overflow-y-auto">
         <div>
           <MetaTag className="block mb-3">Categoria</MetaTag>
           <div className="grid grid-cols-4 gap-2">

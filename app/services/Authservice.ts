@@ -28,11 +28,13 @@ class AuthService {
 
   saveTokens(data: LoginResponse) {
     // "token" é o nome de cookie que o Api.ts já lê para montar o header Authorization
-    Cookies.set(TOKEN_COOKIE, data.access, { expires: 1, sameSite: "strict" });
-    Cookies.set(REFRESH_COOKIE, data.refresh, { expires: 7, sameSite: "strict" });
+    Cookies.set(TOKEN_COOKIE, data.access, { expires: 1, sameSite: "strict", path: "/" });
+    Cookies.set(REFRESH_COOKIE, data.refresh, { expires: 7, sameSite: "strict", path: "/" });
   }
 
   logout() {
+    Cookies.remove(TOKEN_COOKIE, { path: "/" });
+    Cookies.remove(REFRESH_COOKIE, { path: "/" });
     Cookies.remove(TOKEN_COOKIE);
     Cookies.remove(REFRESH_COOKIE);
   }

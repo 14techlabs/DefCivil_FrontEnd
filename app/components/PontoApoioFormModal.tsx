@@ -30,6 +30,8 @@ export interface Apoio {
   coordenadas: { lat: number; lng: number } | null;
   tipo: "escola" | "upa" | "hospital" | "crea" | "outro";
   tipo_label: string;
+  /** zona detectada automaticamente pelo backend a partir das coordenadas */
+  zona?: number | null;
 }
 
 export const APOIO_TIPOS = [
@@ -65,6 +67,10 @@ export function PontoApoioFormModal({
   const [lat, setLat] = useState("");
   const [lng, setLng] = useState("");
   const [zonas, setZonas] = useState<{ id: number; nome: string }[]>([]);
+  // zonas que contêm o marcador (detecção automática, igual à da ocorrência)
+  const [zonasDetectadas, setZonasDetectadas] = useState<number[]>([]);
+  // zona escolhida pelo técnico quando há sobreposição; null = backend decide
+  const [zonaId, setZonaId] = useState<number | null>(null);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState("");
 
@@ -77,6 +83,9 @@ export function PontoApoioFormModal({
       setEndereco(ponto?.endereco ?? "");
       setLat(ponto?.coordenadas ? String(ponto.coordenadas.lat) : "");
       setLng(ponto?.coordenadas ? String(ponto.coordenadas.lng) : "");
+      // começa pela zona que o backend já tinha detectado; o mapa recalcula ao carregar
+      setZonasDetectadas(ponto?.zona ? [ponto.zona] : []);
+      setZonaId(ponto?.zona ?? null);
       setSaving(false);
       setError("");
     }
@@ -111,13 +120,15 @@ export function PontoApoioFormModal({
       return;
     }
 
-    const payload = {
+    const payload: Record<string, unknown> = {
       nome: nome.trim(),
       tipo,
       descricao: descricao.trim(),
       endereco: endereco.trim(),
       coordenadas: { lat: Number(lat), lng: Number(lng) },
     };
+    // só envia a zona quando o técnico escolheu (sobreposição); o resto o backend resolve
+    if (zonaId != null) payload.zona = zonaId;
 
     setSaving(true);
     setError("");
@@ -142,7 +153,7 @@ export function PontoApoioFormModal({
     } finally {
       setSaving(false);
     }
-  }, [nome, tipo, descricao, endereco, lat, lng, ponto, showToast, onSaved, onClose]);
+  }, [nome, tipo, descricao, endereco, lat, lng, zonaId, ponto, showToast, onSaved, onClose]);
 
   if (!open) return null;
 
@@ -220,11 +231,55 @@ export function PontoApoioFormModal({
               setLat(newLat);
               setLng(newLng);
             }}
+            onZoneDetect={(ids) => {
+              setZonasDetectadas(ids);
+              // mesma regra da ocorrência: 1 zona = automática; sobreposição = escolha
+              if (ids.length === 1) setZonaId(ids[0]);
+              else setZonaId(null);
+            }}
           />
           <p className="text-[11px] text-on-surface-variant mt-1.5 flex items-center gap-1.5">
             <Icon name="info" className="shrink-0 text-[14px]" />
             Clique ou arraste o marcador no mapa para definir a localização.
           </p>
+          {zonasDetectadas.length === 0 && (
+            <p className="text-[11px] font-medium text-on-surface-variant mt-1.5 flex items-center gap-1.5">
+              <Icon name="info" className="shrink-0 text-[14px]" />
+              Nenhuma zona detectada para estas coordenadas.
+            </p>
+          )}
+          {zonasDetectadas.length === 1 && (
+            <p className="text-[11px] font-semibold text-primary mt-1.5 flex items-center gap-1.5">
+              <Icon name="my_location" className="shrink-0 text-[14px]" />
+              Zona detectada:{" "}
+              {zonas.find((z) => z.id === zonasDetectadas[0])?.nome ??
+                `Zona ${zonasDetectadas[0]}`}
+            </p>
+          )}
+          {zonasDetectadas.length > 1 && (
+            <div className="mt-3">
+              <MetaTag className="block mb-2">Zonas sobrepostas — selecione uma zona</MetaTag>
+              <div className="relative">
+                <select
+                  value={zonaId ?? ""}
+                  onChange={(e) => setZonaId(e.target.value ? Number(e.target.value) : null)}
+                  className={`w-full appearance-none rounded-lg border-none bg-surface-container-low py-3 pl-4 pr-12 text-sm font-bold focus:ring-2 focus:ring-secondary ${
+                    zonaId === null ? "text-on-surface-variant" : "text-primary"
+                  }`}
+                >
+                  <option value="">Selecione uma zona</option>
+                  {zonasDetectadas.map((id) => {
+                    const z = zonas.find((z) => z.id === id);
+                    return <option key={id} value={id}>{z?.nome ?? `Zona ${id}`}</option>;
+                  })}
+                </select>
+                <Icon
+                  name="keyboard_arrow_down"
+                  className="pointer-events-none absolute right-4 top-1/2 -translate-y-1/2 text-[20px] text-gray"
+                />
+              </div>
+            </div>
+          )}
         </div>
 
         {/* erro */}

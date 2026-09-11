@@ -1,10 +1,12 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
-import { Chip, Icon, KPI, MetaTag, SectionHeader, StatusDot } from "@/app/components/Primitives";
+import Link from "next/link";
+import { Chip, Icon, KPI, MetaTag, SectionHeader } from "@/app/components/Primitives";
 import { useGardian } from "@/app/components/GardianContext";
+import { DataLoading } from "@/app/components/DataLoading";
 import { api } from "@/app/services/Api";
-import { getOccurrenceStatusMeta } from "@/app/lib/occurrenceStatus";
+import { getOccurrenceStatusMeta, type OccurrenceStatusKey } from "@/app/lib/occurrenceStatus";
 
 interface ProfileOccurrenceHistory {
   id: number;
@@ -25,10 +27,22 @@ interface ProfileOccurrence {
   historico?: ProfileOccurrenceHistory[];
 }
 
+interface ProfileOccurrencesResponse {
+  ocorrencias: ProfileOccurrence[];
+}
+
 const CARGO_LABEL: Record<number, string> = {
   1: "Coordenador",
   2: "Supervisor",
   3: "Técnico",
+  4: "Agente de campo",
+  5: "Voluntário",
+};
+
+const STATUS_CAMPO_LABEL: Record<string, string> = {
+  em_campo: "Em campo",
+  disponivel: "Disponível",
+  offline: "Offline",
 };
 
 const ACTION_META = {
@@ -38,7 +52,7 @@ const ACTION_META = {
 };
 
 const CAMPO_LABEL: Record<string, string> = {
-  status: "situação",
+  status: "status",
   titulo: "título",
   descricao: "relato",
   endereco: "endereço",
@@ -62,18 +76,24 @@ export default function ProfilePage() {
   const [ocorrencias, setOcorrencias] = useState<ProfileOccurrence[]>([]);
   const [zonas, setZonas] = useState<Map<number, string>>(new Map());
   const [loading, setLoading] = useState(true);
+  const [erroCarga, setErroCarga] = useState(false);
+  const [tentativaCarga, setTentativaCarga] = useState(0);
+  const [filtro, setFiltro] = useState<"todas" | OccurrenceStatusKey>("todas");
+  const [limiteOcorrencias, setLimiteOcorrencias] = useState(5);
+  const [limiteAcoes, setLimiteAcoes] = useState(5);
 
   useEffect(() => {
     if (!user) return;
     let cancelled = false;
     Promise.allSettled([
-      api.get<{ ocorrencias: ProfileOccurrence[] }>("/ocorrencias/"),
-      api.get<{ zonas: { id: number; nome: string }[] }>("/zonas/"),
+      api.get<ProfileOccurrencesResponse>("/ocorrencias/", { params: { pagina: 1 } }),
+      api.get<{ zonas: { id: number; nome: string }[] }>("/zonas/", { params: { lookup: "1" } }),
     ]).then(([occResult, zoneResult]) => {
       if (cancelled) return;
       setOcorrencias(
         occResult.status === "fulfilled" ? occResult.value.data.ocorrencias ?? [] : [],
       );
+      setErroCarga(occResult.status === "rejected");
       setZonas(
         new Map(
           zoneResult.status === "fulfilled"
@@ -86,17 +106,15 @@ export default function ProfilePage() {
     return () => {
       cancelled = true;
     };
-  }, [user]);
+  }, [user, tentativaCarga]);
 
   const minhas = useMemo(
     () => ocorrencias.filter((ocorrencia) => ocorrencia.tecnico_responsavel === user?.id),
     [ocorrencias, user?.id],
   );
-  const agindo = minhas.filter((o) => o.status === "em_andamento" || o.status === "alta_prioridade");
-  const agiu = minhas
-    .filter((o) => o.status === "concluida" || o.status === "aguardando" || o.status === "em_analise")
-    .sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime());
-  const atendimentos30d = minhas.filter((ocorrencia) => {
+  const agindo = minhas.filter((o) => getOccurrenceStatusMeta(o.status).key === "em_andamento");
+  const concluidas = minhas.filter((o) => getOccurrenceStatusMeta(o.status).key === "concluida");
+  const ocorrenciasCriadas30d = minhas.filter((ocorrencia) => {
     const limite = new Date();
     limite.setDate(limite.getDate() - 30);
     return new Date(ocorrencia.created_at) >= limite;
@@ -110,7 +128,14 @@ export default function ProfilePage() {
     .sort((a, b) => new Date(b.criado_em).getTime() - new Date(a.criado_em).getTime());
 
   const nomeExibicao = user?.user_sys?.first_name || user?.user_sys?.username || "Usuário";
-  const cargo = user?.cargo != null ? CARGO_LABEL[user.cargo] ?? "Técnico" : "Técnico";
+  const listaOcorrencias = minhas.filter((o) => filtro === "todas" || getOccurrenceStatusMeta(o.status).key === filtro)
+    .sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime());
+  const cargo = user?.cargo_label?.trim()
+    || (user?.cargo != null ? CARGO_LABEL[user.cargo] ?? "Cargo não identificado" : "Cargo não informado");
+  const matricula = user?.matricula?.trim() || "Não informada";
+  const zonaBase = user?.zona_base == null ? "Não informada" : zonas.get(user.zona_base) ?? `Zona ${user.zona_base}`;
+  const statusCampo = user?.status_campo_label?.trim()
+    || (user?.status_campo ? STATUS_CAMPO_LABEL[user.status_campo] ?? "Status não identificado" : "Não informado");
   const iniciais = nomeExibicao
     .split(" ")
     .map((parte) => parte[0])
@@ -118,234 +143,201 @@ export default function ProfilePage() {
     .join("")
     .toUpperCase();
   const zonaNome = (zonaId: number | null) =>
-    zonaId == null ? "Sem zona" : zonas.get(zonaId) ?? `Zona #${zonaId}`;
+    zonaId == null ? "Sem zona" : zonas.get(zonaId) ?? `Zona ${zonaId}`;
 
-  return (
-    <div className="p-8 space-y-8 max-w-[1600px] mx-auto">
-      <header>
-        <div className="flex items-center gap-2 mb-3">
-          <MetaTag className="text-secondary">MEU PERFIL · TÉCNICO</MetaTag>
-        </div>
-        <h1 className="font-headline font-black text-5xl tracking-tighter text-primary">
-          {nomeExibicao}
-        </h1>
-      </header>
+  if (loading) {
+    return <DataLoading />;
+  }
 
-      {/* Cartão do técnico + KPIs */}
-      <div className="grid grid-cols-12 gap-5">
-        <div className="col-span-12 lg:col-span-4 card-tonal p-7 shadow-ambient-sm">
-          <div className="flex items-center gap-4 mb-6">
-            <div className="w-16 h-16 rounded-2xl bg-primary flex items-center justify-center">
-              <span className="text-white font-black text-xl tracking-tight">
-                {iniciais}
-              </span>
-            </div>
-            <div>
-              <p className="font-headline font-black text-lg text-primary tracking-tight">{nomeExibicao}</p>
-              <p className="text-[11px] text-on-surface-variant uppercase font-bold tracking-mono-tight">{cargo}</p>
-            </div>
-          </div>
-          <div className="space-y-3">
-            {[
-              { icon: "badge", l: "Matrícula", v: "Não informada" },
-              { icon: "hub", l: "Zona base", v: "Não informada" },
-              { icon: "call", l: "Telefone", v: user?.telefone || "Não informado" },
-              { icon: "mail", l: "E-mail", v: user?.user_sys?.email || "Não informado" },
-              { icon: "badge", l: "Perfil", v: cargo },
-            ].map((it, i) => (
-              <div key={i} className="flex items-center gap-3 p-3 rounded-lg bg-surface-container-low">
-                <Icon name={it.icon} className="text-secondary text-[18px]" />
-                <div>
-                  <MetaTag className="block">{it.l.toUpperCase()}</MetaTag>
-                  <p className="text-[13px] font-bold text-primary">{it.v}</p>
-                </div>
-              </div>
-            ))}
-            <div className="flex items-center gap-2 p-3 rounded-lg bg-surface-container-low">
-              <StatusDot tone="secondary" live={false} />
-              <p className="text-[12px] font-black uppercase tracking-mono-tight text-primary">
-                Status de campo não informado
-              </p>
-            </div>
-          </div>
-        </div>
-
-        <div className="col-span-12 lg:col-span-8 grid grid-cols-2 gap-5 content-start">
-          <KPI label="Agindo Agora" value={agindo.length} icon="engineering" tone={agindo.length > 0 ? "error" : "secondary"} sub="Ocorrências em andamento" />
-          <KPI label="Já Atuadas" value={agiu.length} icon="task_alt" tone="secondary" sub="Concluídas ou em observação" />
-          <KPI label="Atendimentos (30d)" value={atendimentos30d} icon="calendar_month" tone="secondary" sub="Ocorrências atribuídas no período" />
-          <KPI label="Ações em Campo" value={minhasAcoes.length} icon="footprint" tone="secondary" sub="Registradas no histórico" />
+  if (erroCarga) {
+    return (
+      <div className="mx-auto max-w-[1600px] p-4 sm:p-8">
+        <div className="card-tonal p-8 text-center shadow-ambient-sm" role="alert">
+          <p className="text-sm font-semibold text-primary">Não foi possível carregar as ocorrências.</p>
+          <p className="mt-2 text-sm text-on-surface-variant">Tente novamente para consultar os dados.</p>
+          <button type="button" onClick={() => { setLoading(true); setTentativaCarga((valor) => valor + 1); }} className="mt-4 rounded-lg bg-primary px-4 py-2 text-sm font-semibold text-white focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-secondary focus-visible:ring-offset-2">Tentar novamente</button>
         </div>
       </div>
+    );
+  }
 
-      {/* Agindo agora */}
-      <section>
-        <SectionHeader
-          overline="EM ANDAMENTO"
-          title="Ocorrências em que estou agindo"
-          action={agindo.length > 0 ? <Chip tone="error" icon="podcasts">{agindo.length} ATIVA(S)</Chip> : undefined}
-        />
-        {loading ? (
-          <p className="text-[12px] text-on-surface-variant italic">Carregando ocorrências…</p>
-        ) : agindo.length === 0 ? (
-          <p className="text-[12px] text-on-surface-variant italic">Nenhuma ocorrência ativa no momento.</p>
-        ) : (
-          <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
-            {agindo.map((o) => (
-              <div key={o.id} className="card-tonal p-6 shadow-ambient-sm relative overflow-hidden">
-                <span className={`absolute top-0 left-0 bottom-0 w-1 ${getOccurrenceStatusMeta(o.status).accentClass}`} />
-                <div className="pl-3">
-                  <div className="flex items-center justify-between mb-2">
-                    <span className="text-[10px] font-mono uppercase tracking-mono font-bold text-slate-400">#{o.id}</span>
-                    <Chip tone={getOccurrenceStatusMeta(o.status).tone}>{getOccurrenceStatusMeta(o.status).label}</Chip>
-                  </div>
-                  <h3 className="font-headline font-bold text-[15px] text-primary">{o.titulo}</h3>
-                  <p className="text-[11px] text-on-surface-variant mt-1.5 flex items-center gap-1.5">
-                    <Icon name="location_on" className="text-[14px]" /> {o.endereco}
-                  </p>
-                  <p className="text-[11px] text-on-surface-variant mt-1">
-                    {zonaNome(o.zona)} · {formatDate(o.created_at)}
-                  </p>
+  return (
+    <div className="mx-auto max-w-[1600px] space-y-6 p-4 sm:p-8">
+      <header>
+        <MetaTag className="text-secondary">DETALHES DA CONTA E ATIVIDADE</MetaTag>
+        <h1 className="mt-2 font-headline text-3xl font-black tracking-tight text-primary sm:text-4xl">Meu perfil</h1>
+      </header>
+
+      <section aria-label="Informações do usuário" className="card-tonal overflow-hidden shadow-ambient-sm">
+        <div className="flex items-center gap-4 border-b border-outline-variant/20 p-5 sm:px-7 sm:py-6">
+          <div aria-hidden="true" className="flex h-14 w-14 shrink-0 items-center justify-center rounded-2xl bg-primary text-xl font-black text-white">
+            {iniciais}
+          </div>
+          <div className="min-w-0">
+            <h2 className="break-words font-headline text-xl font-bold tracking-tight text-primary sm:text-2xl">{nomeExibicao}</h2>
+            <p className="mt-1 text-sm text-on-surface-variant">{cargo}</p>
+          </div>
+        </div>
+        <div className="grid gap-6 p-5 sm:p-7 lg:grid-cols-2 lg:gap-8">
+          <div>
+            <h3 className="mb-4 text-sm font-bold text-primary">Contato</h3>
+            <dl className="space-y-4">
+              <div className="flex items-start gap-3">
+                <Icon name="call" className="mt-0.5 text-[20px] text-secondary" />
+                <div className="min-w-0">
+                  <dt className="text-xs text-on-surface-variant">Telefone</dt>
+                  <dd className="mt-1 break-words text-sm font-medium text-primary">{user?.telefone || "Não informado"}</dd>
                 </div>
               </div>
-            ))}
+              <div className="flex items-start gap-3">
+                <Icon name="mail" className="mt-0.5 text-[20px] text-secondary" />
+                <div className="min-w-0">
+                  <dt className="text-xs text-on-surface-variant">E-mail</dt>
+                  <dd className="mt-1 break-all text-sm font-medium text-primary">{user?.user_sys?.email || "Não informado"}</dd>
+                </div>
+              </div>
+            </dl>
           </div>
-        )}
+          <div className="border-t border-outline-variant/20 pt-6 lg:border-l lg:border-t-0 lg:pl-8 lg:pt-0">
+            <h3 className="mb-4 text-sm font-bold text-primary">Informações funcionais</h3>
+            <dl className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+              <div>
+                <dt className="text-xs text-on-surface-variant">Matrícula</dt>
+                <dd className="mt-1 break-words text-sm text-primary">{matricula}</dd>
+              </div>
+              <div>
+                <dt className="text-xs text-on-surface-variant">Zona base</dt>
+                <dd className="mt-1 break-words text-sm text-primary">{zonaBase}</dd>
+              </div>
+              <div>
+                <dt className="text-xs text-on-surface-variant">Status de campo</dt>
+                <dd className="mt-1 text-sm text-primary">{statusCampo}</dd>
+              </div>
+              <div>
+                <dt className="text-xs text-on-surface-variant">Usuário de acesso</dt>
+                <dd className="mt-1 break-words text-sm text-primary">{user?.user_sys?.username || "Não informado"}</dd>
+              </div>
+            </dl>
+          </div>
+        </div>
       </section>
 
-      {/* Já atuadas */}
-      <section>
-        <SectionHeader
-          overline="HISTÓRICO PESSOAL"
-          title="Ocorrências em que agi"
-          action={agiu.length > 0 ? <Chip tone="secondary">{agiu.length} REGISTRO(S)</Chip> : undefined}
-        />
+      <section aria-label="Resumo de atividade" className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-4">
+        <KPI label="Em andamento" value={agindo.length} icon="engineering" tone={agindo.length > 0 ? "error" : "secondary"} sub="Ocorrências atribuídas" />
+        <KPI label="Concluídas" value={concluidas.length} icon="task_alt" tone="secondary" sub="Ocorrências finalizadas" />
+        <KPI label="Últimos 30 dias" value={ocorrenciasCriadas30d} icon="calendar_month" tone="secondary" sub="Ocorrências criadas no período" />
+        <KPI label="Ações registradas" value={minhasAcoes.length} icon="history" tone="secondary" sub="Atividades no histórico" />
+      </section>
+      <section aria-label="Minhas ocorrências">
+        <SectionHeader overline="ACOMPANHAMENTO" title="Minhas ocorrências" />
         <div className="card-tonal overflow-hidden shadow-ambient-sm">
-          {loading ? (
-            <p className="p-8 text-center text-sm text-on-surface-variant">Carregando ocorrências…</p>
-          ) : agiu.length === 0 ? (
-            <div className="flex flex-col items-center justify-center px-6 py-12 text-center">
-              <Icon name="task_alt" className="mb-3 text-[38px] text-on-surface-variant/50" />
-              <p className="text-sm font-medium text-on-surface-variant">
-                Nenhuma ocorrência anterior encontrada.
-              </p>
+          <div className="flex flex-wrap items-center gap-x-4 gap-y-3 border-b border-outline-variant/20 bg-surface-container-low/40 px-5 py-3">
+            <div className="flex w-full flex-wrap items-center gap-3 sm:w-auto">
+              <label htmlFor="profile-occurrence-status" className="sr-only">Status da ocorrência</label>
+              <div className="relative min-w-0 flex-1 sm:w-60 sm:flex-none">
+                <span aria-hidden="true" className="pointer-events-none absolute inset-y-0 left-3 flex items-center text-secondary"><Icon name="filter_list" className="text-[20px]" /></span>
+                <select
+                  id="profile-occurrence-status"
+                  value={filtro}
+                  onChange={(event) => { setFiltro(event.target.value as "todas" | OccurrenceStatusKey); setLimiteOcorrencias(5); }}
+                  className="w-full cursor-pointer appearance-none rounded-lg border border-outline-variant/40 bg-white py-2.5 pl-10 pr-10 text-sm font-semibold text-primary shadow-sm transition-colors hover:border-secondary/50 focus:border-secondary focus:outline-none focus:ring-2 focus:ring-secondary/20"
+                >
+            {([
+              { id: "todas", label: "Todas", total: minhas.length },
+              { id: "alta_prioridade", label: "Alta prioridade", total: minhas.filter((o) => getOccurrenceStatusMeta(o.status).key === "alta_prioridade").length },
+              { id: "em_andamento", label: "Em andamento", total: agindo.length },
+              { id: "aguardando", label: "Aguardando", total: minhas.filter((o) => getOccurrenceStatusMeta(o.status).key === "aguardando").length },
+              { id: "em_analise", label: "Em análise", total: minhas.filter((o) => getOccurrenceStatusMeta(o.status).key === "em_analise").length },
+              { id: "concluida", label: "Concluídas", total: concluidas.length },
+            ] as const).map((opcao) => (
+              <option key={opcao.id} value={opcao.id}>{opcao.label}</option>
+            ))}
+                </select>
+                <span aria-hidden="true" className="pointer-events-none absolute inset-y-0 right-3 flex items-center text-on-surface-variant"><Icon name="expand_more" className="text-[20px]" /></span>
+              </div>
             </div>
-          ) : (
-          <div className="overflow-x-auto">
-          <table className="w-full table-fixed text-left">
-            <thead>
-              <tr className="border-b border-outline-variant/30 bg-surface-container-low/60">
-                <th className="w-[48%] px-6 py-4"><MetaTag>OCORRÊNCIA</MetaTag></th>
-                <th className="w-[18%] py-4 pr-5"><MetaTag>ZONA</MetaTag></th>
-                <th className="w-[18%] py-4 pr-5"><MetaTag>REGISTRADA EM</MetaTag></th>
-                <th className="w-[16%] py-4 pr-6"><MetaTag>SITUAÇÃO</MetaTag></th>
-              </tr>
-            </thead>
-            <tbody>
-              {agiu.map((o) => (
-                <tr key={o.id} className="border-b border-outline-variant/15 transition-colors last:border-0 hover:bg-surface-container-low">
-                  <td className="px-6 py-4">
-                    <a href={`/occurrences?id=${o.id}`} className="group block">
-                      <span className="mb-1 block text-[10px] font-mono font-bold uppercase tracking-mono text-slate-400">
-                        OCORRÊNCIA #{o.id}
-                      </span>
-                      <span className="block truncate text-[13px] font-bold text-primary transition-colors group-hover:text-secondary">
-                        {o.titulo}
-                      </span>
-                      {o.endereco && (
-                        <span className="mt-1 flex items-center gap-1 truncate text-[11px] text-on-surface-variant">
-                          <Icon name="home_pin" className="shrink-0 text-[13px]" /> {o.endereco}
-                        </span>
-                      )}
-                    </a>
-                  </td>
-                  <td className="py-4 pr-5 text-[12px] font-medium text-on-surface-variant">
-                    <span className="flex items-center gap-1.5"><Icon name="location_on" className="text-[14px]" />{zonaNome(o.zona)}</span>
-                  </td>
-                  <td className="py-4 pr-5 text-[11px] font-mono font-bold text-slate-500">{formatDate(o.created_at)}</td>
-                  <td className="py-4 pr-6">
-                    <Chip tone={getOccurrenceStatusMeta(o.status).tone}>
-                      {getOccurrenceStatusMeta(o.status).label}
-                    </Chip>
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
+            <p role="status" className="ml-auto text-right text-xs text-on-surface-variant">
+              {listaOcorrencias.length} {listaOcorrencias.length === 1 ? "ocorrência encontrada" : "ocorrências encontradas"}
+            </p>
           </div>
+          {listaOcorrencias.length === 0 ? (
+            <p className="px-5 py-6 text-center text-sm text-on-surface-variant">Nenhuma ocorrência encontrada.</p>
+          ) : (
+            <ul className="divide-y divide-outline-variant/20">
+              {listaOcorrencias.slice(0, limiteOcorrencias).map((o) => (
+                <li key={o.id}>
+                  <Link href={`/occurrences?id=${o.id}`} className="group flex items-center gap-3 px-5 py-4 transition-colors hover:bg-surface-container-low focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-secondary">
+                    <div className="min-w-0 flex-1">
+                      <p className="break-words text-sm font-bold text-primary group-hover:text-secondary">
+                        <span className="mr-2 font-mono text-xs font-medium text-on-surface-variant">{o.id}</span>
+                        {o.titulo}
+                      </p>
+                      <p className="mt-1 break-words text-xs text-on-surface-variant">
+                        {zonaNome(o.zona)}{o.endereco ? ` · ${o.endereco}` : ""}
+                      </p>
+                      <div className="mt-2 flex flex-wrap items-center gap-2">
+                        <Chip tone={getOccurrenceStatusMeta(o.status).tone}>{getOccurrenceStatusMeta(o.status).label}</Chip>
+                        <time dateTime={o.created_at} className="text-xs text-on-surface-variant">Criada em {formatDate(o.created_at)}</time>
+                      </div>
+                    </div>
+                    <Icon name="chevron_right" className="shrink-0 text-[20px] text-on-surface-variant" />
+                  </Link>
+                </li>
+              ))}
+            </ul>
+          )}
+          {listaOcorrencias.length > 5 && (
+            <div className="flex flex-wrap items-center justify-between gap-3 border-t border-outline-variant/20 px-5 py-3">
+              <p className="text-xs text-on-surface-variant">{Math.min(limiteOcorrencias, listaOcorrencias.length)} de {listaOcorrencias.length} ocorrências</p>
+              <button type="button" onClick={() => setLimiteOcorrencias(limiteOcorrencias < listaOcorrencias.length ? limiteOcorrencias + 5 : 5)} className="rounded px-2 py-1 text-sm font-bold text-secondary hover:underline focus-visible:ring-2 focus-visible:ring-secondary">
+                {limiteOcorrencias < listaOcorrencias.length ? "Mostrar mais ocorrências" : "Mostrar menos"}
+              </button>
+            </div>
           )}
         </div>
       </section>
 
-      {/* Ações em campo */}
-      <section>
-        <SectionHeader overline="REGISTRO DE CAMPO" title="Minhas últimas ações" />
-        <div className="card-tonal p-4 shadow-ambient-sm sm:p-6">
-          <div className="space-y-3">
-            {minhasAcoes.length === 0 && (
-              <div className="flex flex-col items-center justify-center py-10 text-center">
-                <Icon name="history" className="mb-3 text-[36px] text-on-surface-variant/60" />
-                <p className="text-sm font-medium text-on-surface-variant">
-                  Nenhuma ação registrada até o momento.
-                </p>
-              </div>
-            )}
-            {minhasAcoes.map((a) => {
-              const meta = ACTION_META[a.tipo_acao];
-              const campos = [...new Set(a.campos_alterados.map((campo) => CAMPO_LABEL[campo] ?? campo.replaceAll("_", " ")))];
-              return (
-                <article
-                  key={`${a.ocorrencia.id}-${a.id}`}
-                  className="group rounded-xl border border-outline-variant/20 bg-white p-4 transition-all hover:border-secondary/30 hover:shadow-ambient-sm sm:p-5"
-                >
-                  <div className="flex items-start gap-4">
-                    <div className={`flex h-10 w-10 shrink-0 items-center justify-center rounded-xl ${
-                      a.tipo_acao === "exclusao"
-                        ? "bg-error-container text-error"
-                        : a.tipo_acao === "edicao"
-                          ? "bg-blue-100 text-blue-700"
-                          : "bg-secondary/10 text-secondary"
-                    }`}>
-                      <Icon name={meta.icon} filled className="text-[20px]" />
-                    </div>
-
+      <section aria-label="Últimas ações">
+        <SectionHeader overline="ATIVIDADE RECENTE" title="Últimas ações" />
+        <div className="card-tonal overflow-hidden shadow-ambient-sm">
+          {minhasAcoes.length === 0 ? (
+            <p className="px-5 py-8 text-center text-sm text-on-surface-variant">Nenhuma ação registrada até o momento.</p>
+          ) : (
+            <ul className="divide-y divide-outline-variant/20">
+              {minhasAcoes.slice(0, limiteAcoes).map((a) => {
+                const meta = ACTION_META[a.tipo_acao];
+                const campos = [...new Set(a.campos_alterados.map((campo) => CAMPO_LABEL[campo] ?? campo.replaceAll("_", " ")))];
+                return (
+                  <li key={`${a.ocorrencia.id}-${a.id}`} className="flex items-start gap-3 px-5 py-4">
+                    <Icon name={meta.icon} className={`mt-0.5 shrink-0 text-[20px] ${a.tipo_acao === "exclusao" ? "text-error" : "text-secondary"}`} />
                     <div className="min-w-0 flex-1">
-                      <div className="flex flex-wrap items-center justify-between gap-2">
-                        <Chip tone={meta.tone}>{meta.label.toUpperCase()}</Chip>
-                        <MetaTag>{formatDate(a.criado_em)}</MetaTag>
+                      <div className="flex flex-wrap items-baseline justify-between gap-x-4 gap-y-1">
+                        <p className="text-sm font-semibold text-primary">{meta.label}</p>
+                        <time dateTime={a.criado_em} className="text-xs text-on-surface-variant">{formatDate(a.criado_em)}</time>
                       </div>
-
-                      <a
-                        href={`/occurrences?id=${a.ocorrencia.id}`}
-                        className="mt-3 block font-headline text-[15px] font-black text-primary transition-colors hover:text-secondary"
-                      >
-                        #{a.ocorrencia.id} · {a.ocorrencia.titulo}
-                      </a>
-
-                      <div className="mt-2 flex flex-wrap gap-x-4 gap-y-1 text-[11px] text-on-surface-variant">
-                        {a.ocorrencia.endereco && (
-                          <span className="flex items-center gap-1.5">
-                            <Icon name="home_pin" className="text-[14px]" />
-                            {a.ocorrencia.endereco}
-                          </span>
-                        )}
-                        <span className="flex items-center gap-1.5">
-                          <Icon name="location_on" className="text-[14px]" />
-                          {zonaNome(a.ocorrencia.zona)}
-                        </span>
-                      </div>
-
+                      <Link href={`/occurrences?id=${a.ocorrencia.id}`} className="mt-1 block break-words rounded text-sm text-on-surface-variant hover:text-secondary hover:underline focus-visible:ring-2 focus-visible:ring-secondary">
+                        {a.ocorrencia.id} · {a.ocorrencia.titulo}
+                      </Link>
                       {a.tipo_acao === "edicao" && campos.length > 0 && (
-                        <p className="mt-3 border-t border-outline-variant/15 pt-3 text-[11px] text-on-surface-variant">
-                          <strong className="text-primary">Informações alteradas:</strong> {campos.join(", ")}.
-                        </p>
+                        <details className="mt-2 text-xs text-on-surface-variant">
+                          <summary className="w-fit cursor-pointer rounded py-1 font-semibold text-secondary focus-visible:ring-2 focus-visible:ring-secondary">Ver alterações</summary>
+                          <p className="mt-1 leading-relaxed">Campos alterados: {campos.join(", ")}.</p>
+                        </details>
                       )}
                     </div>
-                  </div>
-                </article>
-              );
-            })}
-          </div>
+                  </li>
+                );
+              })}
+            </ul>
+          )}
+          {minhasAcoes.length > 5 && (
+            <div className="flex flex-wrap items-center justify-between gap-3 border-t border-outline-variant/20 px-5 py-3">
+              <p className="text-xs text-on-surface-variant">{Math.min(limiteAcoes, minhasAcoes.length)} de {minhasAcoes.length} ações</p>
+              <button type="button" onClick={() => setLimiteAcoes(limiteAcoes < minhasAcoes.length ? limiteAcoes + 5 : 5)} className="rounded px-2 py-1 text-sm font-bold text-secondary hover:underline focus-visible:ring-2 focus-visible:ring-secondary">
+                {limiteAcoes < minhasAcoes.length ? "Mostrar mais ações" : "Mostrar menos"}
+              </button>
+            </div>
+          )}
         </div>
       </section>
     </div>

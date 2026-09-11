@@ -13,7 +13,7 @@ import { CriticalAlertModal } from "./Modals";
 import { Tweaks } from "./Tweaks";
 import { api } from "@/app/services/Api";
 import { authService } from "@/app/services/Authservice";
-import { clearSession } from "@/app/lib/session";
+import { clearSession, broadcastLogout } from "@/app/lib/session";
 
 type ToastTone = "error" | "secondary";
 
@@ -32,6 +32,11 @@ export interface UserData {
   tipo: number;
   entidade: number | null;
   cargo: number | null;
+  cargo_label?: string | null;
+  matricula?: string | null;
+  zona_base?: number | null;
+  status_campo?: string | null;
+  status_campo_label?: string | null;
 }
 
 type GardianContextValue = {
@@ -99,9 +104,10 @@ export function GardianProvider({ children }: { children: ReactNode }) {
     // Clear client-side auth state
     authService.logout();
     clearSession();
+    broadcastLogout();
     setUser(null);
     // Redirect to login
-    router.push("/login");
+    router.replace("/login");
   }, [router]);
 
   const value: GardianContextValue = {
@@ -137,7 +143,7 @@ export function GardianProvider({ children }: { children: ReactNode }) {
       />
 
       {toast && (
-        <div className="fixed bottom-6 left-1/2 -translate-x-1/2 z-50 animate-[fadeIn_200ms_ease]">
+        <div className="fixed bottom-6 left-1/2 z-[100] -translate-x-1/2 animate-[fadeIn_200ms_ease]">
           <div
             className={`px-5 py-3 rounded-lg shadow-ambient flex items-center gap-3 ${
               toast.tone === "error" ? "bg-error text-white" : "bg-secondary text-white"

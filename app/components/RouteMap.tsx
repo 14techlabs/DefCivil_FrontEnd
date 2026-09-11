@@ -157,7 +157,7 @@ export function RouteMap({ stops, height = 460, activeStop, onSelectStop }: Rout
             <p style="font-size:13px;font-weight:700;color:#0f172a;margin:0">${s.local}</p>
             <p style="font-size:11px;color:#475569;margin:4px 0 0">${s.motivo}</p>
             <p style="font-size:11px;color:#0f172a;margin:6px 0 0"><strong>ETA ${s.eta}</strong>${
-              s.ocorrenciaId ? ` · Ocorrência #${s.ocorrenciaId}` : ""
+              s.ocorrenciaId ? ` · Ocorrência ${s.ocorrenciaId}` : ""
             }</p>
           </div>`);
 

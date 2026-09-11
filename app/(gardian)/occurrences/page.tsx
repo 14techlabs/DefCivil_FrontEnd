@@ -1,4 +1,3 @@
-// DefCivil_FrontEnd/app/(gardian)/occurrences/page.tsx
 "use client";
 
 import { Suspense, useCallback, useEffect, useMemo, useState } from "react";
@@ -10,10 +9,12 @@ import { EditOccurrenceModal } from "@/app/components/EditOccurrenceModal";
 import { OccurrenceDamagesModal } from "@/app/components/OccurrenceDamagesModal";
 import { DeleteOccurrenceModal } from "@/app/components/DeleteOccurrenceModal";
 import { ModalShell } from "@/app/components/Modals";
+import { OccurrenceReportModal } from "@/app/components/OccurrenceReportModal";
 import { useGardian } from "@/app/components/GardianContext";
 import { DataLoading } from "@/app/components/DataLoading";
 import { googleMapsUrl } from "@/app/data/mock";
 import { getOccurrenceStatusMeta } from "@/app/lib/occurrenceStatus";
+import { PaginationControls, type PaginationInfo } from "@/app/components/PaginationControls";
 
 // --- tipos da resposta da api ---
 
@@ -80,6 +81,7 @@ interface OcorrenciaAnexo {
 
 interface OcorrenciaListResponse {
   ocorrencias: Ocorrencia[];
+  paginacao: PaginationInfo;
 }
 
 interface DanoOcorrencia {
@@ -106,6 +108,14 @@ interface ZonaBasic {
 
 interface ZonaListResponse {
   zonas: ZonaBasic[];
+}
+
+interface ResumoOcorrencias {
+  total: number;
+  abertas: number;
+  andamento: number;
+  resolvidas: number;
+  por_zona: { zona_id: number; zona_nome: string | null; total: number }[];
 }
 
 interface FamiliaBasic {
@@ -147,6 +157,7 @@ function separarRelato(descricao: string): { relato: string; marcacoes: string[]
 // --- helpers ---
 
 const CATEGORIA_LABEL: Record<string, string> = {
+  meteorologico: "Meteorológico",
   desabamento: "Desabamento",
   deslizamento: "Deslizamento",
   queda_de_barreira: "Queda De Barreira",
@@ -194,13 +205,6 @@ function formatHistoryValue(value: unknown): string {
   return String(value);
 }
 
-const CATEGORIA_ICON: Record<string, string> = {
-  geologico: "terrain",
-  climatico: "thunderstorm",
-  vias_publicas: "directions_car",
-  produtos_perigosos: "science",
-};
-
 function categoriaLabel(categoria: string): string {
   const label = CATEGORIA_LABEL[categoria] ?? categoria.replaceAll("_", " ");
   return label
@@ -219,10 +223,6 @@ function tituloOcorrencia(ocorrencia: Pick<Ocorrencia, "titulo" | "categoria">):
     return `Ocorrência — ${categoriaLabel(ocorrencia.categoria)}`;
   }
   return ocorrencia.titulo;
-}
-
-function statusAccentClass(status: string): string {
-  return getOccurrenceStatusMeta(status).accentClass;
 }
 
 function riskToneFor(value?: string | null): "error" | "warning" | "secondary" {
@@ -266,7 +266,8 @@ function mimeTypeDoArquivo(nome: string): string | null {
 // --- componente ---
 
 function OccurrencesContent() {
-  const { showToast } = useGardian();
+  const { showToast, user } = useGardian();
+  const [showReport, setShowReport] = useState(false);
   const searchParams = useSearchParams();
 
   /**
@@ -283,6 +284,8 @@ function OccurrencesContent() {
 
   // estado dos dados
   const [ocorrencias, setOcorrencias] = useState<Ocorrencia[]>([]);
+  const [resumo, setResumo] = useState<ResumoOcorrencias | null>(null);
+  const [carregandoIndicadores, setCarregandoIndicadores] = useState(true);
   const [zonaLookup, setZonaLookup] = useState<Map<number, string>>(new Map());
   const [usuarioLookup, setUsuarioLookup] = useState<Map<number, string>>(new Map());
   const [eventos, setEventos] = useState<EventoBasic[]>([]);
@@ -290,6 +293,14 @@ function OccurrencesContent() {
   const [checklistLookup, setChecklistLookup] = useState<Map<number, string>>(new Map());
   const [loading, setLoading] = useState(true);
   const [loadError, setLoadError] = useState("");
+  const [pagina, setPagina] = useState(1);
+  const [quantidadePorPagina, setQuantidadePorPagina] = useState<10 | 25 | 50>(10);
+  const [paginacao, setPaginacao] = useState<PaginationInfo>({
+    pagina: 1,
+    total_paginas: 1,
+    quantidade_por_pagina: 10,
+    total_objetos: 0,
+  });
 
   // estado da ui
   const [filter, setFilter] = useState("todas");
@@ -305,6 +316,7 @@ function OccurrencesContent() {
   const [showCreateModal, setShowCreateModal] = useState(false);
   const [showEditModal, setShowEditModal] = useState(false);
   const [showDeleteModal, setShowDeleteModal] = useState(false);
+  const [showFullDetails, setShowFullDetails] = useState(false);
 
   // busca, filtro por status e agrupamento em evento
   const [busca, setBusca] = useState("");
@@ -316,25 +328,13 @@ function OccurrencesContent() {
   const [agrupando, setAgrupando] = useState(false);
   const [erroAgrupamento, setErroAgrupamento] = useState("");
 
-  const fetchData = useCallback(async () => {
-    setLoading(true);
-    setLoadError("");
+  const fetchLookups = useCallback(async () => {
     try {
-      const occRes = await api.get<OcorrenciaListResponse>("/ocorrencias/");
-      const lista = occRes.data.ocorrencias ?? [];
-
-      setOcorrencias(lista);
-      setSelected((current) =>
-        current != null && lista.some((o) => o.id === current)
-          ? current
-          : lista[0]?.id ?? null,
-      );
-
       const [zonRes, usuRes, eventosRes, familiasRes, checklistRes] = await Promise.allSettled([
-        api.get<ZonaListResponse>("/zonas/"),
+        api.get<ZonaListResponse>("/zonas/", { params: { lookup: "1" } }),
         api.get<UsuarioInfo[]>("/usuarios/"),
         api.get<EventoListResponse>("/eventos/"),
-        api.get<FamiliaListResponse>("/familias/"),
+        api.get<FamiliaListResponse>("/familias/", { params: { quantidade_por_pagina: 50 } }),
         api.get<ChecklistBasic[]>("/entidades/checklist/"),
       ]);
 
@@ -355,7 +355,7 @@ function OccurrencesContent() {
             u.user_sys?.username ??
             u.nome_anonimo ??
             u.telefone ??
-            `Usuário #${u.id}`;
+            `Usuário ${u.id}`;
           uLookup.set(u.id, nome);
         }
       }
@@ -377,23 +377,75 @@ function OccurrencesContent() {
         ),
       );
     } catch {
+      // falha silenciosa: a página usa fallbacks como Zona id e Usuário id
+    }
+  }, []);
+
+  const fetchData = useCallback(async () => {
+    setLoading(true);
+    setLoadError("");
+    try {
+      const params: Record<string, string | number> = {
+        pagina,
+        quantidade_por_pagina: quantidadePorPagina,
+      };
+      if (statusFilter !== "todos") params.status = statusFilter;
+      if (familiaFiltroId != null && familiaFiltroAtivo) params.familia_id = familiaFiltroId;
+      const occRes = await api.get<OcorrenciaListResponse>("/ocorrencias/", { params });
+      const lista = occRes.data.ocorrencias ?? [];
+
+      setOcorrencias(lista);
+      setPaginacao(occRes.data.paginacao ?? {
+        pagina,
+        total_paginas: 1,
+        quantidade_por_pagina: quantidadePorPagina,
+        total_objetos: lista.length,
+      });
+      setSelected((current) =>
+        current != null && lista.some((o) => o.id === current)
+          ? current
+          : lista[0]?.id ?? null,
+      );
+    } catch (error) {
+      const status = (error as { response?: { status?: number } })?.response?.status;
+      if (status === 404 && pagina > 1) {
+        setPagina((current) => Math.max(1, current - 1));
+        return;
+      }
       setOcorrencias([]);
       setSelected(null);
-      setZonaLookup(new Map());
-      setUsuarioLookup(new Map());
-      setEventos([]);
-      setFamiliaLookup(new Map());
-      setChecklistLookup(new Map());
       setLoadError("Não foi possível carregar as ocorrências.");
     } finally {
       setLoading(false);
     }
+  }, [familiaFiltroAtivo, familiaFiltroId, pagina, quantidadePorPagina, statusFilter]);
+
+  const fetchResumo = useCallback(async () => {
+    setCarregandoIndicadores(true);
+    try {
+      const response = await api.get<ResumoOcorrencias>("/ocorrencias/resumo/");
+      setResumo(response.data);
+    } catch {
+      setResumo(null);
+    } finally {
+      setCarregandoIndicadores(false);
+    }
   }, []);
+
+  useEffect(() => {
+    const timer = window.setTimeout(() => void fetchLookups(), 0);
+    return () => window.clearTimeout(timer);
+  }, [fetchLookups]);
 
   useEffect(() => {
     const timer = window.setTimeout(() => void fetchData(), 0);
     return () => window.clearTimeout(timer);
   }, [fetchData]);
+
+  useEffect(() => {
+    const timer = window.setTimeout(() => void fetchResumo(), 0);
+    return () => window.clearTimeout(timer);
+  }, [fetchResumo]);
 
   // seleciona ocorrência vinda do mapa da zona (?id=X)
   useEffect(() => {
@@ -481,28 +533,21 @@ function OccurrencesContent() {
   // --- indicadores ---
 
   const indicadores = useMemo(() => {
-    const abertas = ocorrencias.filter(
-      (o) => o.status === "em_analise" || o.status === "aguardando" || o.status === "alta_prioridade",
-    ).length;
-    const andamento = ocorrencias.filter((o) => o.status === "em_andamento").length;
-    const resolvidas = ocorrencias.filter((o) => o.status === "concluida").length;
-
-    const porZona = new Map<number, number>();
-    for (const o of ocorrencias) {
-      if (o.zona != null) porZona.set(o.zona, (porZona.get(o.zona) ?? 0) + 1);
-    }
-    const ranking = [...porZona.entries()].sort((a, b) => b[1] - a[1]);
+    const ranking: [number, number][] = (resumo?.por_zona ?? []).map((item) => [
+      item.zona_id,
+      item.total,
+    ]);
     const topZona = ranking[0];
 
     return {
-      abertas,
-      andamento,
-      resolvidas,
-      topZonaNome: topZona ? zonaLookup.get(topZona[0]) ?? `Zona #${topZona[0]}` : "—",
+      abertas: resumo?.abertas ?? 0,
+      andamento: resumo?.andamento ?? 0,
+      resolvidas: resumo?.resolvidas ?? 0,
+      topZonaNome: topZona ? zonaLookup.get(topZona[0]) ?? `Zona ${topZona[0]}` : "—",
       topZonaQtd: topZona ? topZona[1] : 0,
       ranking: ranking.slice(0, 4),
     };
-  }, [ocorrencias, zonaLookup]);
+  }, [resumo, zonaLookup]);
 
   const statusDisponiveis = useMemo(() => {
     const set = new Set(ocorrencias.map((o) => o.status));
@@ -678,7 +723,7 @@ function OccurrencesContent() {
   // --- renderização ---
 
   if (loading) {
-    return <DataLoading description="Preparando as ocorrências..." />;
+    return <DataLoading />;
   }
 
   return (
@@ -689,7 +734,7 @@ function OccurrencesContent() {
           <MetaTag className="text-secondary">CENTRAL DE OCORRÊNCIAS</MetaTag>
           <span className="w-1 h-1 rounded-full bg-outline-variant" />
           <MetaTag>
-            {ocorrencias.length} REGISTRO{ocorrencias.length !== 1 ? "S" : ""}
+            {paginacao.total_objetos} REGISTRO{paginacao.total_objetos !== 1 ? "S" : ""}
           </MetaTag>
         </div>
         <div className="flex items-end justify-between gap-6 flex-wrap">
@@ -704,7 +749,10 @@ function OccurrencesContent() {
             </p>
              */ }
           </div>
-          <div className="flex gap-3">
+          <div className="flex flex-wrap gap-3">
+            <Btn variant="secondary" icon="description" disabled={Boolean(loadError) || ocorrencias.length === 0} onClick={() => setShowReport(true)}>
+              Emitir relatório
+            </Btn>
             <Btn variant="primary" icon="add" onClick={() => setShowCreateModal(true)}>
               Nova Ocorrência
             </Btn>
@@ -727,28 +775,28 @@ function OccurrencesContent() {
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-5 mb-6">
         <KPI
           label="Em Aberto"
-          value={indicadores.abertas}
+          value={carregandoIndicadores ? "—" : indicadores.abertas}
           icon="pending"
           tone={indicadores.abertas > 0 ? "warning" : "secondary"}
           sub="Aguardando triagem ou despacho"
         />
         <KPI
           label="Em Andamento"
-          value={indicadores.andamento}
+          value={carregandoIndicadores ? "—" : indicadores.andamento}
           icon="engineering"
           tone={indicadores.andamento > 0 ? "error" : "secondary"}
           sub="Com equipe atuando"
         />
         <KPI
           label="Resolvidas"
-          value={indicadores.resolvidas}
+          value={carregandoIndicadores ? "—" : indicadores.resolvidas}
           icon="task_alt"
           tone="secondary"
           sub="Concluídas pela equipe"
         />
         <KPI
           label="Zona com Mais Registros"
-          value={indicadores.topZonaQtd}
+          value={carregandoIndicadores ? "—" : indicadores.topZonaQtd}
           icon="hub"
           tone="secondary"
           sub={indicadores.topZonaNome}
@@ -771,7 +819,7 @@ function OccurrencesContent() {
 
           <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-4">
             {indicadores.ranking.map(([zid, qtd], index) => {
-              const nome = zonaLookup.get(zid) ?? `Zona #${zid}`;
+              const nome = zonaLookup.get(zid) ?? `Zona ${zid}`;
               const maiorQuantidade = indicadores.ranking[0]?.[1] ?? 1;
               const proporcao = Math.max(8, (qtd / maiorQuantidade) * 100);
 
@@ -836,7 +884,7 @@ function OccurrencesContent() {
                 <strong>
                   {familiaFiltroNome ||
                     familiaLookup.get(familiaFiltroId) ||
-                    `família #${familiaFiltroId}`}
+                    `família ${familiaFiltroId}`}
                 </strong>
                 .
               </>
@@ -846,7 +894,7 @@ function OccurrencesContent() {
                 <strong>
                   {familiaFiltroNome ||
                     familiaLookup.get(familiaFiltroId) ||
-                    `família #${familiaFiltroId}`}
+                    `família ${familiaFiltroId}`}
                 </strong>{" "}
                 desativado.
               </>
@@ -854,7 +902,7 @@ function OccurrencesContent() {
           </p>
           <button
             type="button"
-            onClick={() => setFamiliaFiltroAtivo((v) => !v)}
+            onClick={() => { setPagina(1); setFamiliaFiltroAtivo((v) => !v); }}
             className="shrink-0 text-[11px] font-bold uppercase tracking-mono-tight text-secondary hover:underline"
           >
             {filtrandoPorFamilia ? "Ver todas" : "Voltar ao filtro"}
@@ -863,7 +911,7 @@ function OccurrencesContent() {
       )}
 
       {/* filtros fixos: permanecem visíveis durante a leitura da lista */}
-      <section className="sticky top-16 z-20 mb-6 min-w-0 max-w-full overflow-hidden rounded-xl border border-outline-variant/25 bg-surface/95 p-4 shadow-ambient-sm backdrop-blur-xl">
+      <section className="sticky top-2 z-40 mb-6 min-w-0 max-w-full rounded-xl border border-outline-variant/25 bg-surface p-4 shadow-ambient before:absolute before:-inset-x-8 before:-bottom-3 before:-top-3 before:-z-10 before:bg-surface-container-lowest">
         <div className="flex min-w-0 flex-col gap-3 sm:flex-row sm:items-center">
           <div className="hidden h-11 w-11 shrink-0 items-center justify-center rounded-lg bg-primary text-white sm:flex">
             <Icon name="filter_list" className="text-[20px]" />
@@ -900,7 +948,7 @@ function OccurrencesContent() {
             />
             <select
               value={statusFilter}
-              onChange={(e) => setStatusFilter(e.target.value)}
+              onChange={(e) => { setPagina(1); setStatusFilter(e.target.value); }}
               className="h-11 w-full appearance-none rounded-lg border border-outline-variant/25 bg-white pl-10 pr-10 text-xs font-bold text-primary outline-none transition-all hover:border-secondary/40 focus:ring-2 focus:ring-secondary/30 sm:min-w-[180px]"
             >
               {statusDisponiveis.map((st) => (
@@ -940,18 +988,32 @@ function OccurrencesContent() {
             />
           </label>
 
-          <div className="hidden h-11 shrink-0 items-center rounded-lg bg-primary/5 px-3 xl:flex">
-            <span className="text-[10px] font-bold uppercase tracking-mono-tight text-primary">
-              <strong className="text-sm text-secondary">{ocorrenciasFiltradas.length}</strong>{" "}
-              de {ocorrencias.length}
+          <label className="flex h-11 w-full shrink-0 items-center gap-2 rounded-lg border border-outline-variant/25 bg-white pl-3 text-on-surface-variant transition-all hover:border-secondary/40 focus-within:ring-2 focus-within:ring-secondary/30 sm:w-auto">
+            <span className="sr-only">Quantidade de ocorrências por página</span>
+            <span aria-hidden="true" className="whitespace-nowrap text-[10px] font-semibold">Itens por página:</span>
+            <span className="relative h-full">
+              <select
+                value={quantidadePorPagina}
+                onChange={(event) => {
+                  setQuantidadePorPagina(Number(event.target.value) as 10 | 25 | 50);
+                  setPagina(1);
+                }}
+                className="h-full min-w-[66px] appearance-none rounded-r-lg border-none bg-transparent pl-2 pr-9 text-xs font-bold text-primary outline-none"
+              >
+                <option value={10}>10</option>
+                <option value={25}>25</option>
+                <option value={50}>50</option>
+              </select>
+              <Icon name="expand_more" className="pointer-events-none absolute right-2 top-1/2 -translate-y-1/2 text-[17px] text-on-surface-variant" />
             </span>
-          </div>
+          </label>
 
           {(busca || statusFilter !== "todos" || filter !== "todas") && (
             <button
               type="button"
               onClick={() => {
                 setBusca("");
+                setPagina(1);
                 setStatusFilter("todos");
                 setFilter("todas");
               }}
@@ -971,23 +1033,35 @@ function OccurrencesContent() {
           Lista de Ocorrências
         </h2>
         <p className="text-[11px] text-on-surface-variant">
-          {ocorrenciasFiltradas.length} ocorrência{ocorrenciasFiltradas.length !== 1 ? "s" : ""} encontrada{ocorrenciasFiltradas.length !== 1 ? "s" : ""}
+          {paginacao.total_objetos} ocorrência{paginacao.total_objetos !== 1 ? "s" : ""} encontrada{paginacao.total_objetos !== 1 ? "s" : ""}
         </p>
       </div>
 
       {/* Lista + detalhe */}
       {ocorrenciasFiltradas.length === 0 ? (
-        <div className="flex flex-col items-center justify-center py-20 text-center">
-          <Icon name="search_off" className="text-on-surface-variant text-[48px] mb-4" />
-          <p className="text-sm text-on-surface-variant">
-            Nenhuma ocorrência encontrada.
-          </p>
+        <div className="space-y-5">
+          <div className="flex flex-col items-center justify-center py-16 text-center">
+            <Icon name="search_off" className="text-on-surface-variant text-[48px] mb-4" />
+            <p className="text-sm text-on-surface-variant">
+              Nenhuma ocorrência encontrada nesta página.
+            </p>
+          </div>
+          <PaginationControls
+            pagination={paginacao}
+            onPageChange={setPagina}
+            onPageSizeChange={(pageSize) => {
+              setQuantidadePorPagina(pageSize);
+              setPagina(1);
+            }}
+            disabled={loading}
+            showPageSize={false}
+          />
         </div>
       ) : (
         <div className="grid grid-cols-12 gap-5">
           {/* Lista */}
-          <div className="col-span-12 lg:col-span-7 space-y-3">
-            <div className="z-10 flex flex-col gap-3 rounded-xl border border-outline-variant/25 bg-surface/95 p-3 shadow-ambient-sm backdrop-blur-xl lg:sticky lg:top-36 sm:flex-row sm:items-center sm:justify-between">
+          <div className="col-span-12 space-y-4">
+            <div className="flex flex-col gap-3 rounded-xl border border-outline-variant/25 bg-surface p-4 shadow-ambient-sm sm:flex-row sm:items-center sm:justify-between">
               <div className="flex min-w-0 items-center gap-2">
                 <Icon
                   name={modoAgrupar ? "checklist" : "event"}
@@ -1024,623 +1098,641 @@ function OccurrencesContent() {
               </div>
             </div>
 
-            {ocorrenciasFiltradas.map((o) => {
-              const zonaNome =
-                o.zona != null ? zonaLookup.get(o.zona) ?? `#${o.zona}` : null;
-              const autorNome =
-                o.autor != null
-                  ? usuarioLookup.get(o.autor) ?? `#${o.autor}`
-                  : null;
-
-              return (
-                <button
-                  key={o.id}
-                  id={`ocorrencia-${o.id}`}
-                  ref={(elemento) => {
-                    if (!elemento || ocorrenciaParaPosicionar !== o.id) return;
-                    window.requestAnimationFrame(() => {
-                      window.requestAnimationFrame(() => {
-                        elemento.scrollIntoView({ behavior: "smooth", block: "center" });
-                        setOcorrenciaParaPosicionar(null);
-                      });
-                    });
-                  }}
-                  onClick={() => {
-                    if (modoAgrupar) toggleMarcada(o.id);
-                    else {
-                      setSelected(o.id);
-                      setDetailTab("detalhes");
-                    }
-                  }}
-                  className={`w-full scroll-mt-36 card-tonal p-6 shadow-ambient-sm text-left relative overflow-hidden hover:shadow-ambient transition-all ${modoAgrupar && marcadas.includes(o.id)
-                    ? "ring-2 ring-secondary"
-                    : !modoAgrupar && selected === o.id
-                      ? "ring-2 ring-secondary"
-                      : ""
-                    }`}
-                >
-                  <span
-                    className={`absolute top-0 left-0 bottom-0 w-1 ${statusAccentClass(o.status)}`}
-                  />
-                  <div className="pl-3">
-                    <div className="flex items-center justify-between mb-3">
-                      <div className="flex items-center gap-3">
+            <div className="overflow-hidden rounded-xl border border-outline-variant/25 bg-surface shadow-ambient-sm">
+              <div className="overflow-x-auto">
+                <table className="w-full min-w-[900px] text-left">
+                  <thead className="bg-surface-container-low">
+                    <tr className="border-b border-outline-variant/25">
+                      {modoAgrupar && <th className="w-12 px-4 py-3"><MetaTag>SEL.</MetaTag></th>}
+                      <th className="px-4 py-3"><MetaTag>CÓDIGO / OCORRÊNCIA</MetaTag></th>
+                      <th className="px-4 py-3"><MetaTag>CATEGORIA</MetaTag></th>
+                      <th className="px-4 py-3"><MetaTag>ZONA</MetaTag></th>
+                      <th className="px-4 py-3"><MetaTag>STATUS</MetaTag></th>
+                      <th className="px-4 py-3"><MetaTag>DATA</MetaTag></th>
+                      <th className="px-4 py-3 text-left"><MetaTag>AÇÕES</MetaTag></th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {ocorrenciasFiltradas.map((o) => (
+                      <tr
+                        key={o.id}
+                        id={`ocorrencia-${o.id}`}
+                        ref={(elemento) => {
+                          if (!elemento || ocorrenciaParaPosicionar !== o.id) return;
+                          window.requestAnimationFrame(() => {
+                            elemento.scrollIntoView({ behavior: "smooth", block: "center" });
+                            setOcorrenciaParaPosicionar(null);
+                          });
+                        }}
+                        className={`border-b border-outline-variant/15 transition-colors last:border-0 hover:bg-surface-container-low ${marcadas.includes(o.id) ? "bg-secondary/5" : ""}`}
+                      >
                         {modoAgrupar && (
-                          <Icon
-                            name={marcadas.includes(o.id) ? "check_box" : "check_box_outline_blank"}
-                            className={`text-[20px] ${marcadas.includes(o.id) ? "text-secondary" : "text-on-surface-variant"}`}
-                          />
+                          <td className="px-4 py-4">
+                            <button type="button" onClick={() => toggleMarcada(o.id)} aria-label={`Selecionar ocorrência ${o.id}`}>
+                              <Icon name={marcadas.includes(o.id) ? "check_box" : "check_box_outline_blank"} className={`text-[20px] ${marcadas.includes(o.id) ? "text-secondary" : "text-on-surface-variant"}`} />
+                            </button>
+                          </td>
                         )}
-                        <span className="text-[10px] font-mono uppercase tracking-mono font-bold text-slate-400">
-                          #{o.id}
-                        </span>
-                        <Chip tone={getOccurrenceStatusMeta(o.status).tone}>
-                          {getOccurrenceStatusMeta(o.status).label.toUpperCase()}
-                        </Chip>
-                      </div>
-                      <MetaTag>{formatDate(o.created_at)}</MetaTag>
-                    </div>
-                    <h3 className="font-headline font-bold text-lg text-primary mb-2">
-                      {tituloOcorrencia(o)}
-                    </h3>
-                    {o.endereco && (
-                      <p className="text-[12px] text-on-surface-variant mb-2 flex items-start gap-1.5">
-                        <Icon name="home_pin" className="text-[15px] mt-0.5 shrink-0" />
-                        {o.endereco}
-                      </p>
-                    )}
-                    <div className="flex items-center gap-4 text-[11px] text-on-surface-variant flex-wrap">
-                      {zonaNome && (
-                        <span className="flex items-center gap-1.5">
-                          <Icon name="location_on" className="text-[14px]" />
-                          {zonaNome}
-                        </span>
-                      )}
-                      <span className="flex items-center gap-1.5">
-                        <Icon
-                          name={
-                            CATEGORIA_ICON[o.categoria] ?? "help"
-                          }
-                          className="text-[14px]"
-                        />
-                        {categoriaLabel(o.categoria)}
-                      </span>
-                      {autorNome && (
-                        <span className="flex items-center gap-1.5">
-                          <Icon name="person" className="text-[14px]" />
-                          {autorNome}
-                        </span>
-                      )}
-                      {o.anexos.length > 0 && (
-                        <span className="flex items-center gap-1.5">
-                          <Icon name="attach_file" className="text-[14px]" />
-                          {o.anexos.length} anexo{o.anexos.length !== 1 ? "s" : ""}
-                        </span>
-                      )}
-                    </div>
-                  </div>
-                </button>
-              );
-            })}
+                        <td className="max-w-[300px] px-4 py-4">
+                          <p className="text-[13px] font-bold text-primary">{o.id} · {tituloOcorrencia(o)}</p>
+                          <p className="mt-1 truncate text-[10px] text-on-surface-variant">{o.endereco || "Sem endereço informado"}</p>
+                        </td>
+                        <td className="px-4 py-4 text-[11px] font-medium text-on-surface-variant">{categoriaLabel(o.categoria)}</td>
+                        <td className="px-4 py-4 text-[11px] font-medium text-on-surface-variant">{o.zona != null ? zonaLookup.get(o.zona) ?? `Zona ${o.zona}` : "Sem zona"}</td>
+                        <td className="px-4 py-4"><Chip tone={getOccurrenceStatusMeta(o.status).tone}>{getOccurrenceStatusMeta(o.status).label}</Chip></td>
+                        <td className="whitespace-nowrap px-4 py-4 text-[10px] font-bold text-on-surface-variant">{formatDate(o.created_at)}</td>
+                        <td className="px-4 py-4 text-left">
+                          <Btn variant="secondary" icon="visibility" onClick={() => { setSelected(o.id); setDetailTab("detalhes"); setShowFullDetails(true); }}>
+                            Visualizar
+                          </Btn>
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+              <div className="border-t border-outline-variant/20 p-3">
+                <PaginationControls pagination={paginacao} onPageChange={setPagina} onPageSizeChange={(pageSize) => { setQuantidadePorPagina(pageSize); setPagina(1); }} disabled={loading} showPageSize={false} />
+              </div>
+            </div>
           </div>
 
           {/* painel de detalhe */}
           {selecionada && (
-            <aside className="col-span-12 lg:col-span-5">
-              <div className="card-tonal shadow-ambient-sm overflow-hidden lg:sticky lg:top-36 lg:max-h-[calc(100vh-10rem)] lg:overflow-y-auto">
-                {/* cabeçalho do detalhe */}
-                <div className="bg-gradient-to-br from-primary to-primary-container text-white p-6">
-                  <div className="flex items-start justify-between gap-3">
-                    <Chip tone="primarySoft" className="!bg-white/15 !text-white">
-                      {categoriaLabel(selecionada.categoria).toUpperCase()}
-                    </Chip>
-                    <div className="flex items-center gap-2">
-                      <Btn
-                        variant="ghostDark"
-                        icon="delete"
-                        onClick={() => setShowDeleteModal(true)}
-                      >
-                        Excluir
-                      </Btn>
-                      <Btn variant="ghostDark" icon="edit" onClick={() => setShowEditModal(true)}>
-                        Editar
-                      </Btn>
-                    </div>
-                  </div>
-                  <h2 className="font-headline font-black text-2xl tracking-tighter mt-3">
-                    {tituloOcorrencia(selecionada)}
-                  </h2>
-                  {selecionada.zona != null && (
-                    <p className="text-white/70 text-xs mt-2 flex items-center gap-1.5">
-                      <Icon name="location_on" className="text-[14px]" />
-                      {zonaLookup.get(selecionada.zona) ?? `Zona #${selecionada.zona}`}
-                    </p>
-                  )}
-                </div>
-
-                <div className="sticky top-0 z-10 flex border-b border-outline-variant/20 bg-white px-6 pt-3">
-                  <button
-                    type="button"
-                    onClick={() => setDetailTab("detalhes")}
-                    className={`flex flex-1 items-center justify-center gap-2 border-b-2 px-3 py-3 text-[11px] font-black uppercase tracking-mono-tight transition-colors ${
-                      detailTab === "detalhes"
-                        ? "border-secondary text-secondary"
-                        : "border-transparent text-on-surface-variant hover:text-primary"
-                    }`}
-                  >
-                    <Icon name="description" className="text-[17px]" />
-                    Detalhes
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => setDetailTab("historico")}
-                    className={`flex flex-1 items-center justify-center gap-2 border-b-2 px-3 py-3 text-[11px] font-black uppercase tracking-mono-tight transition-colors ${
-                      detailTab === "historico"
-                        ? "border-secondary text-secondary"
-                        : "border-transparent text-on-surface-variant hover:text-primary"
-                    }`}
-                  >
-                    <Icon name="history" className="text-[17px]" />
-                    Histórico
-                    <span className="rounded-full bg-surface-container-high px-2 py-0.5 text-[9px] text-primary">
-                      {historicoSelecionado.length}
-                    </span>
-                  </button>
-                </div>
-
-                {detailTab === "detalhes" && (
-                <div className="p-6 space-y-6">
-                  {/* endereço por extenso */}
-                  <div className="card-recessed p-5">
-                    <div className="mb-3 flex items-center gap-2">
-                      <Icon name="location_on" filled className="text-[18px] text-secondary" />
-                      <MetaTag>LOCALIZAÇÃO</MetaTag>
-                    </div>
-
-                    {selecionada.endereco && (
-                      <p className="mb-4 text-[13px] font-bold leading-relaxed text-primary">
-                        {selecionada.endereco}
-                      </p>
-                    )}
-
-                    {selecionada.coordenadas ? (
-                      <div className="grid grid-cols-2 gap-2">
-                        <div className="rounded-lg border border-outline-variant/20 bg-white p-3">
-                          <MetaTag className="mb-1 block">Latitude</MetaTag>
-                          <p className="font-mono text-sm font-bold text-primary">
-                            {selecionada.coordenadas.lat.toFixed(6).replace(".", ",")}
-                          </p>
-                        </div>
-                        <div className="rounded-lg border border-outline-variant/20 bg-white p-3">
-                          <MetaTag className="mb-1 block">Longitude</MetaTag>
-                          <p className="font-mono text-sm font-bold text-primary">
-                            {selecionada.coordenadas.lng.toFixed(6).replace(".", ",")}
-                          </p>
-                        </div>
-                      </div>
-                    ) : !selecionada.endereco ? (
-                      <p className="text-[13px] font-medium text-on-surface-variant">
-                        Localização não informada
-                      </p>
-                    ) : null}
-
-                    <div className="mt-4 flex flex-wrap gap-2">
-                      <a
-                        href={googleMapsUrl(selecionada.coordenadas, selecionada.endereco)}
-                        target="_blank"
-                        rel="noreferrer"
-                        className="inline-flex items-center gap-2 rounded-lg bg-secondary/10 px-4 py-2.5 text-[11px] font-bold uppercase tracking-mono-tight text-secondary transition-all hover:bg-secondary/15"
-                      >
-                        <Icon name="map" className="text-[16px]" /> Abrir no mapa
-                      </a>
-                    </div>
-                  </div>
-
-                  {/* descricao (relato) */}
-                  <div>
-                    <MetaTag className="block mb-2">RELATO</MetaTag>
-                    <p className="text-[13px] text-on-surface leading-relaxed">
-                      {relatoSelecionado.relato}
-                    </p>
-
-                    {relatoSelecionado.marcacoes.length > 0 && (
-                      <div className="mt-4 rounded-lg bg-secondary/10 p-4">
-                        <MetaTag className="mb-2 block text-secondary">INFORMAÇÕES MARCADAS NO FORMULÁRIO</MetaTag>
-                        <div className="flex flex-wrap gap-2">
-                          {relatoSelecionado.marcacoes.map((item) => (
-                            <Chip key={item} tone="secondary" icon="check">{item}</Chip>
-                          ))}
-                        </div>
-                      </div>
-                    )}
-
-                    {selecionada.autor != null && (
-                      <div className="flex flex-wrap gap-4 mt-3 text-[11px] text-on-surface-variant">
-                        <span className="flex items-center gap-1.5">
-                          <Icon name="person" className="text-[14px]" />
-                          {usuarioLookup.get(selecionada.autor) ??
-                            `Usuário #${selecionada.autor}`}
-                        </span>
-                      </div>
-                    )}
-
-                    <span className="text-[10px] font-mono font-bold text-slate-400 mt-2 block">
-                      {formatDate(selecionada.created_at)}
-                    </span>
-                  </div>
-
-                  <div className="card-recessed p-5">
-                    <div className="mb-3 flex items-center gap-2">
-                      <Icon name="description" filled className="text-[18px] text-secondary" />
-                      <MetaTag>DADOS DO REGISTRO</MetaTag>
-                    </div>
-                    <div className="grid grid-cols-2 gap-3 text-[12px]">
-                      <div>
-                        <MetaTag className="mb-1 block">STATUS</MetaTag>
-                        <Chip tone={getOccurrenceStatusMeta(selecionada.status).tone}>
-                          {getOccurrenceStatusMeta(selecionada.status).label}
-                        </Chip>
-                      </div>
-                      <div><MetaTag className="mb-1 block">CATEGORIA</MetaTag><p className="font-bold text-primary">{CATEGORIA_LABEL[selecionada.categoria] ?? selecionada.categoria}</p></div>
-                      <div><MetaTag className="mb-1 block">ORIGEM</MetaTag><p className="font-bold text-primary">{selecionada.cidadao != null && selecionada.autor == null ? "Formulário público" : "Registro interno"}</p></div>
-                      <div><MetaTag className="mb-1 block">EVENTO</MetaTag><p className="font-bold text-primary">{selecionada.evento != null ? eventos.find((evento) => evento.id === selecionada.evento)?.nome ?? `Evento #${selecionada.evento}` : "Não vinculado"}</p></div>
-                      <div><MetaTag className="mb-1 block">ZONA</MetaTag><p className="font-bold text-primary">{selecionada.zona != null ? zonaLookup.get(selecionada.zona) ?? `Zona #${selecionada.zona}` : "Não vinculada"}</p></div>
-                      <div><MetaTag className="mb-1 block">RESPONSÁVEL</MetaTag><p className="font-bold text-primary">{selecionada.tecnico_responsavel != null ? usuarioLookup.get(selecionada.tecnico_responsavel) ?? `Usuário #${selecionada.tecnico_responsavel}` : "Não atribuído"}</p></div>
-                      <div><MetaTag className="mb-1 block">FATALIDADES</MetaTag><p className="font-bold text-primary">{selecionada.fatalidades ?? 0}</p></div>
-                    </div>
-                  </div>
-
-                  <div className="card-recessed p-5">
-                    <div className="mb-3 flex items-center justify-between gap-3">
+            <>
+              {showFullDetails && (
+                <button
+                  type="button"
+                  className="fixed inset-0 z-[60] cursor-default bg-slate-950/55 backdrop-blur-sm"
+                  onClick={() => setShowFullDetails(false)}
+                  aria-label="Fechar detalhes completos"
+                />
+              )}
+              <aside className={showFullDetails ? "col-span-12" : "hidden"}>
+                <div className={`card-tonal overflow-hidden shadow-ambient-sm ${showFullDetails
+                  ? "fixed left-1/2 top-1/2 z-[70] max-h-[92vh] w-[min(700px,calc(100vw-2rem))] -translate-x-1/2 -translate-y-1/2 overflow-y-auto"
+                  : "lg:sticky lg:top-36"
+                  }`}>
+                  {/* cabeçalho do detalhe */}
+                  <div className="bg-gradient-to-br from-primary to-primary-container text-white p-6">
+                    <div className="flex items-start justify-between gap-3">
+                      <Chip tone="primarySoft" className="!bg-white/15 !text-white">
+                        {categoriaLabel(selecionada.categoria).toUpperCase()}
+                      </Chip>
                       <div className="flex items-center gap-2">
-                        <Icon name="payments" filled className="text-[18px] text-secondary" />
-                        <MetaTag>DANOS E CUSTOS</MetaTag>
-                      </div>
-                      <Btn variant="ghost" icon="edit" onClick={() => setShowDamagesModal(true)}>
-                        Gerenciar danos
-                      </Btn>
-                    </div>
-                    <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
-                      <div className="rounded-lg bg-white p-3">
-                        <MetaTag className="mb-1 block">CUSTO DOS DANOS</MetaTag>
-                        <p className="font-headline text-lg font-black text-primary">
-                          {Number(selecionada.custo_danos || 0).toLocaleString("pt-BR", {
-                            style: "currency",
-                            currency: "BRL",
-                          })}
-                        </p>
-                      </div>
-                      <div className="rounded-lg bg-white p-3">
-                        <MetaTag className="mb-1 block">ITENS REGISTRADOS</MetaTag>
-                        <p className="font-headline text-lg font-black text-primary">
-                          {selecionada.total_itens_danos ?? 0}
-                        </p>
-                      </div>
-                      <div className="rounded-lg bg-white p-3">
-                        <MetaTag className="mb-1 block">FATALIDADES</MetaTag>
-                        <p className="font-headline text-lg font-black text-primary">
-                          {selecionada.fatalidades ?? 0}
-                        </p>
+                        {showFullDetails && (
+                          <Btn variant="ghostDark" icon="close" onClick={() => setShowFullDetails(false)}>
+                            Fechar
+                          </Btn>
+                        )}
+                        <Btn
+                          variant="ghostDark"
+                          icon="delete"
+                          onClick={() => {
+                            setShowDeleteModal(true);
+                          }}
+                        >
+                          Excluir
+                        </Btn>
+                        <Btn variant="ghostDark" icon="edit" onClick={() => {
+                          setShowEditModal(true);
+                        }}>
+                          Editar
+                        </Btn>
                       </div>
                     </div>
+                    <h2 className="font-headline font-black text-2xl tracking-tighter mt-3">
+                      {tituloOcorrencia(selecionada)}
+                    </h2>
+                    {selecionada.zona != null && (
+                      <p className="text-white/70 text-xs mt-2 flex items-center gap-1.5">
+                        <Icon name="location_on" className="text-[14px]" />
+                        {zonaLookup.get(selecionada.zona) ?? `Zona ${selecionada.zona}`}
+                      </p>
+                    )}
+                  </div>
 
-                    <div className="mt-4 border-t border-outline-variant/20 pt-4">
-                      <MetaTag className="mb-3 block">ITENS DE DANOS</MetaTag>
+                  {showFullDetails ? (
+                    <>
+                      <div className="sticky top-0 z-10 flex border-b border-outline-variant/20 bg-white px-6 pt-3">
+                        <button
+                          type="button"
+                          onClick={() => setDetailTab("detalhes")}
+                          className={`flex flex-1 items-center justify-center gap-2 border-b-2 px-3 py-3 text-[11px] font-black uppercase tracking-mono-tight transition-colors ${detailTab === "detalhes"
+                              ? "border-secondary text-secondary"
+                              : "border-transparent text-on-surface-variant hover:text-primary"
+                            }`}
+                        >
+                          <Icon name="description" className="text-[17px]" />
+                          Detalhes
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => setDetailTab("historico")}
+                          className={`flex flex-1 items-center justify-center gap-2 border-b-2 px-3 py-3 text-[11px] font-black uppercase tracking-mono-tight transition-colors ${detailTab === "historico"
+                              ? "border-secondary text-secondary"
+                              : "border-transparent text-on-surface-variant hover:text-primary"
+                            }`}
+                        >
+                          <Icon name="history" className="text-[17px]" />
+                          Histórico
+                          <span className="rounded-full bg-surface-container-high px-2 py-0.5 text-[9px] text-primary">
+                            {historicoSelecionado.length}
+                          </span>
+                        </button>
+                      </div>
 
-                      {carregandoDanos ? (
-                        <p className="text-xs text-on-surface-variant">Carregando itens…</p>
-                      ) : erroDanos ? (
-                        <p className="text-xs font-semibold text-error">{erroDanos}</p>
-                      ) : danosSelecionados.length === 0 ? (
-                        <p className="text-xs text-on-surface-variant">
-                          Nenhum item de dano foi registrado nesta ocorrência.
-                        </p>
-                      ) : (
-                        <div className="space-y-2">
-                          {(mostrarTodosDanos ? danosSelecionados : danosSelecionados.slice(0, 4)).map((dano) => (
-                            <div key={dano.id} className="rounded-lg bg-white p-3">
-                              <div className="flex items-start justify-between gap-3">
-                                <div className="min-w-0 flex-1">
-                                  <p className="truncate text-[12px] font-bold text-primary">
-                                    {dano.item_nome}
-                                  </p>
-                                  <p className="mt-0.5 text-[10px] text-on-surface-variant">
-                                    {categoriaLabel(dano.categoria)} · {formatDate(dano.created_at)}
+                      {detailTab === "detalhes" && (
+                        <div className="p-6 space-y-6">
+                          {/* endereço por extenso */}
+                          <div className="card-recessed p-5">
+                            <div className="mb-3 flex items-center gap-2">
+                              <Icon name="location_on" filled className="text-[18px] text-secondary" />
+                              <MetaTag>LOCALIZAÇÃO</MetaTag>
+                            </div>
+
+                            {selecionada.endereco && (
+                              <p className="mb-4 text-[13px] font-bold leading-relaxed text-primary">
+                                {selecionada.endereco}
+                              </p>
+                            )}
+
+                            {selecionada.coordenadas ? (
+                              <div className="grid grid-cols-2 gap-2">
+                                <div className="rounded-lg border border-outline-variant/20 bg-white p-3">
+                                  <MetaTag className="mb-1 block">Latitude</MetaTag>
+                                  <p className="font-mono text-sm font-bold text-primary">
+                                    {selecionada.coordenadas.lat.toFixed(6).replace(".", ",")}
                                   </p>
                                 </div>
-                                <p className="shrink-0 text-[12px] font-black text-primary">
-                                  {Number(dano.valor_total || 0).toLocaleString("pt-BR", {
+                                <div className="rounded-lg border border-outline-variant/20 bg-white p-3">
+                                  <MetaTag className="mb-1 block">Longitude</MetaTag>
+                                  <p className="font-mono text-sm font-bold text-primary">
+                                    {selecionada.coordenadas.lng.toFixed(6).replace(".", ",")}
+                                  </p>
+                                </div>
+                              </div>
+                            ) : !selecionada.endereco ? (
+                              <p className="text-[13px] font-medium text-on-surface-variant">
+                                Localização não informada
+                              </p>
+                            ) : null}
+
+                            <div className="mt-4 flex flex-wrap gap-2">
+                              <a
+                                href={googleMapsUrl(selecionada.coordenadas, selecionada.endereco)}
+                                target="_blank"
+                                rel="noreferrer"
+                                className="inline-flex items-center gap-2 rounded-lg bg-secondary/10 px-4 py-2.5 text-[11px] font-bold uppercase tracking-mono-tight text-secondary transition-all hover:bg-secondary/15"
+                              >
+                                <Icon name="map" className="text-[16px]" /> Abrir no mapa
+                              </a>
+                            </div>
+                          </div>
+
+                          {/* descricao (relato) */}
+                          <div>
+                            <MetaTag className="block mb-2">RELATO</MetaTag>
+                            <p className="text-[13px] text-on-surface leading-relaxed">
+                              {relatoSelecionado.relato}
+                            </p>
+
+                            {relatoSelecionado.marcacoes.length > 0 && (
+                              <div className="mt-4 rounded-lg bg-secondary/10 p-4">
+                                <MetaTag className="mb-2 block text-secondary">INFORMAÇÕES MARCADAS NO FORMULÁRIO</MetaTag>
+                                <div className="flex flex-wrap gap-2">
+                                  {relatoSelecionado.marcacoes.map((item) => (
+                                    <Chip key={item} tone="secondary" icon="check">{item}</Chip>
+                                  ))}
+                                </div>
+                              </div>
+                            )}
+
+                            {selecionada.autor != null && (
+                              <div className="flex flex-wrap gap-4 mt-3 text-[11px] text-on-surface-variant">
+                                <span className="flex items-center gap-1.5">
+                                  <Icon name="person" className="text-[14px]" />
+                                  {usuarioLookup.get(selecionada.autor) ??
+                                    `Usuário ${selecionada.autor}`}
+                                </span>
+                              </div>
+                            )}
+
+                            <span className="text-[10px] font-mono font-bold text-slate-400 mt-2 block">
+                              {formatDate(selecionada.created_at)}
+                            </span>
+                          </div>
+
+                          <div className="card-recessed p-5">
+                            <div className="mb-3 flex items-center gap-2">
+                              <Icon name="description" filled className="text-[18px] text-secondary" />
+                              <MetaTag>DADOS DO REGISTRO</MetaTag>
+                            </div>
+                            <div className="grid grid-cols-2 gap-3 text-[12px]">
+                              <div>
+                                <MetaTag className="mb-1 block">STATUS</MetaTag>
+                                <Chip tone={getOccurrenceStatusMeta(selecionada.status).tone}>
+                                  {getOccurrenceStatusMeta(selecionada.status).label}
+                                </Chip>
+                              </div>
+                              <div><MetaTag className="mb-1 block">CATEGORIA</MetaTag><p className="font-bold text-primary">{CATEGORIA_LABEL[selecionada.categoria] ?? selecionada.categoria}</p></div>
+                              <div><MetaTag className="mb-1 block">ORIGEM</MetaTag><p className="font-bold text-primary">{selecionada.cidadao != null && selecionada.autor == null ? "Formulário público" : "Registro interno"}</p></div>
+                              <div><MetaTag className="mb-1 block">EVENTO</MetaTag><p className="font-bold text-primary">{selecionada.evento != null ? eventos.find((evento) => evento.id === selecionada.evento)?.nome ?? `Evento ${selecionada.evento}` : "Não vinculado"}</p></div>
+                              <div><MetaTag className="mb-1 block">ZONA</MetaTag><p className="font-bold text-primary">{selecionada.zona != null ? zonaLookup.get(selecionada.zona) ?? `Zona ${selecionada.zona}` : "Não vinculada"}</p></div>
+                              <div><MetaTag className="mb-1 block">RESPONSÁVEL</MetaTag><p className="font-bold text-primary">{selecionada.tecnico_responsavel != null ? usuarioLookup.get(selecionada.tecnico_responsavel) ?? `Usuário ${selecionada.tecnico_responsavel}` : "Não atribuído"}</p></div>
+                              <div><MetaTag className="mb-1 block">FATALIDADES</MetaTag><p className="font-bold text-primary">{selecionada.fatalidades ?? 0}</p></div>
+                            </div>
+                          </div>
+
+                          <div className="card-recessed p-5">
+                            <div className="mb-3 flex items-center justify-between gap-3">
+                              <div className="flex items-center gap-2">
+                                <Icon name="payments" filled className="text-[18px] text-secondary" />
+                                <MetaTag>DANOS E CUSTOS</MetaTag>
+                              </div>
+                              <Btn variant="ghost" icon="edit" onClick={() => setShowDamagesModal(true)}>
+                                Gerenciar danos
+                              </Btn>
+                            </div>
+                            <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
+                              <div className="rounded-lg bg-white p-3">
+                                <MetaTag className="mb-1 block">CUSTO DOS DANOS</MetaTag>
+                                <p className="font-headline text-lg font-black text-primary">
+                                  {Number(selecionada.custo_danos || 0).toLocaleString("pt-BR", {
                                     style: "currency",
                                     currency: "BRL",
                                   })}
                                 </p>
                               </div>
-                              <p className="mt-2 text-[11px] text-on-surface-variant">
-                                {dano.quantidade} {dano.unidade} × {Number(dano.valor_unitario_aplicado || 0).toLocaleString("pt-BR", {
-                                  style: "currency",
-                                  currency: "BRL",
-                                })}
-                              </p>
-                              {dano.observacoes && (
-                                <p className="mt-2 rounded-md bg-surface-container-low px-3 py-2 text-[11px] leading-relaxed text-on-surface-variant">
-                                  {dano.observacoes}
+                              <div className="rounded-lg bg-white p-3">
+                                <MetaTag className="mb-1 block">ITENS REGISTRADOS</MetaTag>
+                                <p className="font-headline text-lg font-black text-primary">
+                                  {selecionada.total_itens_danos ?? 0}
                                 </p>
+                              </div>
+                              <div className="rounded-lg bg-white p-3">
+                                <MetaTag className="mb-1 block">FATALIDADES</MetaTag>
+                                <p className="font-headline text-lg font-black text-primary">
+                                  {selecionada.fatalidades ?? 0}
+                                </p>
+                              </div>
+                            </div>
+                            <div className="mt-4">
+                              {carregandoDanos ? (
+                                <p className="text-xs text-on-surface-variant">Carregando itens…</p>
+                              ) : erroDanos ? (
+                                <p className="text-xs font-semibold text-error">{erroDanos}</p>
+                              ) : danosSelecionados.length === 0 ? (
+                                <p className="text-xs text-on-surface-variant">
+                                  Nenhum item de dano foi registrado nesta ocorrência.
+                                </p>
+                              ) : (
+                                <div className="space-y-2">
+                                  {(mostrarTodosDanos ? danosSelecionados : danosSelecionados.slice(0, 4)).map((dano) => (
+                                    <div key={dano.id} className="rounded-lg bg-white p-3">
+                                      <div className="flex items-start justify-between gap-3">
+                                        <div className="min-w-0 flex-1">
+                                          <p className="truncate text-[12px] font-bold text-primary">
+                                            {dano.item_nome}
+                                          </p>
+                                          <p className="mt-0.5 text-[10px] text-on-surface-variant">
+                                            {categoriaLabel(dano.categoria)} · {formatDate(dano.created_at)}
+                                          </p>
+                                        </div>
+                                        <p className="shrink-0 text-[12px] font-black text-primary">
+                                          {Number(dano.valor_total || 0).toLocaleString("pt-BR", {
+                                            style: "currency",
+                                            currency: "BRL",
+                                          })}
+                                        </p>
+                                      </div>
+                                      <p className="mt-2 text-[11px] text-on-surface-variant">
+                                        {dano.quantidade} {dano.unidade} × {Number(dano.valor_unitario_aplicado || 0).toLocaleString("pt-BR", {
+                                          style: "currency",
+                                          currency: "BRL",
+                                        })}
+                                      </p>
+                                      {dano.observacoes && (
+                                        <p className="mt-2 rounded-md bg-surface-container-low px-3 py-2 text-[11px] leading-relaxed text-on-surface-variant">
+                                          {dano.observacoes}
+                                        </p>
+                                      )}
+                                    </div>
+                                  ))}
+
+                                  {danosSelecionados.length > 4 && (
+                                    <button
+                                      type="button"
+                                      onClick={() => setMostrarTodosDanos((atual) => !atual)}
+                                      className="flex w-full items-center justify-center gap-1.5 rounded-lg px-3 py-2 text-[10px] font-bold uppercase tracking-mono-tight text-secondary transition-colors hover:bg-secondary/10"
+                                    >
+                                      {mostrarTodosDanos ? "Mostrar menos" : `Ver todos os ${danosSelecionados.length} itens`}
+                                      <Icon name={mostrarTodosDanos ? "expand_less" : "expand_more"} className="text-[16px]" />
+                                    </button>
+                                  )}
+                                </div>
                               )}
                             </div>
-                          ))}
+                          </div>
 
-                          {danosSelecionados.length > 4 && (
-                            <button
-                              type="button"
-                              onClick={() => setMostrarTodosDanos((atual) => !atual)}
-                              className="flex w-full items-center justify-center gap-1.5 rounded-lg px-3 py-2 text-[10px] font-bold uppercase tracking-mono-tight text-secondary transition-colors hover:bg-secondary/10"
-                            >
-                              {mostrarTodosDanos ? "Mostrar menos" : `Ver todos os ${danosSelecionados.length} itens`}
-                              <Icon name={mostrarTodosDanos ? "expand_less" : "expand_more"} className="text-[16px]" />
-                            </button>
+                          {/* analise de ia */}
+                          {selecionada.feito_ia && (
+                            <div className="card-recessed p-4 border-l-4 border-secondary">
+                              <div className="flex items-center gap-2 mb-2">
+                                <Icon
+                                  name="psychology"
+                                  filled
+                                  className="text-secondary text-[18px]"
+                                />
+                                <MetaTag className="text-secondary">
+                                  ANÁLISE DE IA
+                                </MetaTag>
+                              </div>
+
+                              {selecionada.analise_ia && (
+                                <p className="text-[13px] text-on-surface leading-relaxed mb-3">
+                                  {selecionada.analise_ia}
+                                </p>
+                              )}
+
+                              <div className="flex flex-wrap gap-2">
+                                {selecionada.nivel_perigo_ia && (
+                                  <Chip tone={riskToneFor(selecionada.nivel_perigo_ia)}>
+                                    {selecionada.nivel_perigo_ia}
+                                  </Chip>
+                                )}
+                                <Chip tone={selecionada.valido_ia ? "secondary" : "warning"}>
+                                  {selecionada.valido_ia
+                                    ? "VALIDA"
+                                    : "INVÁLIDA"}
+                                </Chip>
+                              </div>
+                            </div>
+                          )}
+
+                          {!selecionada.feito_ia && (
+                            <div className="card-recessed p-4 border-l-4 border-outline-variant">
+                              <div className="flex items-center gap-2 mb-2">
+                                <Icon
+                                  name="psychology"
+                                  className="text-on-surface-variant text-[18px]"
+                                />
+                                <MetaTag>ANÁLISE DE IA</MetaTag>
+                              </div>
+                              <p className="text-[12px] text-on-surface-variant">
+                                Análise de IA pendente para esta ocorrência.
+                              </p>
+                            </div>
+                          )}
+
+                          {/* analise tecnica */}
+                          <div className="card-recessed p-4 border-l-4 border-primary">
+                            <div className="flex items-center gap-2 mb-2">
+                              <Icon
+                                name="engineering"
+                                className="text-primary text-[18px]"
+                              />
+                              <MetaTag className="text-primary">
+                                ANÁLISE TÉCNICA
+                              </MetaTag>
+                            </div>
+
+                            <p className="text-[13px] text-on-surface leading-relaxed mb-3">
+                              {selecionada.analise_tecnico || "Nenhum parecer técnico registrado."}
+                            </p>
+
+                            <div className="flex flex-wrap gap-2">
+                              {selecionada.nivel_perigo_tecnico && (
+                                <Chip tone={riskToneFor(selecionada.nivel_perigo_tecnico)}>
+                                  {selecionada.nivel_perigo_tecnico}
+                                </Chip>
+                              )}
+                              {selecionada.valido_tecnico != null && (
+                                <Chip tone={selecionada.valido_tecnico ? "secondary" : "warning"}>
+                                  {selecionada.valido_tecnico
+                                    ? "VALIDADA"
+                                    : "REJEITADA"}
+                                </Chip>
+                              )}
+                            </div>
+                          </div>
+
+                          {/* anexos */}
+                          <div>
+                            <MetaTag className="block mb-2">
+                              ANEXOS ({selecionada.anexos.length})
+                            </MetaTag>
+                            {selecionada.anexos.length === 0 ? (
+                              <p className="text-[12px] text-on-surface-variant italic">
+                                Nenhum arquivo anexado a esta ocorrência.
+                              </p>
+                            ) : (
+                              <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                                {(selecionada.anexos as OcorrenciaAnexo[]).map((a, i) => {
+                                  const nome = a.arquivo?.nome ?? `Arquivo ${i + 1}`;
+                                  const extensao = nome.split(".").pop()?.toLowerCase() ?? "";
+                                  const tipo = ["mp4", "webm", "mov", "avi"].includes(extensao)
+                                    ? "video"
+                                    : ["jpg", "jpeg", "png", "gif", "webp", "bmp", "svg"].includes(extensao)
+                                      ? "foto"
+                                      : "documento";
+                                  const icone =
+                                    tipo === "video"
+                                      ? "movie"
+                                      : tipo === "documento"
+                                        ? "description"
+                                        : "image";
+                                  return (
+                                    <button
+                                      key={i}
+                                      type="button"
+                                      onClick={() => void abrirAnexo(a)}
+                                      className="flex items-center gap-3 p-3 rounded-lg bg-surface-container-low hover:bg-surface-container transition-all text-left"
+                                    >
+                                      <div
+                                        className={`w-10 h-10 rounded-md flex items-center justify-center shrink-0 ${tipo === "video"
+                                          ? "bg-orange-100"
+                                          : tipo === "documento"
+                                            ? "bg-primary/8"
+                                            : "bg-secondary/10"
+                                          }`}
+                                      >
+                                        <Icon
+                                          name={icone}
+                                          filled
+                                          className={`text-[20px] ${tipo === "video"
+                                            ? "text-orange-700"
+                                            : tipo === "documento"
+                                              ? "text-primary"
+                                              : "text-secondary"
+                                            }`}
+                                        />
+                                      </div>
+                                      <div className="min-w-0 flex-1">
+                                        <p className="text-[12px] font-bold text-primary truncate">
+                                          {nome}
+                                        </p>
+                                        <p className="text-[10px] font-mono font-bold text-slate-400 uppercase">
+                                          {tipo} · {extensao || "arquivo"}
+                                        </p>
+                                      </div>
+                                      <Icon
+                                        name="open_in_new"
+                                        className="text-on-surface-variant text-[16px] shrink-0"
+                                      />
+                                    </button>
+                                  );
+                                })}
+                              </div>
+                            )}
+                          </div>
+                        </div>
+                      )}
+
+                      {detailTab === "historico" && (
+                        <div className="p-6">
+                          <div className="mb-5 flex items-center justify-between gap-3">
+                            <div>
+                              <MetaTag className="mb-1 block">AUDITORIA</MetaTag>
+                              <h3 className="font-headline text-xl font-black tracking-tight text-primary">
+                                Histórico da ocorrência
+                              </h3>
+                            </div>
+                            <Chip tone="neutral">
+                              {historicoSelecionado.length} registro
+                              {historicoSelecionado.length !== 1 ? "s" : ""}
+                            </Chip>
+                          </div>
+
+                          {historicoSelecionado.length === 0 ? (
+                            <div className="flex flex-col items-center rounded-xl bg-surface-container-low px-5 py-10 text-center">
+                              <Icon name="history_toggle_off" className="mb-3 text-[36px] text-on-surface-variant" />
+                              <p className="text-[12px] text-on-surface-variant">
+                                Nenhuma alteração registrada para esta ocorrência.
+                              </p>
+                            </div>
+                          ) : (
+                            <div className="space-y-3">
+                              {historicoSelecionado.map((registro) => {
+                                const campos = (registro.campos_alterados ?? []).filter(
+                                  (campo) => campo !== "id",
+                                );
+                                const acaoLabel =
+                                  registro.tipo_acao === "criacao"
+                                    ? "Ocorrência criada"
+                                    : registro.tipo_acao === "exclusao"
+                                      ? "Ocorrência excluída"
+                                      : "Ocorrência editada";
+                                const acaoIcon =
+                                  registro.tipo_acao === "criacao"
+                                    ? "add_circle"
+                                    : registro.tipo_acao === "exclusao"
+                                      ? "delete"
+                                      : "edit";
+
+                                return (
+                                  <details key={registro.id} className="group rounded-xl bg-surface-container-low">
+                                    <summary className="flex cursor-pointer list-none items-start gap-3 p-4">
+                                      <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-white text-secondary">
+                                        <Icon name={acaoIcon} className="text-[18px]" />
+                                      </span>
+                                      <div className="min-w-0 flex-1">
+                                        <p className="text-[12px] font-bold text-primary">{acaoLabel}</p>
+                                        <p className="mt-1 text-[10px] font-medium text-on-surface-variant">
+                                          {formatDate(registro.criado_em)} · {registro.usuario != null
+                                            ? usuarioLookup.get(registro.usuario) ?? `Usuário ${registro.usuario}`
+                                            : "Sistema"}
+                                        </p>
+                                      </div>
+                                      <Icon name="expand_more" className="text-[18px] text-on-surface-variant transition-transform group-open:rotate-180" />
+                                    </summary>
+
+                                    <div className="border-t border-outline-variant/20 px-4 pb-4 pt-3">
+                                      {campos.length === 0 ? (
+                                        <p className="text-[11px] text-on-surface-variant">
+                                          {registro.tipo_acao === "criacao"
+                                            ? "Registro inicial da ocorrência."
+                                            : "Edição registrada sem alteração nos campos da ocorrência."}
+                                        </p>
+                                      ) : (
+                                        <div className="space-y-3">
+                                          {campos.map((campo) => (
+                                            <div key={campo}>
+                                              <MetaTag className="mb-1.5 block">
+                                                {CAMPO_HISTORICO_LABEL[campo] ?? campo.replaceAll("_", " ")}
+                                              </MetaTag>
+                                              <div className="grid grid-cols-[1fr_auto_1fr] items-center gap-2 text-[11px]">
+                                                <span className="min-w-0 break-words rounded-lg bg-white p-2 text-on-surface-variant">
+                                                  {campo === "status" && typeof registro.dados_anteriores?.[campo] === "string" ? (
+                                                    <Chip tone={getOccurrenceStatusMeta(registro.dados_anteriores[campo] as string).tone}>
+                                                      {getOccurrenceStatusMeta(registro.dados_anteriores[campo] as string).label}
+                                                    </Chip>
+                                                  ) : formatHistoryFieldValue(campo, registro.dados_anteriores?.[campo])}
+                                                </span>
+                                                <Icon name="arrow_forward" className="text-[15px] text-secondary" />
+                                                <span className="min-w-0 break-words rounded-lg bg-secondary/10 p-2 font-semibold text-primary">
+                                                  {campo === "status" && typeof registro.dados_novos?.[campo] === "string" ? (
+                                                    <Chip tone={getOccurrenceStatusMeta(registro.dados_novos[campo] as string).tone}>
+                                                      {getOccurrenceStatusMeta(registro.dados_novos[campo] as string).label}
+                                                    </Chip>
+                                                  ) : formatHistoryFieldValue(campo, registro.dados_novos?.[campo])}
+                                                </span>
+                                              </div>
+                                            </div>
+                                          ))}
+                                        </div>
+                                      )}
+                                    </div>
+                                  </details>
+                                );
+                              })}
+                            </div>
                           )}
                         </div>
                       )}
-                    </div>
-                  </div>
-
-                  {/* analise de ia */}
-                  {selecionada.feito_ia && (
-                    <div className="card-recessed p-4 border-l-4 border-secondary">
-                      <div className="flex items-center gap-2 mb-2">
-                        <Icon
-                          name="psychology"
-                          filled
-                          className="text-secondary text-[18px]"
-                        />
-                        <MetaTag className="text-secondary">
-                          ANÁLISE DE IA
-                        </MetaTag>
-                      </div>
-
-                      {selecionada.analise_ia && (
-                        <p className="text-[13px] text-on-surface leading-relaxed mb-3">
-                          {selecionada.analise_ia}
-                        </p>
-                      )}
-
-                      <div className="flex flex-wrap gap-2">
-                        {selecionada.nivel_perigo_ia && (
-                          <Chip tone={riskToneFor(selecionada.nivel_perigo_ia)}>
-                            {selecionada.nivel_perigo_ia}
+                    </>
+                  ) : (
+                    <div className="space-y-5 p-6">
+                      <div className="grid grid-cols-2 gap-3">
+                        <div className="rounded-lg bg-surface-container-low p-3">
+                          <MetaTag className="mb-1 block">STATUS</MetaTag>
+                          <Chip tone={getOccurrenceStatusMeta(selecionada.status).tone}>
+                            {getOccurrenceStatusMeta(selecionada.status).label}
                           </Chip>
-                        )}
-                        <Chip tone={selecionada.valido_ia ? "secondary" : "warning"}>
-                          {selecionada.valido_ia
-                            ? "VALIDA"
-                            : "INVÁLIDA"}
-                        </Chip>
+                        </div>
+                        <div className="rounded-lg bg-surface-container-low p-3">
+                          <MetaTag className="mb-1 block">REGISTRADA EM</MetaTag>
+                          <p className="text-[12px] font-bold text-primary">{formatDate(selecionada.created_at)}</p>
+                        </div>
+                        <div className="rounded-lg bg-surface-container-low p-3">
+                          <MetaTag className="mb-1 block">EVENTO</MetaTag>
+                          <p className="truncate text-[12px] font-bold text-primary">
+                            {selecionada.evento != null
+                              ? eventos.find((evento) => evento.id === selecionada.evento)?.nome ?? `Evento ${selecionada.evento}`
+                              : "Não vinculado"}
+                          </p>
+                        </div>
+                        <div className="rounded-lg bg-surface-container-low p-3">
+                          <MetaTag className="mb-1 block">IMPACTO</MetaTag>
+                          <p className="text-[12px] font-bold text-primary">
+                            {selecionada.total_itens_danos ?? 0} itens · {selecionada.fatalidades ?? 0} fatalidades
+                          </p>
+                        </div>
                       </div>
-                    </div>
-                  )}
-
-                  {!selecionada.feito_ia && (
-                    <div className="card-recessed p-4 border-l-4 border-outline-variant">
-                      <div className="flex items-center gap-2 mb-2">
-                        <Icon
-                          name="psychology"
-                          className="text-on-surface-variant text-[18px]"
-                        />
-                        <MetaTag>ANÁLISE DE IA</MetaTag>
-                      </div>
-                      <p className="text-[12px] text-on-surface-variant">
-                        Análise de IA pendente para esta ocorrência.
-                      </p>
-                    </div>
-                  )}
-
-                  {/* analise tecnica */}
-                    <div className="card-recessed p-4 border-l-4 border-primary">
-                      <div className="flex items-center gap-2 mb-2">
-                        <Icon
-                          name="engineering"
-                          className="text-primary text-[18px]"
-                        />
-                        <MetaTag className="text-primary">
-                          ANÁLISE TÉCNICA
-                        </MetaTag>
-                      </div>
-
-                      <p className="text-[13px] text-on-surface leading-relaxed mb-3">
-                        {selecionada.analise_tecnico || "Nenhum parecer técnico registrado."}
-                      </p>
-
-                      <div className="flex flex-wrap gap-2">
-                        {selecionada.nivel_perigo_tecnico && (
-                          <Chip tone={riskToneFor(selecionada.nivel_perigo_tecnico)}>
-                            {selecionada.nivel_perigo_tecnico}
-                          </Chip>
-                        )}
-                        {selecionada.valido_tecnico != null && (
-                          <Chip tone={selecionada.valido_tecnico ? "secondary" : "warning"}>
-                            {selecionada.valido_tecnico
-                              ? "VALIDADA"
-                              : "REJEITADA"}
-                          </Chip>
-                        )}
-                      </div>
-                    </div>
-
-                  {/* anexos */}
-                  <div>
-                    <MetaTag className="block mb-2">
-                      ANEXOS ({selecionada.anexos.length})
-                    </MetaTag>
-                    {selecionada.anexos.length === 0 ? (
-                      <p className="text-[12px] text-on-surface-variant italic">
-                        Nenhum arquivo anexado a esta ocorrência.
-                      </p>
-                    ) : (
-                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
-                        {(selecionada.anexos as OcorrenciaAnexo[]).map((a, i) => {
-                          const nome = a.arquivo?.nome ?? `Arquivo ${i + 1}`;
-                          const extensao = nome.split(".").pop()?.toLowerCase() ?? "";
-                          const tipo = ["mp4", "webm", "mov", "avi"].includes(extensao)
-                            ? "video"
-                            : ["jpg", "jpeg", "png", "gif", "webp", "bmp", "svg"].includes(extensao)
-                              ? "foto"
-                              : "documento";
-                          const icone =
-                            tipo === "video"
-                              ? "movie"
-                              : tipo === "documento"
-                                ? "description"
-                                : "image";
-                          return (
-                            <button
-                              key={i}
-                              type="button"
-                              onClick={() => void abrirAnexo(a)}
-                              className="flex items-center gap-3 p-3 rounded-lg bg-surface-container-low hover:bg-surface-container transition-all text-left"
-                            >
-                              <div
-                                className={`w-10 h-10 rounded-md flex items-center justify-center shrink-0 ${tipo === "video"
-                                  ? "bg-orange-100"
-                                  : tipo === "documento"
-                                    ? "bg-primary/8"
-                                    : "bg-secondary/10"
-                                  }`}
-                              >
-                                <Icon
-                                  name={icone}
-                                  filled
-                                  className={`text-[20px] ${tipo === "video"
-                                    ? "text-orange-700"
-                                    : tipo === "documento"
-                                      ? "text-primary"
-                                      : "text-secondary"
-                                    }`}
-                                />
-                              </div>
-                              <div className="min-w-0 flex-1">
-                                <p className="text-[12px] font-bold text-primary truncate">
-                                  {nome}
-                                </p>
-                                <p className="text-[10px] font-mono font-bold text-slate-400 uppercase">
-                                  {tipo} · {extensao || "arquivo"}
-                                </p>
-                              </div>
-                              <Icon
-                                name="open_in_new"
-                                className="text-on-surface-variant text-[16px] shrink-0"
-                              />
-                            </button>
-                          );
-                        })}
-                      </div>
-                    )}
-                  </div>
-                </div>
-                )}
-
-                {detailTab === "historico" && (
-                  <div className="p-6">
-                    <div className="mb-5 flex items-center justify-between gap-3">
                       <div>
-                        <MetaTag className="mb-1 block">AUDITORIA</MetaTag>
-                        <h3 className="font-headline text-xl font-black tracking-tight text-primary">
-                          Histórico da ocorrência
-                        </h3>
-                      </div>
-                      <Chip tone="neutral">
-                        {historicoSelecionado.length} registro
-                        {historicoSelecionado.length !== 1 ? "s" : ""}
-                      </Chip>
-                    </div>
-
-                    {historicoSelecionado.length === 0 ? (
-                      <div className="flex flex-col items-center rounded-xl bg-surface-container-low px-5 py-10 text-center">
-                        <Icon name="history_toggle_off" className="mb-3 text-[36px] text-on-surface-variant" />
-                        <p className="text-[12px] text-on-surface-variant">
-                          Nenhuma alteração registrada para esta ocorrência.
+                        <MetaTag className="mb-2 block">RESUMO DO RELATO</MetaTag>
+                        <p className="line-clamp-4 text-[12px] leading-relaxed text-on-surface-variant">
+                          {relatoSelecionado.relato || "Nenhum relato informado."}
                         </p>
                       </div>
-                    ) : (
-                      <div className="space-y-3">
-                        {historicoSelecionado.map((registro) => {
-                          const campos = (registro.campos_alterados ?? []).filter(
-                            (campo) => campo !== "id",
-                          );
-                          const acaoLabel =
-                            registro.tipo_acao === "criacao"
-                              ? "Ocorrência criada"
-                              : registro.tipo_acao === "exclusao"
-                                ? "Ocorrência excluída"
-                                : "Ocorrência editada";
-                          const acaoIcon =
-                            registro.tipo_acao === "criacao"
-                              ? "add_circle"
-                              : registro.tipo_acao === "exclusao"
-                                ? "delete"
-                                : "edit";
-
-                          return (
-                            <details key={registro.id} className="group rounded-xl bg-surface-container-low">
-                              <summary className="flex cursor-pointer list-none items-start gap-3 p-4">
-                                <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-white text-secondary">
-                                  <Icon name={acaoIcon} className="text-[18px]" />
-                                </span>
-                                <div className="min-w-0 flex-1">
-                                  <p className="text-[12px] font-bold text-primary">{acaoLabel}</p>
-                                  <p className="mt-1 text-[10px] font-medium text-on-surface-variant">
-                                    {formatDate(registro.criado_em)} · {registro.usuario != null
-                                      ? usuarioLookup.get(registro.usuario) ?? `Usuário #${registro.usuario}`
-                                      : "Sistema"}
-                                  </p>
-                                </div>
-                                <Icon name="expand_more" className="text-[18px] text-on-surface-variant transition-transform group-open:rotate-180" />
-                              </summary>
-
-                              <div className="border-t border-outline-variant/20 px-4 pb-4 pt-3">
-                                {campos.length === 0 ? (
-                                  <p className="text-[11px] text-on-surface-variant">
-                                    {registro.tipo_acao === "criacao"
-                                      ? "Registro inicial da ocorrência."
-                                      : "Nenhum campo alterado foi informado."}
-                                  </p>
-                                ) : (
-                                  <div className="space-y-3">
-                                    {campos.map((campo) => (
-                                      <div key={campo}>
-                                        <MetaTag className="mb-1.5 block">
-                                          {CAMPO_HISTORICO_LABEL[campo] ?? campo.replaceAll("_", " ")}
-                                        </MetaTag>
-                                        <div className="grid grid-cols-[1fr_auto_1fr] items-center gap-2 text-[11px]">
-                                          <span className="min-w-0 break-words rounded-lg bg-white p-2 text-on-surface-variant">
-                                            {campo === "status" && typeof registro.dados_anteriores?.[campo] === "string" ? (
-                                              <Chip tone={getOccurrenceStatusMeta(registro.dados_anteriores[campo] as string).tone}>
-                                                {getOccurrenceStatusMeta(registro.dados_anteriores[campo] as string).label}
-                                              </Chip>
-                                            ) : formatHistoryFieldValue(campo, registro.dados_anteriores?.[campo])}
-                                          </span>
-                                          <Icon name="arrow_forward" className="text-[15px] text-secondary" />
-                                          <span className="min-w-0 break-words rounded-lg bg-secondary/10 p-2 font-semibold text-primary">
-                                            {campo === "status" && typeof registro.dados_novos?.[campo] === "string" ? (
-                                              <Chip tone={getOccurrenceStatusMeta(registro.dados_novos[campo] as string).tone}>
-                                                {getOccurrenceStatusMeta(registro.dados_novos[campo] as string).label}
-                                              </Chip>
-                                            ) : formatHistoryFieldValue(campo, registro.dados_novos?.[campo])}
-                                          </span>
-                                        </div>
-                                      </div>
-                                    ))}
-                                  </div>
-                                )}
-                              </div>
-                            </details>
-                          );
-                        })}
-                      </div>
-                    )}
-                  </div>
-                )}
-              </div>
-            </aside>
+                      <Btn variant="primary" icon="open_in_full" onClick={() => setShowFullDetails(true)} full>
+                        Ver detalhes completos
+                      </Btn>
+                    </div>
+                  )}
+                </div>
+              </aside>
+            </>
           )}
         </div>
       )}
@@ -1651,10 +1743,20 @@ function OccurrencesContent() {
         onCreated={() => {
           setShowCreateModal(false);
           fetchData();
+          fetchResumo();
         }}
         zonas={Array.from(zonaLookup.entries()).map(([id, nome]) => ({ id, nome }))}
       />
 
+      {showReport && <OccurrenceReportModal
+        items={ocorrencias}
+        events={eventos}
+        zones={zonaLookup}
+        users={usuarioLookup}
+        categories={CATEGORIA_LABEL}
+        issuedBy={user?.user_sys?.first_name || user?.user_sys?.username || "Usuário"}
+        onClose={() => setShowReport(false)}
+      />}
       <ModalShell
         open={showGroupModal}
         onClose={() => {
@@ -1682,14 +1784,13 @@ function OccurrencesContent() {
                   setErroAgrupamento("");
                 }}
                 disabled={agrupando}
-                className={`w-full appearance-none rounded-lg border-none bg-surface-container-low py-3.5 pl-4 pr-12 text-sm font-bold focus:ring-2 focus:ring-secondary ${
-                  eventoAgrupamentoId === null ? "text-on-surface-variant" : "text-primary"
-                }`}
+                className={`w-full appearance-none rounded-lg border-none bg-surface-container-low py-3.5 pl-4 pr-12 text-sm font-bold focus:ring-2 focus:ring-secondary ${eventoAgrupamentoId === null ? "text-on-surface-variant" : "text-primary"
+                  }`}
               >
                 <option value="">Selecione um evento</option>
                 {eventos.map((evento) => (
                   <option key={evento.id} value={evento.id}>
-                    #{evento.id} · {evento.nome}
+                    {evento.id} · {evento.nome}
                   </option>
                 ))}
               </select>
@@ -1724,6 +1825,7 @@ function OccurrencesContent() {
             onSaved={() => {
               setShowEditModal(false);
               fetchData();
+              fetchResumo();
             }}
             zonas={Array.from(zonaLookup.entries()).map(([id, nome]) => ({ id, nome }))}
             eventos={eventos.map(({ id, nome }) => ({ id, nome }))}
@@ -1735,7 +1837,9 @@ function OccurrencesContent() {
             onClose={() => setShowDeleteModal(false)}
             onDeleted={() => {
               setShowDeleteModal(false);
+              setShowFullDetails(false);
               fetchData();
+              fetchResumo();
             }}
             ocorrencia={selecionada}
           />
@@ -1743,7 +1847,9 @@ function OccurrencesContent() {
             open={showDamagesModal}
             ocorrenciaId={selecionada.id}
             fatalidades={selecionada.fatalidades ?? 0}
-            onClose={() => setShowDamagesModal(false)}
+            onClose={() => {
+              setShowDamagesModal(false);
+            }}
             onSaved={async () => {
               setDanosReloadKey((key) => key + 1);
               await fetchData();

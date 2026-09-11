@@ -268,7 +268,7 @@ export default function HistoryPage() {
       try {
         const [ocorrenciasResult, zonasResult, usuariosResult, alertasResult, eventosResult] = await Promise.allSettled([
           api.get<HistoryOccurrence[] | { ocorrencias: HistoryOccurrence[] }>("/ocorrencias/"),
-          api.get<Array<{ id: number; nome: string }> | { zonas: Array<{ id: number; nome: string }> }>("/zonas/"),
+          api.get<Array<{ id: number; nome: string }> | { zonas: Array<{ id: number; nome: string }> }>("/zonas/", { params: { lookup: "1" } }),
           api.get<HistoryUser[] | { usuarios: HistoryUser[] }>("/usuarios/"),
           api.get<AlertApi[] | { alertas: AlertApi[] }>("/alertas/"),
           api.get<Array<{ id: number; nome: string }> | { eventos: Array<{ id: number; nome: string }> }>("/eventos/"),
@@ -298,7 +298,7 @@ export default function HistoryPage() {
             usuario.user_sys?.first_name?.trim() ||
               usuario.nome_anonimo?.trim() ||
               usuario.user_sys?.username ||
-              `Usuário #${usuario.id}`,
+              `Usuário ${usuario.id}`,
           ])));
         }
 
@@ -320,7 +320,7 @@ export default function HistoryPage() {
             titulo: alerta.titulo,
             data: alerta.created_at ? formatDate(alerta.created_at) : "DATA NÃO INFORMADA",
             zonaNome: alerta.zona != null
-              ? zonasReais.get(alerta.zona) ?? `Zona #${alerta.zona}`
+              ? zonasReais.get(alerta.zona) ?? `Zona ${alerta.zona}`
               : "Abrangência da entidade",
             confianca: Number(alerta.confianca || 0),
             status,
@@ -436,7 +436,7 @@ export default function HistoryPage() {
     usuarioLookup.get(usuarioId) ?? (usuarioId ? tecnicoNome(usuarioId) : "Sistema");
 
   if (carregandoBase || carregandoMeteorologia) {
-    return <DataLoading description="Preparando o histórico do sistema..." />;
+    return <DataLoading />;
   }
 
   return (
@@ -487,7 +487,7 @@ export default function HistoryPage() {
                 .map((o) => (
                   <tr key={o.id} className="border-b border-outline-variant/15 hover:bg-surface-container-low transition-colors">
                     <td className="py-3.5 px-6">
-                      <p className="text-[13px] font-bold text-primary">#{o.id} · {o.titulo}</p>
+                      <p className="text-[13px] font-bold text-primary">{o.id} · {o.titulo}</p>
                       <p className="text-[11px] text-on-surface-variant">{o.endereco}</p>
                     </td>
                     <td className="py-3.5 pr-4"><Chip tone="neutral">{CATEGORIA_LABEL[o.categoria] ?? o.categoria}</Chip></td>
@@ -633,7 +633,7 @@ export default function HistoryPage() {
                   <div className="flex items-center gap-2 flex-wrap">
                     <span className="text-[13px] font-black text-primary">{nomeTecnico(a.tecnico)}</span>
                     <MetaTag className="text-secondary">{a.quando}</MetaTag>
-                    {a.ocorrenciaId && <Chip tone="neutral">#{a.ocorrenciaId}</Chip>}
+                    {a.ocorrenciaId && <Chip tone="neutral">{a.ocorrenciaId}</Chip>}
                   </div>
                   <p className="text-[13px] text-on-surface mt-1">{a.acao}</p>
                   <p className="text-[11px] text-on-surface-variant mt-0.5 flex items-center gap-1.5">

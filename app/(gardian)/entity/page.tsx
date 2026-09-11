@@ -1,6 +1,7 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { Suspense, useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useRouter, useSearchParams } from "next/navigation";
 import dynamic from "next/dynamic";
 import { Btn, Chip, Icon, KPI, MetaTag, SectionHeader, StatusDot, Tab } from "@/app/components/Primitives";
 import { ModalShell } from "@/app/components/Modals";
@@ -292,11 +293,20 @@ const PointsMap = dynamic(
   },
 );
 
-export default function EntityPage() {
+type EntityTab = "status" | "formulario" | "contas" | "plano" | "apoios";
+const TAB_IDS: EntityTab[] = ["status", "formulario", "contas", "plano", "apoios"];
+
+function EntityPageContent() {
   const { showToast, user } = useGardian();
   const entidadeId = user?.entidade;
 
-  const [tab, setTab] = useState<"status" | "formulario" | "contas" | "plano" | "apoios">("status");
+  // link profundo vindo do ZoneDetail: /entity?tab=apoios&ponto=<id>
+  const router = useRouter();
+  const searchParams = useSearchParams();
+
+  // aba vem da URL (?tab=), permitindo link profundo direto para Pontos de Apoio
+  const tabParam = searchParams.get("tab");
+  const tab: EntityTab = TAB_IDS.includes(tabParam as EntityTab) ? (tabParam as EntityTab) : "status";
   const [planoModo, setPlanoModo] = useState<"documento" | "operacional">("documento");
   const [entidade, setEntidade] = useState<EntityApiData | null>(null);
   const [entidadeLoading, setEntidadeLoading] = useState(true);
@@ -309,7 +319,8 @@ export default function EntityPage() {
   const [fichaDraft, setFichaDraft] = useState<EntidadeDraft>({ sigla: "", telefone: "", email: "", endereco: "", responsavel: null });
   const [responsaveis, setResponsaveis] = useState<UsuarioResponsavel[]>([]);
   const [responsaveisLoading, setResponsaveisLoading] = useState(true);
-  const [contasLoading, setContasLoading] = useState(true);
+  const [contasLoading, setContasLoading] = useState(false);
+  const [contasCarregadas, setContasCarregadas] = useState(false);
   const [prestacaoEditando, setPrestacaoEditando] = useState<ContaEventoView | null>(null);
 
   // rascunho da mudança de status
@@ -323,11 +334,18 @@ export default function EntityPage() {
 
   // pontos de apoio
   const [pontos, setPontos] = useState<Apoio[]>([]);
-  const [pontosLoading, setPontosLoading] = useState(true);
+  const [pontosLoading, setPontosLoading] = useState(false);
+  const [pontosCarregados, setPontosCarregados] = useState(false);
   const [pontoFormOpen, setPontoFormOpen] = useState(false);
   const [pontoEditando, setPontoEditando] = useState<Apoio | null>(null);
   const [pontoExcluindo, setPontoExcluindo] = useState<Apoio | null>(null);
-  const [planoLoading, setPlanoLoading] = useState(true);
+  const [pontoSelecionadoId, setPontoSelecionadoId] = useState<number | null>(null);
+  // pedido de foco do mapa (a versão sobe a cada seleção nova)
+  const [focoVersao, setFocoVersao] = useState(0);
+  // id de ponto pedido pela URL (?ponto=) enquanto a lista ainda não carregou
+  const pontoUrlRef = useRef<number | null>(null);
+  const [planoLoading, setPlanoLoading] = useState(false);
+  const [planoCarregado, setPlanoCarregado] = useState(false);
   const [planoZonas, setPlanoZonas] = useState<PlanoZona[]>([]);
   const [planoEventos, setPlanoEventos] = useState<PlanoEvento[]>([]);
   const [planoFamilias, setPlanoFamilias] = useState<PlanoFamiliasResumo>({
@@ -340,7 +358,12 @@ export default function EntityPage() {
   const [planoEquipe, setPlanoEquipe] = useState<PlanoEquipeKpis | null>(null);
 
   const fetchEntidadeEChecklist = useCallback(async () => {
-    if (!entidadeId) return;
+    if (!entidadeId) {
+      if (user !== null) {
+        setEntidadeLoading(false);
+      }
+      return;
+    }
     setEntidadeLoading(true);
     const [entidadeResult, checklistResult, configResult] = await Promise.allSettled([
       api.get<EntityApiData>(`/entidades/${entidadeId}/`),
@@ -370,7 +393,7 @@ export default function EntityPage() {
       ? normalizeFormConfig(configFormulario, checklistFormulario)
       : { ...current, checklist: checklistFormulario });
     setEntidadeLoading(false);
-  }, [entidadeId]);
+  }, [entidadeId, user]);
 
   useEffect(() => {
     const timer = window.setTimeout(() => void fetchEntidadeEChecklist(), 0);
@@ -385,14 +408,16 @@ export default function EntityPage() {
   }, []);
 
   useEffect(() => {
-    if (!entidadeId) return;
+    if (!entidadeId || tab !== "contas" || contasCarregadas) return;
     let cancelled = false;
+    setContasLoading(true);
     Promise.allSettled([
       api.get<{ eventos: EventoFinanceiro[] }>("/eventos/"),
       api.get<{ ocorrencias: OcorrenciaFinanceira[] }>("/ocorrencias/"),
       api.get<{ prestacoes: PrestacaoApi[] }>("/eventos/prestacoes/"),
     ]).then(([eventoResult, ocorrenciaResult, prestacaoResult]) => {
       if (cancelled) return;
+      setContasCarregadas(true);
       const eventos = eventoResult.status === "fulfilled" ? eventoResult.value.data.eventos ?? [] : [];
       const ocorrencias = ocorrenciaResult.status === "fulfilled" ? ocorrenciaResult.value.data.ocorrencias ?? [] : [];
       const prestacoes = prestacaoResult.status === "fulfilled"
@@ -434,13 +459,15 @@ export default function EntityPage() {
           };
         }),
       );
+    }).catch(() => {
+      if (!cancelled) setContasCarregadas(true);
     }).finally(() => {
       if (!cancelled) setContasLoading(false);
     });
     return () => {
       cancelled = true;
     };
-  }, [entidadeId]);
+  }, [entidadeId, tab, contasCarregadas]);
 
   /* ── pontos de apoio ── */
 
@@ -450,10 +477,26 @@ export default function EntityPage() {
     api
       .get<Apoio[]>("/apoios/")
       .then((res) => {
-        if (!cancelled) setPontos(res.data);
+        if (!cancelled) {
+          setPontos(res.data);
+          setPontosCarregados(true);
+        }
+        // link profundo: seleciona e foca o ponto pedido pela URL ao fim do carregamento
+        const idPendente = pontoUrlRef.current;
+        if (idPendente != null && !cancelled) {
+          pontoUrlRef.current = null;
+          const alvo = res.data.find((p) => p.id === idPendente);
+          if (alvo) {
+            setPontoSelecionadoId(alvo.id);
+            setFocoVersao((v) => v + 1);
+          }
+        }
       })
       .catch(() => {
-        if (!cancelled) setPontos([]);
+        if (!cancelled) {
+          setPontos([]);
+          setPontosCarregados(true);
+        }
       })
       .finally(() => {
         if (!cancelled) setPontosLoading(false);
@@ -464,21 +507,24 @@ export default function EntityPage() {
   }, []);
 
   useEffect(() => {
+    if ((tab !== "apoios" && tab !== "plano") || pontosCarregados) return;
     const timer = window.setTimeout(() => fetchPontos(), 0);
     return () => window.clearTimeout(timer);
-  }, [fetchPontos]);
+  }, [fetchPontos, tab, pontosCarregados]);
 
   useEffect(() => {
-    if (!entidadeId) return;
+    if (!entidadeId || tab !== "plano" || planoCarregado) return;
     let cancelled = false;
+    setPlanoLoading(true);
     Promise.allSettled([
-      api.get<PlanoZona[] | { zonas: PlanoZona[] }>("/zonas/"),
+      api.get<PlanoZona[] | { zonas: PlanoZona[] }>("/zonas/", { params: { cards: "1" } }),
       api.get<PlanoEvento[] | { eventos: PlanoEvento[] }>("/eventos/"),
       api.get<PlanoFamiliasResumo & { familias: unknown[] }>("/familias/"),
       api.get<PlanoMonitoramento[] | { monitoramentos: PlanoMonitoramento[] }>("/monitoramentos/"),
       api.get<{ kpis: PlanoEquipeKpis }>("/equipe/panorama/"),
     ]).then(([zonasResult, eventosResult, familiasResult, monitoramentosResult, equipeResult]) => {
       if (cancelled) return;
+      setPlanoCarregado(true);
       if (zonasResult.status === "fulfilled") {
         const data = zonasResult.value.data;
         setPlanoZonas(Array.isArray(data) ? data : data.zonas ?? []);
@@ -503,18 +549,24 @@ export default function EntityPage() {
       if (equipeResult.status === "fulfilled") {
         setPlanoEquipe(equipeResult.value.data.kpis);
       }
+    }).catch(() => {
+      if (!cancelled) setPlanoCarregado(true);
     }).finally(() => {
       if (!cancelled) setPlanoLoading(false);
     });
     return () => {
       cancelled = true;
     };
-  }, [entidadeId]);
+  }, [entidadeId, tab, planoCarregado]);
 
   const excluirPonto = async (ponto: Apoio) => {
     try {
       await api.delete(`/apoios/${ponto.id}/`);
       setPontos((prev) => prev.filter((p) => p.id !== ponto.id));
+      if (pontoSelecionadoId === ponto.id) {
+        setPontoSelecionadoId(null);
+        router.replace("?tab=apoios", { scroll: false });
+      }
       showToast("Ponto de apoio excluído.");
     } catch {
       showToast("Erro ao excluir ponto de apoio.", "error");
@@ -522,6 +574,65 @@ export default function EntityPage() {
       setPontoExcluindo(null);
     }
   };
+
+  /* ── seleção de ponto de apoio (lista ↔ mapa) ── */
+
+  const pontoSelecionado = useMemo(
+    () => pontos.find((p) => p.id === pontoSelecionadoId) ?? null,
+    [pontos, pontoSelecionadoId],
+  );
+
+  // pontos prontos para o mapa (identidade estável: não refaz/refoca a cada render)
+  const pontosParaMapa = useMemo(
+    () =>
+      pontos
+        .filter((p) => p.coordenadas)
+        .map((p) => ({
+          id: p.id,
+          lat: p.coordenadas!.lat,
+          lng: p.coordenadas!.lng,
+          titulo: p.nome,
+          subtitulo: p.endereco || undefined,
+          kind: "ponto_apoio" as const,
+        })),
+    [pontos],
+  );
+
+  const selecionarPonto = useCallback(
+    (id: number) => {
+      setPontoSelecionadoId(id);
+      setFocoVersao((v) => v + 1);
+      router.replace(`?tab=apoios&ponto=${id}`, { scroll: false });
+    },
+    [router],
+  );
+
+  const fecharPonto = useCallback(() => {
+    setPontoSelecionadoId(null);
+    router.replace("?tab=apoios", { scroll: false });
+  }, [router]);
+
+  // trocar de aba mantendo a URL coerente (a aba vem da URL, então ela precisa mudar)
+  const trocarTab = (proxima: EntityTab) => {
+    if (proxima === tab) {
+      // clique na aba atual de apoios fecha o detalhe aberto
+      if (proxima === "apoios" && pontoSelecionado) {
+        setPontoSelecionadoId(null);
+        router.replace("?tab=apoios", { scroll: false });
+      }
+      return;
+    }
+    if (proxima !== "apoios") setPontoSelecionadoId(null);
+    router.replace(`?tab=${proxima}`, { scroll: false });
+  };
+
+  // link profundo do ZoneDetail (?tab=apoios&ponto=<id>): guarda o ponto pedido
+  useEffect(() => {
+    const idParam = Number(searchParams.get("ponto"));
+    if (Number.isFinite(idParam) && idParam > 0) pontoUrlRef.current = idParam;
+    // roda só na montagem; a aba vem da URL e o ponto é aplicado ao carregar a lista
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   /* ── status da cidade ── */
 
@@ -535,7 +646,7 @@ export default function EntityPage() {
       return;
     }
     if (statusMudou && !motivoStatus.trim()) {
-      showToast("Informe o motivo da mudança de situação.", "error");
+      showToast("Informe o motivo da mudança de status.", "error");
       return;
     }
     try {
@@ -781,8 +892,8 @@ export default function EntityPage() {
     [contasBackend],
   );
 
-  if (entidadeLoading || responsaveisLoading || contasLoading || pontosLoading || planoLoading) {
-    return <DataLoading description="Preparando os dados da entidade..." />;
+  if (entidadeLoading) {
+    return <DataLoading />;
   }
 
   if (!entidade) {
@@ -809,7 +920,7 @@ export default function EntityPage() {
       {/* ── Cabeçalho ── */}
       <header>
         <div className="flex items-center gap-2 mb-3">
-          <MetaTag className="text-secondary">ENTIDADE · #{entidade.id}</MetaTag>
+          <MetaTag className="text-secondary">ENTIDADE · {entidade.id}</MetaTag>
           <span className="w-1 h-1 rounded-full bg-outline-variant" />
           <MetaTag>CNPJ {entidade.cnpj}</MetaTag>
         </div>
@@ -820,7 +931,7 @@ export default function EntityPage() {
           <div className="flex items-center gap-2 px-4 py-3 rounded-lg card-tonal shadow-ambient-sm">
             <StatusDot tone={statusMeta.tone} />
             <div>
-              <MetaTag className="block">SITUAÇÃO DO MUNICÍPIO</MetaTag>
+              <MetaTag className="block">STATUS DO MUNICÍPIO</MetaTag>
               <p className="text-[13px] font-black tracking-tight" style={{ color: statusMeta.cor }}>
                 {statusMeta.label}
               </p>
@@ -854,7 +965,7 @@ export default function EntityPage() {
             { icon: "location_on", l: "UF", v: entidade.uf || "Não informada" },
             { icon: "markunread_mailbox", l: "CEP", v: entidade.cep || "Não informado" },
             { icon: "badge", l: "CNPJ", v: entidade.cnpj },
-            { icon: "emergency_home", l: "Situação", v: statusMeta.label },
+            { icon: "emergency_home", l: "Status", v: statusMeta.label },
           ].map((it, i) => (
             <div key={i} className="card-recessed p-4 flex items-start gap-3">
               <Icon name={it.icon} className="text-secondary text-[18px] mt-0.5 shrink-0" />
@@ -869,24 +980,24 @@ export default function EntityPage() {
 
       {/* ── Abas ── */}
       <div className="flex flex-wrap gap-2">
-        <Tab active={tab === "status"} onClick={() => setTab("status")} icon="emergency_home">
-          Situação do Município
+        <Tab active={tab === "status"} onClick={() => trocarTab("status")} icon="emergency_home">
+          Status do Município
         </Tab>
-        <Tab active={tab === "formulario"} onClick={() => setTab("formulario")} icon="dynamic_form">
+        <Tab active={tab === "formulario"} onClick={() => trocarTab("formulario")} icon="dynamic_form">
           Formulário Externo
         </Tab>
-        <Tab active={tab === "contas"} onClick={() => setTab("contas")} icon="account_balance">
+        <Tab active={tab === "contas"} onClick={() => trocarTab("contas")} icon="account_balance">
           Prestação de Contas
         </Tab>
-        <Tab active={tab === "plano"} onClick={() => setTab("plano")} icon="assignment">
+        <Tab active={tab === "plano"} onClick={() => trocarTab("plano")} icon="assignment">
           Plano de Contingência
         </Tab>
-        <Tab active={tab === "apoios"} onClick={() => setTab("apoios")} icon="home_work">
+        <Tab active={tab === "apoios"} onClick={() => trocarTab("apoios")} icon="home_work">
           Pontos de Apoio
         </Tab>
       </div>
 
-      {/* ─────────── SITUAÇÃO DO MUNICÍPIO ─────────── */}
+      {/* ─────────── STATUS DO MUNICÍPIO ─────────── */}
       {tab === "status" && (
         <div className="grid grid-cols-12 gap-5 items-start">
           <section className="col-span-12 lg:col-span-7 card-tonal p-7 shadow-ambient-sm">
@@ -967,7 +1078,7 @@ export default function EntityPage() {
                   value={motivoStatus}
                   onChange={(event) => setMotivoStatus(event.target.value)}
                   rows={3}
-                  placeholder="Descreva o motivo da mudança de situação"
+                  placeholder="Descreva o motivo da mudança de status"
                   className="w-full resize-none rounded-lg bg-white px-4 py-3 text-sm font-medium text-primary outline-none focus:ring-2 focus:ring-secondary"
                 />
               </div>
@@ -990,7 +1101,7 @@ export default function EntityPage() {
               <SectionHeader overline="RASTREABILIDADE" title="Histórico de Status" />
               {entidade.status_historico.length === 0 ? (
                 <p className="text-[12px] leading-relaxed text-on-surface-variant">
-                  Nenhuma alteração de situação foi registrada até o momento.
+                  Nenhuma alteração de status foi registrada até o momento.
                 </p>
               ) : (
                 <div className="space-y-3">
@@ -1234,7 +1345,13 @@ export default function EntityPage() {
 
       {/* ─────────── PRESTAÇÃO DE CONTAS ─────────── */}
       {tab === "contas" && (
-        <div className="space-y-6">
+        !contasCarregadas || contasLoading ? (
+          <div className="flex flex-col items-center justify-center p-12 card-tonal shadow-ambient-sm">
+            <Icon name="progress_activity" className="animate-spin text-[28px] text-secondary mb-3" />
+            <p className="text-sm text-on-surface-variant font-medium">Carregando prestação de contas…</p>
+          </div>
+        ) : (
+          <div className="space-y-6">
           {/* filtro por exercício */}
           <div className="flex flex-wrap items-center gap-2">
             <MetaTag className="mr-1">EXERCÍCIO</MetaTag>
@@ -1437,7 +1554,8 @@ export default function EntityPage() {
             de Danos. O valor fecha automaticamente quando o evento é encerrado.
           </p>
         </div>
-      )}
+      )
+    )}
 
       {/* ─────────── PLANO DE CONTINGÊNCIA ─────────── */}
       {tab === "plano" && (
@@ -1460,7 +1578,14 @@ export default function EntityPage() {
         </div>
       )}
 
-      {tab === "plano" && planoModo === "documento" && (
+      {tab === "plano" && planoLoading && (
+        <div className="flex flex-col items-center justify-center p-12 card-tonal shadow-ambient-sm">
+          <Icon name="progress_activity" className="animate-spin text-[28px] text-secondary mb-3" />
+          <p className="text-sm text-on-surface-variant font-medium">Carregando plano de contingência…</p>
+        </div>
+      )}
+
+      {tab === "plano" && !planoLoading && planoModo === "documento" && (
         <PlanContingenciaEditor
           entidadeId={entidade.id}
           entidadeNome={entidade.nome}
@@ -1476,7 +1601,7 @@ export default function EntityPage() {
         />
       )}
 
-      {tab === "plano" && planoModo === "operacional" && (
+      {tab === "plano" && !planoLoading && planoModo === "operacional" && (
         <div className="space-y-5">
           <section className="card-tonal p-7 shadow-ambient-sm">
             <div className="flex items-start justify-between gap-6 flex-wrap">
@@ -1494,7 +1619,7 @@ export default function EntityPage() {
                 </p>
               </div>
               <div className="card-recessed px-5 py-4 min-w-[220px]">
-                <MetaTag className="block">SITUAÇÃO OPERACIONAL</MetaTag>
+                <MetaTag className="block">STATUS OPERACIONAL</MetaTag>
                 <p className="mt-1 flex items-center gap-2 text-sm font-black" style={{ color: statusMeta.cor }}>
                   <StatusDot tone={statusMeta.tone} live={false} /> {statusMeta.label}
                 </p>
@@ -1714,83 +1839,214 @@ export default function EntityPage() {
             {/* mapa com os pontos */}
             <section className="col-span-12 lg:col-span-7 card-tonal p-4 shadow-ambient-sm">
               <PointsMap
-                points={pontos
-                  .filter((p) => p.coordenadas)
-                  .map((p) => ({
-                    id: p.id,
-                    lat: p.coordenadas!.lat,
-                    lng: p.coordenadas!.lng,
-                    titulo: p.nome,
-                    subtitulo: p.endereco || undefined,
-                    kind: "ponto_apoio" as const,
-                  }))}
+                points={pontosParaMapa}
                 height={440}
+                showFilters={false}
+                showPopups={false}
+                selectedId={pontoSelecionadoId}
+                onSelect={(pt) => selecionarPonto(Number(pt.id))}
+                focusRequest={
+                  pontoSelecionadoId != null
+                    ? { id: pontoSelecionadoId, versao: focoVersao }
+                    : null
+                }
               />
             </section>
 
-            {/* lista + CRUD */}
-            <section className="col-span-12 lg:col-span-5 space-y-3">
-              {pontosLoading ? (
-                <div className="card-recessed p-8 text-center">
-                  <p className="text-sm text-on-surface-variant font-medium">Carregando pontos…</p>
-                </div>
-              ) : pontos.length === 0 ? (
-                <div className="card-recessed p-8 text-center">
-                  <Icon name="home_work" className="text-[32px] text-on-surface-variant/60" />
-                  <p className="text-sm text-on-surface-variant font-medium mt-2">
-                    Nenhum ponto de apoio cadastrado.
+            {/* lista ↔ detalhe (mesma altura do mapa, rolagem interna) */}
+            <section
+              className="col-span-12 lg:col-span-5 card-tonal p-4 shadow-ambient-sm flex flex-col min-h-0"
+              style={{ height: 440 + 32 }}
+            >
+              <div className="flex items-start justify-between gap-3 pb-3 shrink-0">
+                <div>
+                  <p className="text-[10px] font-black uppercase tracking-mono-tight text-secondary">
+                    Pontos de apoio
+                  </p>
+                  <p className="text-[11px] text-on-surface-variant mt-0.5">
+                    {pontosLoading
+                      ? "Carregando…"
+                      : `${pontos.length} ponto(s) cadastrado(s)`}
                   </p>
                 </div>
-              ) : (
-                pontos.map((p) => (
-                  <div key={p.id} className="card-recessed p-4 flex items-start gap-3">
-                    <div className="w-10 h-10 rounded-lg bg-secondary/15 flex items-center justify-center shrink-0">
-                      <Icon name="home_work" className="text-secondary text-[18px]" />
-                    </div>
-                    <div className="min-w-0 flex-1">
-                      <p className="text-[13px] font-bold text-primary leading-snug">{p.nome}</p>
-                      <p className="mt-0.5 text-[10px] font-black uppercase tracking-mono-tight text-secondary">
-                        {p.tipo_label || APOIO_TIPOS.find((opcao) => opcao.value === p.tipo)?.label || "Outro"}
-                      </p>
-                      {p.endereco && (
-                        <p className="text-[11px] text-on-surface-variant mt-0.5 flex items-center gap-1">
-                          <Icon name="place" className="text-[13px]" /> {p.endereco}
-                        </p>
-                      )}
-                      {p.descricao && (
-                        <p className="text-[11px] text-on-surface-variant/80 mt-1 leading-snug">
-                          {p.descricao}
-                        </p>
-                      )}
-                      {p.coordenadas && (
-                        <p className="text-[10px] font-mono text-slate-400 mt-1">
-                          {p.coordenadas.lat.toFixed(4)}, {p.coordenadas.lng.toFixed(4)}
-                        </p>
-                      )}
-                    </div>
-                    <div className="flex gap-1 shrink-0">
-                      <button
-                        type="button"
-                        onClick={() => {
-                          setPontoEditando(p);
-                          setPontoFormOpen(true);
-                        }}
-                        className="w-8 h-8 rounded-lg bg-surface-container-low hover:bg-surface-container transition-colors flex items-center justify-center"
-                        aria-label={`Editar ${p.nome}`}
-                      >
-                        <Icon name="edit" className="text-[15px] text-primary" />
-                      </button>
-                      <button
-                        type="button"
-                        onClick={() => setPontoExcluindo(p)}
-                        className="w-8 h-8 rounded-lg bg-surface-container-low hover:bg-error/15 transition-colors flex items-center justify-center"
-                        aria-label={`Excluir ${p.nome}`}
-                      >
-                        <Icon name="delete" className="text-[15px] text-red-600" />
-                      </button>
-                    </div>
+                {pontoSelecionado && (
+                  <button
+                    type="button"
+                    onClick={fecharPonto}
+                    className="flex items-center gap-1 text-[11px] font-bold text-primary hover:underline shrink-0"
+                  >
+                    <Icon name="arrow_back" className="text-[14px]" />
+                    Voltar à lista
+                  </button>
+                )}
+              </div>
+
+              {/* área de rolagem: lista ou detalhe do ponto */}
+              <div className="flex-1 min-h-0 overflow-y-auto -mx-1 px-1">
+                {pontosLoading ? (
+                  <div className="card-recessed p-8 text-center">
+                    <p className="text-sm text-on-surface-variant font-medium">Carregando pontos…</p>
                   </div>
-                ))
+                ) : pontos.length === 0 ? (
+                  <div className="card-recessed p-8 text-center">
+                    <Icon name="home_work" className="text-[32px] text-on-surface-variant/60" />
+                    <p className="text-sm text-on-surface-variant font-medium mt-2">
+                      Nenhum ponto de apoio cadastrado.
+                    </p>
+                  </div>
+                ) : pontoSelecionado ? (
+                  <div className="p-1 space-y-4">
+                    <div className="flex items-start gap-3">
+                      <div className="w-10 h-10 rounded-lg bg-secondary/15 flex items-center justify-center shrink-0">
+                        <Icon name="home_work" className="text-secondary text-[18px]" />
+                      </div>
+                      <div className="min-w-0 flex-1">
+                        <p className="text-[14px] font-bold text-primary leading-snug">
+                          {pontoSelecionado.nome}
+                        </p>
+                        <p className="mt-0.5 text-[10px] font-black uppercase tracking-mono-tight text-secondary">
+                          {pontoSelecionado.tipo_label ||
+                            APOIO_TIPOS.find((opcao) => opcao.value === pontoSelecionado.tipo)?.label ||
+                            "Outro"}
+                        </p>
+                      </div>
+                    </div>
+
+                    {pontoSelecionado.descricao && (
+                      <p className="text-[12px] text-on-surface-variant leading-relaxed">
+                        {pontoSelecionado.descricao}
+                      </p>
+                    )}
+
+                    <dl className="space-y-2.5 text-[12px]">
+                      {pontoSelecionado.zona && (
+                        <div className="flex items-start gap-2">
+                          <Icon name="layers" className="text-[15px] text-primary mt-0.5 shrink-0" />
+                          <div>
+                            <dt className="text-[10px] font-black uppercase tracking-mono-tight text-on-surface-variant">
+                              Zona
+                            </dt>
+                            <dd className="text-primary font-medium mt-0.5">
+                              {planoZonas.find((z) => z.id === pontoSelecionado.zona)?.nome ??
+                                `Zona ${pontoSelecionado.zona}`}
+                            </dd>
+                          </div>
+                        </div>
+                      )}
+                      {pontoSelecionado.endereco && (
+                        <div className="flex items-start gap-2">
+                          <Icon name="place" className="text-[15px] text-primary mt-0.5 shrink-0" />
+                          <div>
+                            <dt className="text-[10px] font-black uppercase tracking-mono-tight text-on-surface-variant">
+                              Endereço
+                            </dt>
+                            <dd className="text-on-surface font-medium mt-0.5">
+                              {pontoSelecionado.endereco}
+                            </dd>
+                          </div>
+                        </div>
+                      )}
+                      {pontoSelecionado.coordenadas && (
+                        <div className="flex items-start gap-2">
+                          <Icon name="pin_drop" className="text-[15px] text-primary mt-0.5 shrink-0" />
+                          <div>
+                            <dt className="text-[10px] font-black uppercase tracking-mono-tight text-on-surface-variant">
+                              Coordenadas
+                            </dt>
+                            <dd className="font-mono text-[11px] text-on-surface-variant mt-0.5">
+                              {pontoSelecionado.coordenadas.lat.toFixed(5)},{" "}
+                              {pontoSelecionado.coordenadas.lng.toFixed(5)}
+                            </dd>
+                          </div>
+                        </div>
+                      )}
+                    </dl>
+                  </div>
+                ) : (
+                  <div className="space-y-2">
+                    {pontos.map((p) => (
+                      <button
+                        key={p.id}
+                        type="button"
+                        onClick={() => selecionarPonto(p.id)}
+                        className={`w-full flex items-start gap-3 card-recessed p-3 text-left transition-colors ${
+                          pontoSelecionadoId === p.id
+                            ? "ring-2 ring-primary/60"
+                            : "hover:bg-surface-container-low"
+                        }`}
+                      >
+                        <div className="w-9 h-9 rounded-lg bg-secondary/15 flex items-center justify-center shrink-0">
+                          <Icon name="home_work" className="text-secondary text-[16px]" />
+                        </div>
+                        <div className="min-w-0 flex-1">
+                          <p className="text-[13px] font-bold text-primary leading-snug truncate">
+                            {p.nome}
+                          </p>
+                          <p className="mt-0.5 text-[10px] font-black uppercase tracking-mono-tight text-secondary">
+                            {p.tipo_label ||
+                              APOIO_TIPOS.find((opcao) => opcao.value === p.tipo)?.label ||
+                              "Outro"}
+                          </p>
+                          {p.endereco && (
+                            <p className="text-[11px] text-on-surface-variant mt-0.5 flex items-center gap-1 truncate">
+                              <Icon name="place" className="text-[13px] shrink-0" /> {p.endereco}
+                            </p>
+                          )}
+                        </div>
+                        <Icon
+                          name="chevron_right"
+                          className="text-on-surface-variant text-[16px] mt-1 shrink-0"
+                        />
+                      </button>
+                    ))}
+                  </div>
+                )}
+              </div>
+
+              {/* ações fixas do detalhe (fora da rolagem, nunca somem) */}
+              {pontoSelecionado && (
+                <div className="pt-3 mt-3 border-t border-outline-variant/20 space-y-2 shrink-0">
+                  {pontoSelecionado.zona && (
+                    <Btn
+                      variant="ghost"
+                      icon="open_in_new"
+                      className="w-full"
+                      onClick={() => {
+                        // workaround anterior mantido comentado
+                        // // sem noopener: nova aba herda a sessionStorage (senão cai no login)
+                        // window.open(`/zonedetail?zone=${pontoSelecionado.zona}`, "_blank")
+                        window.open(
+                          `/zonedetail?zone=${pontoSelecionado.zona}`,
+                          "_blank",
+                          "noopener,noreferrer",
+                        );
+                      }}
+                    >
+                      Ver a zona no mapa
+                    </Btn>
+                  )}
+                  <div className="flex gap-2">
+                    <Btn
+                      variant="secondary"
+                      icon="edit"
+                      className="flex-1"
+                      onClick={() => {
+                        setPontoEditando(pontoSelecionado);
+                        setPontoFormOpen(true);
+                      }}
+                    >
+                      Editar
+                    </Btn>
+                    <Btn
+                      variant="danger"
+                      icon="delete"
+                      className="flex-1"
+                      onClick={() => setPontoExcluindo(pontoSelecionado)}
+                    >
+                      Excluir
+                    </Btn>
+                  </div>
+                </div>
               )}
             </section>
           </div>
@@ -1880,7 +2136,7 @@ export default function EntityPage() {
                 <input type="date" value={prestacaoEditando.prazoIso} onChange={(e) => setPrestacaoEditando((p) => p && ({ ...p, prazoIso: e.target.value }))} className="w-full rounded-lg bg-surface-container-low px-4 py-3 text-sm outline-none focus:ring-2 focus:ring-secondary" />
               </label>
               <label className="md:col-span-2">
-                <MetaTag className="mb-1.5 block">SITUAÇÃO</MetaTag>
+                <MetaTag className="mb-1.5 block">STATUS</MetaTag>
                 <select value={prestacaoEditando.statusPrestacao} onChange={(e) => setPrestacaoEditando((p) => p && ({ ...p, statusPrestacao: e.target.value as ContaEvento["statusPrestacao"] }))} className="w-full rounded-lg bg-surface-container-low px-4 py-3 text-sm outline-none focus:ring-2 focus:ring-secondary">
                   <option value="em_curso">Em curso</option><option value="em_elaboracao">Em elaboração</option><option value="enviada">Enviada</option><option value="aprovada">Aprovada</option>
                 </select>
@@ -1928,5 +2184,19 @@ export default function EntityPage() {
         </div>
       </ModalShell>
     </div>
+  );
+}
+
+export default function EntityPage() {
+  return (
+    <Suspense
+      fallback={
+        <div className="p-8 text-sm text-on-surface-variant">
+          Carregando a entidade…
+        </div>
+      }
+    >
+      <EntityPageContent />
+    </Suspense>
   );
 }

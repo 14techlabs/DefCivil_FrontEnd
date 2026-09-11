@@ -348,7 +348,7 @@ export function OccurrenceDamagesModal({
   return (
     <ModalShell open={open} onClose={onClose} maxWidth="max-w-3xl">
       <div className="bg-surface-container-low px-8 py-6">
-        <MetaTag>OCORRÊNCIA #{ocorrenciaId}</MetaTag>
+        <MetaTag>OCORRÊNCIA {ocorrenciaId}</MetaTag>
         <h2 className="mt-2 font-headline text-2xl font-black tracking-tighter text-primary">
           Danos humanos, materiais e custos
         </h2>

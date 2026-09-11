@@ -150,7 +150,7 @@ function blocoDanos(): string {
   return [
     `O valor bruto acumulado em danos é de ${formatBRL(custo)}, distribuídos em ${itens} itens aplicados em ${MOCK_DANOS_REGISTROS.length} ocorrências.`,
     "",
-    `Maior custo individual: ocorrência #${maisCaro.oc}, com ${formatBRL(maisCaro.valor)}.`,
+    `Maior custo individual: ocorrência ${maisCaro.oc}, com ${formatBRL(maisCaro.valor)}.`,
     `A base de referência tem ${MOCK_DANOS_CATALOGO.length} itens catalogados.`,
     "",
     "Posso emitir o relatório detalhado por ocorrência ou consolidado por evento.",
@@ -171,7 +171,7 @@ function blocoEquipe(): string {
           (o.status === "em_andamento" || o.status === "alta_prioridade"),
       );
       return `• ${t.nome} (${t.cargo}) — ${zonaNome(t.zonaBase)}${
-        atuando.length ? `, atuando em #${atuando.map((o) => o.id).join(", #")}` : ""
+        atuando.length ? `, atuando em ${atuando.map((o) => o.id).join(", ")}` : ""
       }`;
     }),
   ].join("\n");
@@ -190,7 +190,7 @@ function blocoOcorrencias(): string {
     "",
     ...abertas.map(
       (o) =>
-        `• #${o.id} — ${o.titulo}\n   ${zonaNome(o.zona)} · ${STATUS_OCORRENCIA_LABEL[o.status]}${
+        `• ${o.id} — ${o.titulo}\n   ${zonaNome(o.zona)} · ${STATUS_OCORRENCIA_LABEL[o.status]}${
           o.tecnico_responsavel ? ` · ${tecnicoNome(o.tecnico_responsavel)} no local` : " · sem técnico designado"
         }`,
     ),
@@ -271,7 +271,7 @@ function relatorioDanos(): RespostaCupula {
       (a, it) => a + (catalogo.get(it.catalogoId)?.precoUnitario ?? 0) * it.quantidade,
       0,
     );
-    return `• Ocorrência #${r.ocorrenciaId} — ${formatBRL(valor)} (${r.itens.reduce((a, i) => a + i.quantidade, 0)} itens), registrado por ${tecnicoNome(r.registradoPor)}`;
+    return `• Ocorrência ${r.ocorrenciaId} — ${formatBRL(valor)} (${r.itens.reduce((a, i) => a + i.quantidade, 0)} itens), registrado por ${tecnicoNome(r.registradoPor)}`;
   });
   const total = MOCK_DANOS_REGISTROS.reduce(
     (acc, r) =>
@@ -329,7 +329,7 @@ export function responderCupula(pergunta: string): RespostaCupula {
     if (oc) {
       return {
         texto: [
-          `Ocorrência #${oc.id} — ${oc.titulo}`,
+          `Ocorrência ${oc.id} — ${oc.titulo}`,
           "",
           `Status: ${STATUS_OCORRENCIA_LABEL[oc.status]} · Categoria: ${oc.categoria}`,
           `Local: ${oc.endereco}`,
@@ -343,7 +343,7 @@ export function responderCupula(pergunta: string): RespostaCupula {
         ]
           .filter(Boolean)
           .join("\n"),
-        fontes: [`Ocorrência #${oc.id}`, "Análise de IA", "Vistoria técnica"],
+        fontes: [`Ocorrência ${oc.id}`, "Análise de IA", "Vistoria técnica"],
       };
     }
   }

@@ -43,7 +43,7 @@ export default function ZonesPage() {
     setLoading(true);
     setLoadError("");
     api
-      .get<{ zonas: Zona[] }>("/zonas/")
+      .get<{ zonas: Zona[] }>("/zonas/", { params: { cards: "1" } })
       .then((res) => {
         if (!cancelled) setZonas(res.data.zonas);
       })
@@ -104,7 +104,7 @@ export default function ZonesPage() {
   ];
 
   if (loading) {
-    return <DataLoading description="Preparando as zonas..." />;
+    return <DataLoading />;
   }
 
   return (

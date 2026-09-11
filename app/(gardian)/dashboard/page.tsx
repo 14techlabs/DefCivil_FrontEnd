@@ -198,7 +198,7 @@ export default function DashboardPage() {
   // --- renderização ---
 
   if (loading) {
-    return <DataLoading description="Preparando o centro de comando..." />;
+    return <DataLoading />;
   }
 
   return (
@@ -430,7 +430,7 @@ export default function DashboardPage() {
           {selectedZone ? (
             <>
               <SectionHeader
-                overline={`ZONA #${selectedZone.id}`}
+                overline={`ZONA ${selectedZone.id}`}
                 title={selectedZone.nome}
                 action={
                   <button

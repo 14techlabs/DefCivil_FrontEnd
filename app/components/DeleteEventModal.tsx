@@ -53,7 +53,7 @@ export function DeleteEventModal({ open, evento, onClose, onDeleted }: Props) {
         <div className="mb-7 flex h-14 w-14 items-center justify-center rounded-full bg-error-container">
           <Icon name="delete" filled className="text-[28px] text-error" />
         </div>
-        <MetaTag>EXCLUIR EVENTO · #{evento.id}</MetaTag>
+        <MetaTag>EXCLUIR EVENTO · {evento.id}</MetaTag>
         <h2 className="mt-2 font-headline text-3xl font-black tracking-tighter text-primary">
           Confirmar exclusão
         </h2>

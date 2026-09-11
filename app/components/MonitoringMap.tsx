@@ -84,7 +84,7 @@ function popupOcorrenciaHtml(o: MonitoringOcorrencia, color: string): string {
       : escapeHtml(o.descricao ?? "");
   return `
     <div style="font-family:inherit;min-width:220px">
-      <p style="font-size:9px;font-weight:800;letter-spacing:0.08em;text-transform:uppercase;color:${color};margin:0 0 2px">Ocorrência #${o.id} · ${status}</p>
+      <p style="font-size:9px;font-weight:800;letter-spacing:0.08em;text-transform:uppercase;color:${color};margin:0 0 2px">Ocorrência ${o.id} · ${status}</p>
       <p style="font-size:13px;font-weight:700;color:#0f172a;margin:0 0 4px">${titulo}</p>
       <p style="font-size:11px;color:#475569;margin:0 0 4px">${categoria}${coords ? ` · ${coords}` : ""}</p>
       ${descricao ? `<p style="font-size:11px;color:#64748b;margin:0 0 8px;line-height:1.4">${descricao}</p>` : ""}
@@ -119,23 +119,22 @@ export function MonitoringMap({ height = 520 }: MonitoringMapProps) {
     let cancelled = false;
 
     Promise.all([
-      api.get<{ area: { id: number; area: GeoJSON.MultiPolygon } }>("/entidades/areas/"),
-      // zonas vêm do /zonas/ para ter nome + area (fallback vazio em erro)
-      api
-        .get<{ zonas: { id: number; nome: string; area: GeoJSON.Polygon | null }[] }>("/zonas/")
-        .catch(() => ({ data: { zonas: [] } })),
+      api.get<{
+        area: { id: number; area: GeoJSON.MultiPolygon };
+        zonas: { id: number; nome: string; area: GeoJSON.Polygon | null }[];
+      }>("/entidades/areas/"),
       // ocorrências não bloqueiam o mapa (fallback vazio em erro)
       api
         .get<{ ocorrencias: MonitoringOcorrencia[] }>("/ocorrencias/")
         .catch(() => ({ data: { ocorrencias: [] } })),
     ])
-      .then(([areaRes, zonasRes, occRes]) => {
+      .then(([areaRes, occRes]) => {
         if (cancelled) return;
         const area = areaRes.data.area.area;
         setEntityArea(area);
         setEntityCenter(getMultiPolygonCenter(area));
         setZonas(
-          (zonasRes.data.zonas ?? []).filter(
+          (areaRes.data.zonas ?? []).filter(
             (z) =>
               z.area &&
               z.area.type === "Polygon" &&

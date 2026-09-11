@@ -15,6 +15,7 @@ import {
 
 interface DanoPorOcorrencia {
   ocorrencia_id: number;
+  evento_id?: number | null;
   protocolo: string;
   titulo: string;
   status: string;
@@ -114,64 +115,54 @@ export default function DamagesPage() {
 
   useEffect(() => {
     let cancelado = false;
-    api.get<RelatorioOcorrenciasResponse>("/danos/registros/por-ocorrencia/")
-      .then((response) => {
+
+    const carregarTudo = async () => {
+      try {
+        const [relatorioResponse, eventosResponse] = await Promise.all([
+          api.get<RelatorioOcorrenciasResponse>("/danos/registros/por-ocorrencia/"),
+          api.get<EventoListResponse>("/eventos/"),
+        ]);
+
         if (cancelado) return;
-        setRelatorioOcorrencias(response.data.ocorrencias ?? []);
-        setTotaisOcorrencias(response.data.totais ?? {
+
+        const ocorrencias = relatorioResponse.data.ocorrencias ?? [];
+        setRelatorioOcorrencias(ocorrencias);
+        setTotaisOcorrencias(relatorioResponse.data.totais ?? {
           custo_total: 0,
           total_itens: 0,
           ocorrencias_com_dano: 0,
         });
         setErroOcorrencias("");
-      })
-      .catch(() => {
-        if (cancelado) return;
-        setRelatorioOcorrencias([]);
-        setErroOcorrencias("Não foi possível carregar os danos registrados.");
-      })
-      .finally(() => {
-        if (!cancelado) setCarregandoOcorrencias(false);
-      });
-    return () => {
-      cancelado = true;
-    };
-  }, []);
 
-  useEffect(() => {
-    let cancelado = false;
-
-    const carregarDanosPorEvento = async () => {
-      try {
-        const eventosResponse = await api.get<EventoListResponse>("/eventos/");
         const eventos = eventosResponse.data.eventos ?? [];
-        const respostas = await Promise.all(
-          eventos.map(async (evento) => {
-            const response = await api.get<RelatorioOcorrenciasResponse>(
-              "/danos/registros/por-ocorrencia/",
-              { params: { evento_id: evento.id } },
-            );
-            return {
-              evento,
-              ocorrenciasComDano: Number(response.data.totais?.ocorrencias_com_dano || 0),
-              custo: Number(response.data.totais?.custo_total || 0),
-              ocorrencias: response.data.ocorrencias ?? [],
-            };
-          }),
-        );
-        if (cancelado) return;
-        setDanosPorEvento(respostas.filter((grupo) => grupo.ocorrenciasComDano > 0));
+        const grupos = eventos.map((evento) => {
+          const ocorrenciasDoEvento = ocorrencias.filter((o) => o.evento_id === evento.id);
+          const custo = ocorrenciasDoEvento.reduce((acc, o) => acc + Number(o.custo_total || 0), 0);
+          return {
+            evento,
+            ocorrenciasComDano: ocorrenciasDoEvento.length,
+            custo,
+            ocorrencias: ocorrenciasDoEvento,
+          };
+        });
+
+        setDanosPorEvento(grupos.filter((grupo) => grupo.ocorrenciasComDano > 0));
         setErroEventos("");
       } catch {
         if (cancelado) return;
+        setRelatorioOcorrencias([]);
         setDanosPorEvento([]);
+        setErroOcorrencias("Não foi possível carregar os danos registrados.");
         setErroEventos("Não foi possível carregar os danos agrupados por evento.");
       } finally {
-        if (!cancelado) setCarregandoEventos(false);
+        if (!cancelado) {
+          setCarregandoOcorrencias(false);
+          setCarregandoEventos(false);
+        }
       }
     };
 
-    carregarDanosPorEvento();
+    carregarTudo();
     return () => {
       cancelado = true;
     };
@@ -186,6 +177,7 @@ export default function DamagesPage() {
   const [falhaItens, setFalhaItens] = useState<string | null>(null);
   const [recarga, setRecarga] = useState(0);
   const [resumoDanos, setResumoDanos] = useState<ResumoDanosResponse | null>(null);
+  const [carregandoResumoInicial, setCarregandoResumoInicial] = useState(true);
   const [busca, setBusca] = useState("");
   const [verInativos, setVerInativos] = useState(false);
 
@@ -229,6 +221,9 @@ export default function DamagesPage() {
       })
       .catch(() => {
         if (!cancelado) setResumoDanos(null);
+      })
+      .finally(() => {
+        if (!cancelado) setCarregandoResumoInicial(false);
       });
     return () => {
       cancelado = true;
@@ -342,6 +337,10 @@ export default function DamagesPage() {
   );
 
 
+  if (carregandoOcorrencias || carregandoEventos || carga === null || carregandoResumoInicial) {
+    return <DataLoading />;
+  }
+
   return (
     <div className="p-8 space-y-8 max-w-[1600px] mx-auto">
       <header>
@@ -388,7 +387,7 @@ export default function DamagesPage() {
       {/* ── Por ocorrência ── */}
       {tab === "ocorrencias" && (
         <div className="space-y-3">
-          {carregandoOcorrencias && <DataLoading description="Carregando danos registrados..." />}
+          {carregandoOcorrencias && <DataLoading />}
           {!carregandoOcorrencias && erroOcorrencias && (
             <div className="card-tonal p-6 text-sm text-error">{erroOcorrencias}</div>
           )}
@@ -451,7 +450,7 @@ export default function DamagesPage() {
       {/* ── Por evento ── */}
       {tab === "eventos" && (
         <div className="space-y-5">
-          {carregandoEventos && <DataLoading description="Agrupando danos por evento..." />}
+          {carregandoEventos && <DataLoading />}
           {!carregandoEventos && erroEventos && (
             <div className="card-tonal p-6 text-sm text-error">{erroEventos}</div>
           )}
@@ -461,7 +460,7 @@ export default function DamagesPage() {
           {danosPorEvento.map(({ evento, ocorrenciasComDano, ocorrencias, custo }) => (
             <div key={evento.id} className="card-tonal p-7 shadow-ambient-sm">
               <SectionHeader
-                overline={`EVENTO #${evento.id} · ${ocorrenciasComDano} OCORRÊNCIAS COM DANOS`}
+                overline={`EVENTO ${evento.id} · ${ocorrenciasComDano} OCORRÊNCIAS COM DANOS`}
                 title={evento.nome}
                 action={
                   <div className="text-right">

@@ -1,13 +1,12 @@
 "use client";
 
 import { useCallback, useEffect, useRef, useState } from "react";
-import { useRouter } from "next/navigation";
 import maplibregl from "maplibre-gl";
-import { getOccurrenceStatusMeta } from "@/app/lib/occurrenceStatus";
 import MapboxDraw from "@mapbox/mapbox-gl-draw";
 import { Btn, Icon } from "@/app/components/Primitives";
 import { api } from "@/app/services/Api";
 import { useGardian } from "@/app/components/GardianContext";
+import { KIND_META, type MapPoint } from "@/app/components/PointsMap";
 import {
   createMap,
   patchDrawForMapLibre,
@@ -42,16 +41,6 @@ interface ZoneDetailResponse {
   eventos: unknown[];
 }
 
-interface OcorrenciaBrief {
-  id: number;
-  titulo: string;
-  categoria: string;
-  status: string;
-  coordenadas: { lat: number; lng: number } | null;
-  descricao: string;
-  created_at: string;
-}
-
 interface NeighborZone {
   id: number;
   nome: string;
@@ -66,6 +55,17 @@ interface ZoneMapProps {
   height?: number;
   editable?: boolean;
   onSave?: (zone: ZoneData) => void;
+  // pins exibidos no mapa (ocorrências e pontos de apoio da zona)
+  pontos?: MapPoint[];
+  // pin selecionado na lista lateral → mapa foca nele
+  pontoSelecionadoId?: string | number | null;
+  // clique num pin do mapa → abre o detalhe na lista lateral
+  onSelecionarPonto?: (ponto: MapPoint | null) => void;
+}
+
+interface PinEntry {
+  marker: maplibregl.Marker;
+  ponto: MapPoint;
 }
 
 /* ────────────── layer IDs das zonas vizinhas ────────────── */
@@ -76,61 +76,12 @@ const NEIGHBOR_LINE = "zone-neighbor-line";
 const NEIGHBOR_CENTROIDS_SOURCE = "zone-neighbor-centroids";
 const NEIGHBOR_LABEL = "zone-neighbor-label";
 
-/* ────────────── Ocorrência helpers ────────────── */
-
-const CATEGORIA_LABEL: Record<string, string> = {
-  geologico: "Geológico",
-  climatico: "Climático",
-  vias_publicas: "Vias Públicas",
-  produtos_perigosos: "Prod. Perigosos",
-};
-
-const CATEGORIA_ICON: Record<string, string> = {
-  geologico: "terrain",
-  climatico: "thunderstorm",
-  vias_publicas: "directions_car",
-  produtos_perigosos: "science",
-};
-
-function ocorrenciaColor(status: string): string {
-  return getOccurrenceStatusMeta(status).color;
-}
+/* ────────────── helpers dos pins (estilos vêm do PointsMap) ────────────── */
 
 function isDegenerateRing(ring: number[][]): boolean {
-  return ring.every((c, i) => i === 0 || (c[0] === ring[0][0] && c[1] === ring[0][1]));
-}
-
-function escapeHtml(value: string): string {
-  return value
-    .replace(/&/g, "&amp;")
-    .replace(/</g, "&lt;")
-    .replace(/>/g, "&gt;")
-    .replace(/"/g, "&quot;")
-    .replace(/'/g, "&#39;");
-}
-
-function popupOcorrenciaHtml(o: OcorrenciaBrief, color: string): string {
-  const status = escapeHtml(getOccurrenceStatusMeta(o.status).label.toUpperCase());
-  const titulo = escapeHtml(o.titulo ?? "");
-  const categoria = escapeHtml(CATEGORIA_LABEL[o.categoria] ?? o.categoria);
-  const coords = o.coordenadas
-    ? `${o.coordenadas.lat.toFixed(4)}, ${o.coordenadas.lng.toFixed(4)}`
-    : "";
-  const descricao =
-    o.descricao && o.descricao.length > 140
-      ? escapeHtml(`${o.descricao.slice(0, 140)}…`)
-      : escapeHtml(o.descricao ?? "");
-  return `
-    <div style="font-family:inherit;min-width:220px">
-      <p style="font-size:9px;font-weight:800;letter-spacing:0.08em;text-transform:uppercase;color:${color};margin:0 0 2px">Ocorrência #${o.id} · ${status}</p>
-      <p style="font-size:13px;font-weight:700;color:#0f172a;margin:0 0 4px">${titulo}</p>
-      <p style="font-size:11px;color:#475569;margin:0 0 4px">${categoria}${coords ? ` · ${coords}` : ""}</p>
-      ${descricao ? `<p style="font-size:11px;color:#64748b;margin:0 0 8px;line-height:1.4">${descricao}</p>` : ""}
-      <button data-ver-ocorrencia style="width:100%;display:flex;align-items:center;justify-content:center;gap:4px;padding:7px 10px;border:none;border-radius:8px;background:${color};color:#fff;font-size:11px;font-weight:800;letter-spacing:0.04em;text-transform:uppercase;cursor:pointer">
-        <span class="material-symbols-outlined" style="font-size:14px;font-variation-settings:'FILL' 1">open_in_new</span>
-        Ver ocorrência
-      </button>
-    </div>`;
+  return ring.every(
+    (c, i) => i === 0 || (c[0] === ring[0][0] && c[1] === ring[0][1]),
+  );
 }
 
 /* ────────────── Component ────────────── */
@@ -141,33 +92,49 @@ export function ZoneMap({
   height = 450,
   editable = false,
   onSave,
+  pontos = [],
+  pontoSelecionadoId = null,
+  onSelecionarPonto,
 }: ZoneMapProps) {
   /* ── refs ── */
   const mapContainerRef = useRef<HTMLDivElement>(null);
   const mapRef = useRef<maplibregl.Map | null>(null);
   const drawRef = useRef<MapboxDraw | null>(null);
-  const markersRef = useRef<maplibregl.Marker[]>([]);
-  const openPopupRef = useRef<maplibregl.Popup | null>(null);
-  const router = useRouter();
+  const pinsRef = useRef<Map<string, PinEntry>>(new Map());
+  const onSelecionarPontoRef = useRef(onSelecionarPonto);
+
+  // mantém a callback atual sem recriar os pins a cada render
+  useEffect(() => {
+    onSelecionarPontoRef.current = onSelecionarPonto;
+  });
 
   /* ── state ── */
   const [mode, setMode] = useState<ZoneMapMode>("loading");
   const [zoneData, setZoneData] = useState<ZoneData | null>(null);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [toast, setToast] = useState<{ msg: string; tone: "error" | "secondary" } | null>(null);
-  const [ocorrencias, setOcorrencias] = useState<OcorrenciaBrief[]>([]);
+  const [toast, setToast] = useState<{
+    msg: string;
+    tone: "error" | "secondary";
+  } | null>(null);
   const [neighborZones, setNeighborZones] = useState<NeighborZone[]>([]);
   const { user } = useGardian();
 
-  const [entityArea, setEntityArea] = useState<GeoJSON.MultiPolygon | null>(null);
-  const [entityCenter, setEntityCenter] = useState<[number, number] | null>(null);
+  const [entityArea, setEntityArea] = useState<GeoJSON.MultiPolygon | null>(
+    null,
+  );
+  const [entityCenter, setEntityCenter] = useState<[number, number] | null>(
+    null,
+  );
   const [dataReady, setDataReady] = useState(false);
 
-  const showToast = useCallback((msg: string, tone: "error" | "secondary" = "secondary") => {
-    setToast({ msg, tone });
-    setTimeout(() => setToast(null), 3000);
-  }, []);
+  const showToast = useCallback(
+    (msg: string, tone: "error" | "secondary" = "secondary") => {
+      setToast({ msg, tone });
+      setTimeout(() => setToast(null), 3000);
+    },
+    [],
+  );
 
   const renderZonePolygon = useCallback(
     (map: maplibregl.Map, data: ZoneData) => {
@@ -179,8 +146,7 @@ export function ZoneMap({
       );
       if (isDegenerate) return;
 
-      const colors =
-        ZONE_STATUS_COLORS[data.status] ?? DEFAULT_ZONE_COLOR;
+      const colors = ZONE_STATUS_COLORS[data.status] ?? DEFAULT_ZONE_COLOR;
 
       addPolygonLayer(
         map,
@@ -214,16 +180,13 @@ export function ZoneMap({
     let cancelled = false;
 
     Promise.all([
-      api.get<{ area: { id: number; area: GeoJSON.MultiPolygon } }>(
-        "/entidades/areas/",
-      ),
+      api.get<{
+        area: { id: number; area: GeoJSON.MultiPolygon };
+        zonas: { id: number; nome: string; area: GeoJSON.Polygon | null }[];
+      }>("/entidades/areas/"),
       api.get<ZoneDetailResponse>(`/zonas/${zoneId}/`),
-      // zonas list é necessária para desenhar as vizinhas junto com o mapa (fallback vazio em erro)
-      api.get<{ zonas: { id: number; nome: string; area: GeoJSON.Polygon | null }[] }>(
-        "/zonas/",
-      ).catch(() => ({ data: { zonas: [] } })),
     ])
-      .then(([areaRes, zoneRes, zonasRes]) => {
+      .then(([areaRes, zoneRes]) => {
         if (cancelled) return;
         const area = areaRes.data.area.area;
         setEntityArea(area);
@@ -231,7 +194,7 @@ export function ZoneMap({
         setZoneData(zoneRes.data.zonas);
         // zonas vizinhas (cinza): todas exceto a atual
         const currentId = Number(zoneId);
-        const vizinhas = (zonasRes.data.zonas ?? [])
+        const vizinhas = (areaRes.data.zonas ?? [])
           .filter(
             (z) =>
               z.id !== currentId &&
@@ -240,7 +203,11 @@ export function ZoneMap({
               z.area.coordinates?.length > 0 &&
               !isDegenerateRing(z.area.coordinates[0]),
           )
-          .map((z) => ({ id: z.id, nome: z.nome, area: z.area as GeoJSON.Polygon }));
+          .map((z) => ({
+            id: z.id,
+            nome: z.nome,
+            area: z.area as GeoJSON.Polygon,
+          }));
         setNeighborZones(vizinhas);
         setMode("view");
         setDataReady(true);
@@ -257,21 +224,9 @@ export function ZoneMap({
           setDataReady(true);
         }
       });
-
-    // busca ocorrências da zona (falha silenciosa, não bloqueia o mapa)
-    api
-      .get<{ ocorrencias: OcorrenciaBrief[] }>(
-        `/ocorrencias/ocorrencias_por_zona/?zona_id=${zoneId}`,
-      )
-      .then((occRes) => {
-        if (cancelled) return;
-        setOcorrencias(occRes.data.ocorrencias ?? []);
-      })
-      .catch(() => {
-        // mapa funciona mesmo sem pins
-      });
-
-    return () => { cancelled = true; };
+    return () => {
+      cancelled = true;
+    };
   }, [zoneId, user?.entidade]);
 
   /* ── iniciar o mapa (uma vez, após dataReady) ── */
@@ -330,10 +285,18 @@ export function ZoneMap({
     const apply = () => {
       // limpa camadas anteriores se existirem
       for (const id of [NEIGHBOR_LABEL, NEIGHBOR_LINE, NEIGHBOR_FILL]) {
-        try { if (map.getLayer(id)) map.removeLayer(id); } catch { /* ok */ }
+        try {
+          if (map.getLayer(id)) map.removeLayer(id);
+        } catch {
+          /* ok */
+        }
       }
       for (const src of [NEIGHBOR_SOURCE, NEIGHBOR_CENTROIDS_SOURCE]) {
-        try { if (map.getSource(src)) map.removeSource(src); } catch { /* ok */ }
+        try {
+          if (map.getSource(src)) map.removeSource(src);
+        } catch {
+          /* ok */
+        }
       }
 
       if (neighborZones.length === 0) return;
@@ -384,7 +347,11 @@ export function ZoneMap({
           id: NEIGHBOR_LINE,
           type: "line",
           source: NEIGHBOR_SOURCE,
-          paint: { "line-color": "#888", "line-width": 1.5, "line-dasharray": [3, 2] },
+          paint: {
+            "line-color": "#888",
+            "line-width": 1.5,
+            "line-dasharray": [3, 2],
+          },
         },
         beforeId,
       );
@@ -419,88 +386,102 @@ export function ZoneMap({
 
     return () => {
       for (const id of [NEIGHBOR_LABEL, NEIGHBOR_LINE, NEIGHBOR_FILL]) {
-        try { if (map.getLayer(id)) map.removeLayer(id); } catch { /* ok */ }
+        try {
+          if (map.getLayer(id)) map.removeLayer(id);
+        } catch {
+          /* ok */
+        }
       }
       for (const src of [NEIGHBOR_SOURCE, NEIGHBOR_CENTROIDS_SOURCE]) {
-        try { if (map.getSource(src)) map.removeSource(src); } catch { /* ok */ }
+        try {
+          if (map.getSource(src)) map.removeSource(src);
+        } catch {
+          /* ok */
+        }
       }
     };
   }, [neighborZones, dataReady]);
 
-  /* ── pins das ocorrências da zona (ocultos no edit mode) ── */
+  /* ── pins do mapa (ocorrências e pontos de apoio da zona; ocultos no edit) ── */
   useEffect(() => {
     const map = mapRef.current;
     if (!map || !dataReady) return;
 
-    // limpa pins e popups anteriores
-    markersRef.current.forEach((m) => m.remove());
-    markersRef.current = [];
-    openPopupRef.current?.remove();
-    openPopupRef.current = null;
+    const limparPins = () => {
+      pinsRef.current.forEach(({ marker }) => marker.remove());
+      pinsRef.current.clear();
+    };
 
+    limparPins();
     if (mode !== "view") return;
 
     const apply = () => {
-      // limpa pins antigos antes de recriar (evita duplicar se aplicar 2x)
-      markersRef.current.forEach((m) => m.remove());
-      markersRef.current = [];
-      openPopupRef.current?.remove();
-      openPopupRef.current = null;
+      limparPins();
+      for (const ponto of pontos ?? []) {
+        const meta = KIND_META[ponto.kind];
+        if (!meta || ponto.lat == null || ponto.lng == null) continue;
 
-      for (const o of ocorrencias) {
-        if (!o.coordenadas) continue;
-        const color = ocorrenciaColor(o.status);
-        const icon = CATEGORIA_ICON[o.categoria] ?? "emergency";
-
+        // ponto de apoio vira quadrado, igual ao mapa da aba Pontos de Apoio da Entidade
+        const quadrado = ponto.kind === "ponto_apoio";
         const el = document.createElement("div");
         el.style.cssText =
-          "width:26px;height:26px;border-radius:50%;display:flex;align-items:center;justify-content:center;" +
-          `background:${color};box-shadow:0 3px 10px rgba(0,0,0,0.3);border:2px solid #fff;cursor:pointer;`;
-        el.innerHTML = `<span class="material-symbols-outlined" style="font-size:14px;color:#fff;font-variation-settings:'FILL' 1">${icon}</span>`;
-
-        const popup = new maplibregl.Popup({ offset: 16, maxWidth: "280px" }).setHTML(
-          popupOcorrenciaHtml(o, color),
-        );
-
-        // atalho para a página de ocorrências dentro do popup (onclick substitui, evita acumular listeners)
-        popup.on("open", () => {
-          const btn = popup.getElement().querySelector<HTMLElement>("[data-ver-ocorrencia]");
-          if (btn) {
-            btn.onclick = () => {
-              openPopupRef.current?.remove();
-              openPopupRef.current = null;
-              router.push(`/occurrences?id=${o.id}`);
-            };
-          }
-        });
+          `width:${quadrado ? 30 : 26}px;height:${quadrado ? 30 : 26}px;` +
+          `border-radius:${quadrado ? "10px" : "50%"};` +
+          "display:flex;align-items:center;justify-content:center;" +
+          `background:${meta.color};border:2px solid #fff;cursor:pointer;` +
+          (quadrado
+            ? "box-shadow:0 4px 12px rgba(0,0,0,0.28);"
+            : "box-shadow:0 3px 10px rgba(0,0,0,0.3);");
+        el.innerHTML = `<span class="material-symbols-outlined" style="font-size:${quadrado ? 16 : 14}px;color:#fff;font-variation-settings:'FILL' 1">${meta.icon}</span>`;
 
         const marker = new maplibregl.Marker({ element: el })
-          .setLngLat([o.coordenadas.lng, o.coordenadas.lat])
-          .setPopup(popup)
+          .setLngLat([ponto.lng, ponto.lat])
           .addTo(map);
 
-        // só um popup aberto por vez
+        // clique no pin apenas seleciona na lista lateral (sem popup)
         marker.getElement().addEventListener("click", () => {
-          if (openPopupRef.current && openPopupRef.current !== popup) {
-            openPopupRef.current.remove();
-          }
-          openPopupRef.current = popup;
+          onSelecionarPontoRef.current?.(ponto);
         });
 
-        markersRef.current.push(marker);
+        pinsRef.current.set(String(ponto.id), { marker, ponto });
       }
     };
 
     if (map.isStyleLoaded()) apply();
     else map.once("style.load", apply);
 
-    return () => {
-      markersRef.current.forEach((m) => m.remove());
-      markersRef.current = [];
-      openPopupRef.current?.remove();
-      openPopupRef.current = null;
-    };
-  }, [mode, ocorrencias, dataReady, router]);
+    return limparPins;
+  }, [mode, pontos, dataReady]);
+
+  /* ── foco e realce do pin selecionado (vindo da lista lateral) ── */
+  useEffect(() => {
+    const map = mapRef.current;
+    if (!map || !dataReady || mode !== "view") return;
+
+    const chave =
+      pontoSelecionadoId != null ? String(pontoSelecionadoId) : null;
+
+    // realce visual sem recriar os marcadores
+    pinsRef.current.forEach(({ marker, ponto }) => {
+      const el = marker.getElement();
+      const ativo = chave != null && String(ponto.id) === chave;
+      el.style.boxShadow = ativo
+        ? "0 0 0 3px #fff, 0 0 0 7px rgba(0,0,0,0.25)"
+        : "0 3px 10px rgba(0,0,0,0.3)";
+      el.style.zIndex = ativo ? "20" : "";
+    });
+
+    if (chave == null) return;
+
+    const pin = pinsRef.current.get(chave);
+    if (!pin) return;
+
+    map.flyTo({
+      center: [pin.ponto.lng, pin.ponto.lat],
+      zoom: Math.max(map.getZoom(), 10),
+      duration: 700,
+    });
+  }, [pontoSelecionadoId, dataReady, mode, pontos]);
 
   /* ── edit mode ── */
   const enterEditMode = useCallback(() => {
@@ -632,7 +613,7 @@ export function ZoneMap({
   }, [zoneId, showToast, onSave]);
 
   /* ── label (só em view mode) ── */
-  const zoneLabel = zoneData?.nome ?? _zoneName ?? `Zona #${zoneId}`;
+  const zoneLabel = zoneData?.nome ?? _zoneName ?? `Zona ${zoneId}`;
 
   /* ── render ── */
 
@@ -658,7 +639,7 @@ export function ZoneMap({
         {/* overlay do botão de edição view-mode */}
         {mode === "view" && editable && zoneData?.area && (
           <div className="absolute top-2 right-12 z-10">
-            <Btn variant="primary" icon="map_edit" onClick={enterEditMode}>
+            <Btn variant="primary" icon="edit_square" onClick={enterEditMode}>
               Editar Zona
             </Btn>
           </div>
@@ -674,10 +655,20 @@ export function ZoneMap({
         {/* overlay dos botões de salvar/cancelar edit-mode */}
         {mode === "edit" && editable && (
           <div className="absolute top-2 right-12 z-10 flex gap-2">
-            <Btn variant="secondary" icon="close" onClick={exitEditMode} disabled={saving}>
+            <Btn
+              variant="secondary"
+              icon="close"
+              onClick={exitEditMode}
+              disabled={saving}
+            >
               Cancelar
             </Btn>
-            <Btn variant="primary" icon="save" onClick={handleSave} disabled={saving}>
+            <Btn
+              variant="primary"
+              icon="save"
+              onClick={handleSave}
+              disabled={saving}
+            >
               {saving ? "Salvando…" : "Salvar Alterações"}
             </Btn>
           </div>
@@ -786,7 +777,9 @@ export function ZoneMap({
           <div className="absolute bottom-4 left-1/2 -translate-x-1/2 z-20">
             <div
               className={`px-4 py-2 rounded-lg shadow-ambient flex items-center gap-2 ${
-                toast.tone === "error" ? "bg-error text-white" : "bg-secondary text-white"
+                toast.tone === "error"
+                  ? "bg-error text-white"
+                  : "bg-secondary text-white"
               }`}
             >
               <span

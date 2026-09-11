@@ -112,7 +112,7 @@ export default function MonitoringPage() {
       try {
         const [monRes, zonRes] = await Promise.all([
           api.get<MonitoramentoListResponse>("/monitoramentos/"),
-          api.get<ZonaListResponse>("/zonas/"),
+          api.get<ZonaListResponse>("/zonas/", { params: { lookup: "1" } }),
         ]);
 
         if (cancelled) return;
@@ -191,7 +191,7 @@ export default function MonitoringPage() {
   // --- renderização ---
 
   if (loading) {
-    return <DataLoading description="Preparando o monitoramento..." />;
+    return <DataLoading />;
   }
 
   return (
@@ -348,7 +348,7 @@ export default function MonitoringPage() {
                 const tipoLabel = m.tipo === "entidade" ? "Entidade" : "Zona";
                 const zonaNome =
                   m.tipo === "zona" && m.zona != null
-                    ? zonaLookup.get(m.zona) ?? `#${m.zona}`
+                    ? zonaLookup.get(m.zona) ?? `${m.zona}`
                     : null;
 
                 return (
@@ -399,7 +399,7 @@ export default function MonitoringPage() {
               const tone = STATUS_TONE[m.status] ?? "secondary";
               const dotClass = STATUS_DOT_CLASS[m.status] ?? "bg-secondary";
               const zonaNome = m.zona != null
-                ? zonaLookup.get(m.zona) ?? `Zona #${m.zona}`
+                ? zonaLookup.get(m.zona) ?? `Zona ${m.zona}`
                 : "Zona desconhecida";
 
               return (

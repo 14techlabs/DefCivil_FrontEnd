@@ -1,9 +1,9 @@
-// DefCivil_FrontEnd/app/(gardian)/geology/page.tsx
 "use client";
 
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { Btn, Chip, Icon, MetaTag, SectionHeader } from "@/app/components/Primitives";
 import { useGardian } from "@/app/components/GardianContext";
+import { DataLoading } from "@/app/components/DataLoading";
 import { ADAPTABRASIL } from "@/app/data/adaptabrasil";
 import { api } from "@/app/services/Api";
 
@@ -289,6 +289,7 @@ export default function GeologyPage() {
 
   /* ── carrega as zonas da entidade (com a ficha de cada uma) ── */
   const [recarregarZonas, setRecarregarZonas] = useState(0);
+  const [carregandoZonasInicial, setCarregandoZonasInicial] = useState(true);
 
   useEffect(() => {
     // A listagem de zonas é acessória: se falhar, a árvore do município
@@ -301,6 +302,9 @@ export default function GeologyPage() {
       })
       .catch(() => {
         if (!cancelado) setZonas([]);
+      })
+      .finally(() => {
+        if (!cancelado) setCarregandoZonasInicial(false);
       });
     return () => {
       cancelado = true;
@@ -428,6 +432,10 @@ export default function GeologyPage() {
   }, [zonas]);
 
   const zonaSelData = zonas.find((z) => z.id === zonaSel) ?? null;
+
+  if (carregandoZonasInicial || (loading && resultado === null && falha === null)) {
+    return <DataLoading />;
+  }
 
   return (
     <div className="p-8 space-y-8 max-w-[1600px] mx-auto">

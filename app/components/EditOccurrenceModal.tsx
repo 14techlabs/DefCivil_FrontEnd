@@ -257,7 +257,7 @@ export function EditOccurrenceModal({
     <ModalShell open={open} onClose={onClose} maxWidth="max-w-2xl">
       {/* cabeçalho */}
       <div className="bg-surface-container-low px-8 py-6">
-        <MetaTag>EDITAR OCORRÊNCIA · #{ocorrencia.id}</MetaTag>
+        <MetaTag>EDITAR OCORRÊNCIA · {ocorrencia.id}</MetaTag>
         <h2 className="font-headline font-black text-2xl tracking-tighter mt-2 text-primary">
           Editar Ocorrência
         </h2>
@@ -280,7 +280,7 @@ export function EditOccurrenceModal({
                   <option value="">Não vinculado</option>
                   {eventos.map((evento) => (
                     <option key={evento.id} value={evento.id}>
-                      #{evento.id} · {evento.nome}
+                      {evento.id} · {evento.nome}
                     </option>
                   ))}
                 </select>
