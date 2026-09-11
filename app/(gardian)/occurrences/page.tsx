@@ -116,6 +116,8 @@ interface ResumoOcorrencias {
   andamento: number;
   resolvidas: number;
   por_zona: { zona_id: number; zona_nome: string | null; total: number }[];
+  por_categoria?: Record<string, number>;
+  por_status?: Record<string, number>;
 }
 
 interface FamiliaBasic {
@@ -320,6 +322,7 @@ function OccurrencesContent() {
 
   // busca, filtro por status e agrupamento em evento
   const [busca, setBusca] = useState("");
+  const [debouncedBusca, setDebouncedBusca] = useState("");
   const [statusFilter, setStatusFilter] = useState("todos");
   const [modoAgrupar, setModoAgrupar] = useState(false);
   const [marcadas, setMarcadas] = useState<number[]>([]);
@@ -327,6 +330,14 @@ function OccurrencesContent() {
   const [eventoAgrupamentoId, setEventoAgrupamentoId] = useState<number | null>(null);
   const [agrupando, setAgrupando] = useState(false);
   const [erroAgrupamento, setErroAgrupamento] = useState("");
+
+  // debounce na busca para evitar disparos a cada caractere
+  useEffect(() => {
+    const timer = window.setTimeout(() => {
+      setDebouncedBusca(busca.trim());
+    }, 300);
+    return () => window.clearTimeout(timer);
+  }, [busca]);
 
   const fetchLookups = useCallback(async () => {
     try {
@@ -390,6 +401,8 @@ function OccurrencesContent() {
         quantidade_por_pagina: quantidadePorPagina,
       };
       if (statusFilter !== "todos") params.status = statusFilter;
+      if (filter !== "todas") params.categoria = filter;
+      if (debouncedBusca) params.busca = debouncedBusca;
       if (familiaFiltroId != null && familiaFiltroAtivo) params.familia_id = familiaFiltroId;
       const occRes = await api.get<OcorrenciaListResponse>("/ocorrencias/", { params });
       const lista = occRes.data.ocorrencias ?? [];
@@ -418,7 +431,7 @@ function OccurrencesContent() {
     } finally {
       setLoading(false);
     }
-  }, [familiaFiltroAtivo, familiaFiltroId, pagina, quantidadePorPagina, statusFilter]);
+  }, [debouncedBusca, familiaFiltroAtivo, familiaFiltroId, filter, pagina, quantidadePorPagina, statusFilter]);
 
   const fetchResumo = useCallback(async () => {
     setCarregandoIndicadores(true);
@@ -495,40 +508,64 @@ function OccurrencesContent() {
     };
   }, [selected, danosReloadKey]);
 
-  // agrupa categorias disponiveis a partir dos dados reais
-  const categoriasDisponiveis = useMemo(() => {
-    const set = new Set(ocorrencias.map((o) => o.categoria));
-    return ["todas", ...set];
-  }, [ocorrencias]);
+  // contagem por categoria vinda do resumo global da entidade
+  const contagem = useMemo(() => {
+    const map = new Map<string, number>();
+    if (resumo?.por_categoria) {
+      for (const [cat, total] of Object.entries(resumo.por_categoria)) {
+        map.set(cat, total);
+      }
+    }
+    return map;
+  }, [resumo?.por_categoria]);
 
+  // categorias disponíveis unindo catálogo padrão e ocorrências reais da entidade
+  const categoriasDisponiveis = useMemo(() => {
+    const set = new Set<string>();
+    for (const cat of Object.keys(CATEGORIA_LABEL)) {
+      set.add(cat);
+    }
+    if (resumo?.por_categoria) {
+      for (const cat of Object.keys(resumo.por_categoria)) {
+        set.add(cat);
+      }
+    }
+    const ordenadas = Array.from(set).sort((a, b) => {
+      const qtdA = contagem.get(a) ?? 0;
+      const qtdB = contagem.get(b) ?? 0;
+      if (qtdA !== qtdB) return qtdB - qtdA;
+      return categoriaLabel(a).localeCompare(categoriaLabel(b), "pt-BR");
+    });
+    return ["todas", ...ordenadas];
+  }, [resumo?.por_categoria, contagem]);
+
+  // status disponíveis para filtro com contagem global
+  const statusDisponiveis = useMemo(() => {
+    const base = [
+      "todos",
+      "em_analise",
+      "alta_prioridade",
+      "aguardando",
+      "em_andamento",
+      "concluida",
+    ];
+    if (resumo?.por_status) {
+      for (const st of Object.keys(resumo.por_status)) {
+        if (!base.includes(st)) base.push(st);
+      }
+    }
+    return base;
+  }, [resumo?.por_status]);
+
+  // lista da página já filtrada pelo servidor, preservando ordenação por prioridade
   const ocorrenciasFiltradas = useMemo(() => {
-    const termo = busca.trim().toLowerCase();
-    return ocorrencias
-      .filter((o) => {
-        if (filtrandoPorFamilia && o.familia !== familiaFiltroId) return false;
-        if (filter !== "todas" && o.categoria !== filter) return false;
-        if (statusFilter !== "todos" && o.status !== statusFilter) return false;
-        if (termo) {
-          const alvo = [
-            String(o.id),
-            o.titulo,
-            o.descricao,
-            o.endereco ?? "",
-            o.zona != null ? zonaLookup.get(o.zona) ?? "" : "",
-          ]
-            .join(" ")
-            .toLowerCase();
-          if (!alvo.includes(termo)) return false;
-        }
-        return true;
-      })
-      .sort((a, b) => {
-        const prioridadeA = a.status === "alta_prioridade" ? 0 : 1;
-        const prioridadeB = b.status === "alta_prioridade" ? 0 : 1;
-        if (prioridadeA !== prioridadeB) return prioridadeA - prioridadeB;
-        return new Date(b.created_at).getTime() - new Date(a.created_at).getTime();
-      });
-  }, [ocorrencias, filter, statusFilter, busca, zonaLookup, filtrandoPorFamilia, familiaFiltroId]);
+    return [...ocorrencias].sort((a, b) => {
+      const prioridadeA = a.status === "alta_prioridade" ? 0 : 1;
+      const prioridadeB = b.status === "alta_prioridade" ? 0 : 1;
+      if (prioridadeA !== prioridadeB) return prioridadeA - prioridadeB;
+      return new Date(b.created_at).getTime() - new Date(a.created_at).getTime();
+    });
+  }, [ocorrencias]);
 
   // --- indicadores ---
 
@@ -548,11 +585,6 @@ function OccurrencesContent() {
       ranking: ranking.slice(0, 4),
     };
   }, [resumo, zonaLookup]);
-
-  const statusDisponiveis = useMemo(() => {
-    const set = new Set(ocorrencias.map((o) => o.status));
-    return ["todos", ...set];
-  }, [ocorrencias]);
 
   const toggleMarcada = (id: number) =>
     setMarcadas((prev) => (prev.includes(id) ? prev.filter((x) => x !== id) : [...prev, id]));
@@ -711,14 +743,7 @@ function OccurrencesContent() {
     return formatHistoryValue(value);
   };
 
-  // contagem por categoria para as abas
-  const contagem = useMemo(() => {
-    const map = new Map<string, number>();
-    for (const o of ocorrencias) {
-      map.set(o.categoria, (map.get(o.categoria) ?? 0) + 1);
-    }
-    return map;
-  }, [ocorrencias]);
+
 
   // --- renderização ---
 
@@ -827,7 +852,7 @@ function OccurrencesContent() {
                 <button
                   key={zid}
                   type="button"
-                  onClick={() => setBusca(nome)}
+                  onClick={() => { setPagina(1); setBusca(nome); }}
                   className="group rounded-xl border border-outline-variant/20 bg-surface-container-low p-4 text-left transition-all duration-200 hover:-translate-y-0.5 hover:border-secondary/35 hover:bg-white hover:shadow-ambient-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-secondary"
                   aria-label={`Filtrar ocorrências da ${nome}`}
                 >
@@ -924,14 +949,14 @@ function OccurrencesContent() {
             />
             <input
               value={busca}
-              onChange={(e) => setBusca(e.target.value)}
+              onChange={(e) => { setPagina(1); setBusca(e.target.value); }}
               placeholder="Pesquisar por título, endereço, zona ou número…"
               className="h-11 w-full rounded-lg border border-transparent bg-surface-container-low pl-11 pr-10 text-sm font-medium outline-none transition-all placeholder:text-on-surface-variant/50 hover:border-outline-variant/40 focus:border-secondary/40 focus:ring-2 focus:ring-secondary/30"
             />
             {busca && (
               <button
                 type="button"
-                onClick={() => setBusca("")}
+                onClick={() => { setPagina(1); setBusca(""); }}
                 className="absolute right-3 top-1/2 -translate-y-1/2 rounded-md p-1 transition-colors hover:bg-surface-container"
                 aria-label="Limpar busca"
               >
@@ -951,11 +976,15 @@ function OccurrencesContent() {
               onChange={(e) => { setPagina(1); setStatusFilter(e.target.value); }}
               className="h-11 w-full appearance-none rounded-lg border border-outline-variant/25 bg-white pl-10 pr-10 text-xs font-bold text-primary outline-none transition-all hover:border-secondary/40 focus:ring-2 focus:ring-secondary/30 sm:min-w-[180px]"
             >
-              {statusDisponiveis.map((st) => (
-                <option key={st} value={st}>
-                  {st === "todos" ? "Todos os Status" : getOccurrenceStatusMeta(st).label}
-                </option>
-              ))}
+              {statusDisponiveis.map((st) => {
+                const count = st === "todos" ? resumo?.total : resumo?.por_status?.[st] ?? 0;
+                const label = st === "todos" ? "Todos os Status" : getOccurrenceStatusMeta(st).label;
+                return (
+                  <option key={st} value={st}>
+                    {count != null ? `${label} (${count})` : label}
+                  </option>
+                );
+              })}
             </select>
             <Icon
               name="expand_more"
@@ -971,16 +1000,18 @@ function OccurrencesContent() {
             />
             <select
               value={filter}
-              onChange={(e) => setFilter(e.target.value)}
+              onChange={(e) => { setPagina(1); setFilter(e.target.value); }}
               className="h-11 w-full appearance-none rounded-lg border border-outline-variant/25 bg-white pl-10 pr-10 text-xs font-bold text-primary outline-none transition-all hover:border-secondary/40 focus:ring-2 focus:ring-secondary/30 sm:min-w-[210px]"
             >
-              {categoriasDisponiveis.map((cat) => (
-                <option key={cat} value={cat}>
-                  {cat === "todas"
-                    ? "Todas as Categorias"
-                    : `${categoriaLabel(cat)} (${contagem.get(cat) ?? 0})`}
-                </option>
-              ))}
+              {categoriasDisponiveis.map((cat) => {
+                const count = cat === "todas" ? resumo?.total : contagem.get(cat) ?? 0;
+                const label = cat === "todas" ? "Todas as Categorias" : categoriaLabel(cat);
+                return (
+                  <option key={cat} value={cat}>
+                    {count != null ? `${label} (${count})` : label}
+                  </option>
+                );
+              })}
             </select>
             <Icon
               name="expand_more"
