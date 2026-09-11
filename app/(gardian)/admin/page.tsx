@@ -1,6 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useState } from "react";
+import { DataLoading } from "@/app/components/DataLoading";
 import { Btn, Chip, Icon, KPI, MetaTag, Tab } from "@/app/components/Primitives";
 import { EditUserModal, type AdminUsuario } from "@/app/components/EditUserModal";
 import { CreateTecnicoModal } from "@/app/components/CreateTecnicoModal";
@@ -135,6 +136,10 @@ export default function AdminPage() {
     }
   };
 
+  if (loading) {
+    return <DataLoading />;
+  }
+
   return (
     <div className="p-8 space-y-8 max-w-[1600px] mx-auto">
       <header>
@@ -253,11 +258,7 @@ export default function AdminPage() {
       )}
 
       <section className="card-tonal shadow-ambient-sm overflow-hidden">
-        {loading ? (
-          <div className="flex items-center justify-center py-20 text-sm text-on-surface-variant font-medium">
-            Carregando usuários…
-          </div>
-        ) : filtrados.length === 0 ? (
+        {filtrados.length === 0 ? (
           <div className="flex flex-col items-center justify-center py-20 text-center px-6">
             <div className="w-14 h-14 rounded-2xl bg-surface-container flex items-center justify-center mb-4">
               <Icon name="person_off" className="text-on-surface-variant text-[26px]" />

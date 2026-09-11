@@ -1,8 +1,7 @@
-// DefCivil_FrontEnd/app/(gardian)/weather/page.tsx
 "use client";
 
 import { useEffect, useState } from "react";
-import { MapPlaceholder } from "@/app/components/MapPlaceholder";
+import { DataLoading } from "@/app/components/DataLoading";
 import { Bar, type BarTone, Chip, Icon, MetaTag, SectionHeader } from "@/app/components/Primitives";
 import { useGardian } from "@/app/components/GardianContext";
 import { api } from "@/app/services/Api";
@@ -86,11 +85,7 @@ export default function WeatherPage() {
   }, []);
 
   if (loading) {
-    return (
-      <div className="p-8 max-w-[1600px] mx-auto">
-        <p className="text-on-surface-variant text-sm">Carregando dados meteorológicos…</p>
-      </div>
-    );
+    return <DataLoading />;
   }
 
   if (erro || !painel) {
@@ -301,10 +296,10 @@ export default function WeatherPage() {
                   <Icon
                     name={it.icon}
                     className={`text-[18px] ${it.tone === "error"
-                        ? "text-error"
-                        : it.tone === "warning"
-                          ? "text-orange-500"
-                          : "text-secondary"
+                      ? "text-error"
+                      : it.tone === "warning"
+                        ? "text-orange-500"
+                        : "text-secondary"
                       }`}
                   />
                 </div>
@@ -355,10 +350,10 @@ export default function WeatherPage() {
               <div
                 key={i}
                 className={`card-tonal p-6 shadow-ambient-sm border-b-4 ${d.color === "error"
-                    ? "border-error/60"
-                    : d.color === "warning"
-                      ? "border-orange-400/60"
-                      : "border-secondary/40"
+                  ? "border-error/60"
+                  : d.color === "warning"
+                    ? "border-orange-400/60"
+                    : "border-secondary/40"
                   }`}
               >
                 <p className="text-[10px] font-bold text-slate-400 mb-3 tracking-mono uppercase">{d.day}</p>
@@ -366,10 +361,10 @@ export default function WeatherPage() {
                   name={d.icon}
                   filled
                   className={`text-[36px] mb-3 ${d.color === "error"
-                      ? "text-error"
-                      : d.color === "warning"
-                        ? "text-orange-500"
-                        : "text-secondary"
+                    ? "text-error"
+                    : d.color === "warning"
+                      ? "text-orange-500"
+                      : "text-secondary"
                     }`}
                 />
                 <div className="flex flex-col mb-3">
@@ -382,10 +377,10 @@ export default function WeatherPage() {
                 </div>
                 <p
                   className={`text-[10px] font-bold uppercase tracking-mono-tight ${d.color === "error"
-                      ? "text-error"
-                      : d.color === "warning"
-                        ? "text-orange-600"
-                        : "text-secondary"
+                    ? "text-error"
+                    : d.color === "warning"
+                      ? "text-orange-600"
+                      : "text-secondary"
                     }`}
                 >
                   {d.label}
