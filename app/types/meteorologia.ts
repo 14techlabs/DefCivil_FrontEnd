@@ -1,4 +1,3 @@
-// DefCivil_FrontEnd/app/types/meteorologia.ts
 export type PrecipLevel = "low" | "medium" | "high";
 
 export interface MeteoOrgao {
@@ -12,11 +11,10 @@ export interface MeteoOrgao {
   precipitacao: number | null;
   vento: number | null;
   ventoDir: string | null;
-  /** false quando a fonte não respondeu. */
-  temMedicao?: boolean;
   umidade: number | null;
   tempMin: number | null;
   tempMax: number | null;
+  temMedicao?: boolean;
 }
 
 export interface Pluviometro {
@@ -65,8 +63,7 @@ export interface WeatherPainel {
     max: number | null;
     min: number | null;
     totalSensores: number;
-  /** false quando não há sensor: distingue "0 mm" de "sem medição". */
-  temMedicao: boolean;
+    temMedicao?: boolean;
     desvios: { nome: string; desvio: number }[];
   };
   condicoesAtuais: {

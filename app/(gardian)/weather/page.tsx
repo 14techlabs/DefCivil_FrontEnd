@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { DataLoading } from "@/app/components/DataLoading";
+import { MapPlaceholder } from "@/app/components/MapPlaceholder";
 import { Bar, type BarTone, Chip, Icon, MetaTag, SectionHeader } from "@/app/components/Primitives";
 import { useGardian } from "@/app/components/GardianContext";
 import { api } from "@/app/services/Api";
@@ -37,23 +37,14 @@ const PRECIP_STYLES: Record<
   },
 };
 
-/**
- * Formata milímetros, distinguindo ZERO de AUSENTE.
- *
- * O backend passou a devolver null quando não há sensor ou a fonte está
- * fora do ar. Exibir "0,0 mm" nesse caso levaria a concluir que não choveu,
- * quando na verdade não houve medição — diferença que decide se uma equipe
- * é despachada.
- */
 function fmtMm(v: number | null | undefined) {
-  if (v == null) return "—";
+  if (v == null || Number.isNaN(v)) return "—";
   return v.toFixed(1).replace(".", ",");
 }
 
-/** Número simples, com o mesmo cuidado: "—" quando não medido. */
-function fmtNum(v: number | null | undefined, sufixo = "") {
-  if (v == null) return "—";
-  return `${v}${sufixo}`;
+function fmtOrDash(v: number | null | undefined, suffix = "") {
+  if (v == null || Number.isNaN(v)) return "—";
+  return `${v}${suffix}`;
 }
 
 export default function WeatherPage() {
@@ -85,7 +76,11 @@ export default function WeatherPage() {
   }, []);
 
   if (loading) {
-    return <DataLoading />;
+    return (
+      <div className="p-8 max-w-[1600px] mx-auto">
+        <p className="text-on-surface-variant text-sm">Carregando dados meteorológicos…</p>
+      </div>
+    );
   }
 
   if (erro || !painel) {
@@ -155,7 +150,7 @@ export default function WeatherPage() {
                   <p className="text-[10px] text-on-surface-variant mt-0.5">
                     {o.tempMin != null && o.tempMax != null
                       ? `${o.tempMin}° a ${o.tempMax}°C`
-                      : "Temperatura não informada"}
+                      : "Sem temperatura"}
                   </p>
                 </div>
               </div>
@@ -164,7 +159,7 @@ export default function WeatherPage() {
                 <div className="flex items-center justify-between mb-1.5">
                   <MetaTag>{o.id === "cemaden" ? "INTENSIDADE 24H" : "CHANCE DE CHUVA"}</MetaTag>
                   <span className="text-[13px] font-black text-primary">
-                    {fmtNum(o.chanceChuva, "%")}
+                    {fmtOrDash(o.chanceChuva, "%")}
                   </span>
                 </div>
                 <Bar
@@ -183,23 +178,23 @@ export default function WeatherPage() {
                 <div className="p-3 rounded-lg bg-white text-center">
                   <Icon name="rainy" className="text-error text-[18px]" />
                   <p className="font-headline font-black text-lg text-primary tracking-tighter mt-1">
-                    {fmtNum(o.precipitacao)}
+                    {fmtOrDash(o.precipitacao)}
                   </p>
                   <MetaTag className="block">MM {o.id === "cemaden" ? "MED." : "PRECIP."}</MetaTag>
                 </div>
                 <div className="p-3 rounded-lg bg-white text-center">
                   <Icon name="humidity_mid" className="text-secondary text-[18px]" />
                   <p className="font-headline font-black text-lg text-primary tracking-tighter mt-1">
-                    {fmtNum(o.umidade, "%")}
+                    {fmtOrDash(o.umidade, "%")}
                   </p>
                   <MetaTag className="block">UMIDADE</MetaTag>
                 </div>
                 <div className="p-3 rounded-lg bg-white text-center">
                   <Icon name="air" className="text-orange-500 text-[18px]" />
                   <p className="font-headline font-black text-lg text-primary tracking-tighter mt-1">
-                    {fmtNum(o.vento)}
+                    {fmtOrDash(o.vento)}
                   </p>
-                  <MetaTag className="block">KM/H {o.ventoDir ?? "—"}</MetaTag>
+                  <MetaTag className="block">KM/H {o.ventoDir || "—"}</MetaTag>
                 </div>
               </div>
             </div>
@@ -214,37 +209,26 @@ export default function WeatherPage() {
           <div className="relative flex flex-wrap items-end justify-between gap-6">
             <div>
               <span className="text-[10px] font-mono tracking-mono uppercase font-bold text-white/60">
-                {chuvaReal.temMedicao
-                  ? `CHUVA ACUMULADA REAL · MÉDIA DE ${chuvaReal.totalSensores} SENSORES`
-                  : "CHUVA ACUMULADA REAL · SEM SENSOR DISPONÍVEL"}
+                CHUVA ACUMULADA REAL · MÉDIA DE {chuvaReal.totalSensores} SENSORES
               </span>
               <p className="text-[10px] text-white/60 mb-3">
-                {chuvaReal.temMedicao
-                  ? "Único dado medido em campo — pluviômetros do CEMADEN"
-                  : "Nenhum pluviômetro do CEMADEN respondeu — não há medição de campo"}
+                Único dado medido em campo — pluviômetros do CEMADEN
               </p>
               <div className="flex items-baseline gap-2">
                 <span className="font-headline font-black text-5xl tracking-tighter">
                   {fmtMm(chuvaReal.media)}
                 </span>
-                <span className="text-sm font-bold text-white/50">
-                  {chuvaReal.temMedicao ? "mm/24h" : "sem medição"}
-                </span>
+                <span className="text-sm font-bold text-white/50">mm/24h</span>
               </div>
             </div>
 
-            {/* Sem sensor não há máximo, mínimo nem desvio a comparar. */}
             <div className="flex flex-wrap gap-2">
-              {chuvaReal.temMedicao && (
-                <>
-                  <span className="px-3 py-2 rounded-lg bg-white/15 text-[10px] font-bold uppercase tracking-mono-tight">
-                    MÁX {fmtMm(chuvaReal.max)}mm
-                  </span>
-                  <span className="px-3 py-2 rounded-lg bg-white/15 text-[10px] font-bold uppercase tracking-mono-tight">
-                    MÍN {fmtMm(chuvaReal.min)}mm
-                  </span>
-                </>
-              )}
+              <span className="px-3 py-2 rounded-lg bg-white/15 text-[10px] font-bold uppercase tracking-mono-tight">
+                MÁX {fmtMm(chuvaReal.max)}mm
+              </span>
+              <span className="px-3 py-2 rounded-lg bg-white/15 text-[10px] font-bold uppercase tracking-mono-tight">
+                MÍN {fmtMm(chuvaReal.min)}mm
+              </span>
               {chuvaReal.desvios.map((d) => (
                 <span
                   key={d.nome}
@@ -296,10 +280,10 @@ export default function WeatherPage() {
                   <Icon
                     name={it.icon}
                     className={`text-[18px] ${it.tone === "error"
-                      ? "text-error"
-                      : it.tone === "warning"
-                        ? "text-orange-500"
-                        : "text-secondary"
+                        ? "text-error"
+                        : it.tone === "warning"
+                          ? "text-orange-500"
+                          : "text-secondary"
                       }`}
                   />
                 </div>
@@ -331,29 +315,15 @@ export default function WeatherPage() {
               </div>
             }
           />
-          {painel.previsao5Dias.length === 0 && (
-            /* Sem isso a seção simplesmente sumia, e ninguém entendia por quê. */
-            <div className="rounded-xl bg-surface-container-low p-8 text-center">
-              <Icon name="cloud_off" className="mb-2 text-[32px] text-on-surface-variant" />
-              <p className="text-[13px] font-bold text-primary">
-                Previsão indisponível no momento
-              </p>
-              <p className="mt-1 text-[11px] text-on-surface-variant">
-                O CPTEC/INPE não respondeu. Os dados medidos em campo continuam
-                sendo exibidos acima.
-              </p>
-            </div>
-          )}
-
           <div className="grid grid-cols-2 md:grid-cols-5 gap-4">
             {painel.previsao5Dias.map((d, i) => (
               <div
                 key={i}
                 className={`card-tonal p-6 shadow-ambient-sm border-b-4 ${d.color === "error"
-                  ? "border-error/60"
-                  : d.color === "warning"
-                    ? "border-orange-400/60"
-                    : "border-secondary/40"
+                    ? "border-error/60"
+                    : d.color === "warning"
+                      ? "border-orange-400/60"
+                      : "border-secondary/40"
                   }`}
               >
                 <p className="text-[10px] font-bold text-slate-400 mb-3 tracking-mono uppercase">{d.day}</p>
@@ -361,10 +331,10 @@ export default function WeatherPage() {
                   name={d.icon}
                   filled
                   className={`text-[36px] mb-3 ${d.color === "error"
-                    ? "text-error"
-                    : d.color === "warning"
-                      ? "text-orange-500"
-                      : "text-secondary"
+                      ? "text-error"
+                      : d.color === "warning"
+                        ? "text-orange-500"
+                        : "text-secondary"
                     }`}
                 />
                 <div className="flex flex-col mb-3">
@@ -377,10 +347,10 @@ export default function WeatherPage() {
                 </div>
                 <p
                   className={`text-[10px] font-bold uppercase tracking-mono-tight ${d.color === "error"
-                    ? "text-error"
-                    : d.color === "warning"
-                      ? "text-orange-600"
-                      : "text-secondary"
+                      ? "text-error"
+                      : d.color === "warning"
+                        ? "text-orange-600"
+                        : "text-secondary"
                     }`}
                 >
                   {d.label}
