@@ -37,8 +37,14 @@ const PRECIP_STYLES: Record<
   },
 };
 
-function fmtMm(v: number) {
+function fmtMm(v: number | null | undefined) {
+  if (v == null || Number.isNaN(v)) return "—";
   return v.toFixed(1).replace(".", ",");
+}
+
+function fmtOrDash(v: number | null | undefined, suffix = "") {
+  if (v == null || Number.isNaN(v)) return "—";
+  return `${v}${suffix}`;
 }
 
 export default function WeatherPage() {
@@ -142,7 +148,9 @@ export default function WeatherPage() {
                   </MetaTag>
                   <p className="text-[13px] font-black text-primary leading-tight">{o.previsao}</p>
                   <p className="text-[10px] text-on-surface-variant mt-0.5">
-                    {o.tempMin}° a {o.tempMax}°C
+                    {o.tempMin != null && o.tempMax != null
+                      ? `${o.tempMin}° a ${o.tempMax}°C`
+                      : "Sem temperatura"}
                   </p>
                 </div>
               </div>
@@ -150,11 +158,19 @@ export default function WeatherPage() {
               <div className="mb-4">
                 <div className="flex items-center justify-between mb-1.5">
                   <MetaTag>{o.id === "cemaden" ? "INTENSIDADE 24H" : "CHANCE DE CHUVA"}</MetaTag>
-                  <span className="text-[13px] font-black text-primary">{o.chanceChuva}%</span>
+                  <span className="text-[13px] font-black text-primary">
+                    {fmtOrDash(o.chanceChuva, "%")}
+                  </span>
                 </div>
                 <Bar
-                  value={o.chanceChuva}
-                  tone={o.chanceChuva >= 80 ? "error" : o.chanceChuva >= 50 ? "warning" : "secondary"}
+                  value={o.chanceChuva ?? 0}
+                  tone={
+                    (o.chanceChuva ?? 0) >= 80
+                      ? "error"
+                      : (o.chanceChuva ?? 0) >= 50
+                        ? "warning"
+                        : "secondary"
+                  }
                 />
               </div>
 
@@ -162,23 +178,23 @@ export default function WeatherPage() {
                 <div className="p-3 rounded-lg bg-white text-center">
                   <Icon name="rainy" className="text-error text-[18px]" />
                   <p className="font-headline font-black text-lg text-primary tracking-tighter mt-1">
-                    {o.precipitacao}
+                    {fmtOrDash(o.precipitacao)}
                   </p>
                   <MetaTag className="block">MM {o.id === "cemaden" ? "MED." : "PRECIP."}</MetaTag>
                 </div>
                 <div className="p-3 rounded-lg bg-white text-center">
                   <Icon name="humidity_mid" className="text-secondary text-[18px]" />
                   <p className="font-headline font-black text-lg text-primary tracking-tighter mt-1">
-                    {o.umidade}%
+                    {fmtOrDash(o.umidade, "%")}
                   </p>
                   <MetaTag className="block">UMIDADE</MetaTag>
                 </div>
                 <div className="p-3 rounded-lg bg-white text-center">
                   <Icon name="air" className="text-orange-500 text-[18px]" />
                   <p className="font-headline font-black text-lg text-primary tracking-tighter mt-1">
-                    {o.vento}
+                    {fmtOrDash(o.vento)}
                   </p>
-                  <MetaTag className="block">KM/H {o.ventoDir}</MetaTag>
+                  <MetaTag className="block">KM/H {o.ventoDir || "—"}</MetaTag>
                 </div>
               </div>
             </div>
@@ -244,7 +260,9 @@ export default function WeatherPage() {
                 Atualizado às {W.updatedAt} · Satélite {painel.satellite}
               </p>
               <div className="flex items-baseline gap-3">
-                <span className="font-headline font-black text-8xl text-primary tracking-tighter">{W.temp}°</span>
+                <span className="font-headline font-black text-8xl text-primary tracking-tighter">
+                  {W.temp != null ? `${W.temp}°` : "—"}
+                </span>
                 <div className="flex flex-col">
                   <span className="text-lg font-bold text-slate-300">C</span>
                   {W.critical && <Chip tone="error">CRÍTICO</Chip>}
@@ -320,8 +338,12 @@ export default function WeatherPage() {
                     }`}
                 />
                 <div className="flex flex-col mb-3">
-                  <span className="font-headline font-black text-3xl text-primary tracking-tighter">{d.high}°</span>
-                  <span className="text-sm font-bold text-slate-400">{d.low}°</span>
+                  <span className="font-headline font-black text-3xl text-primary tracking-tighter">
+                    {d.high != null ? `${d.high}°` : "—"}
+                  </span>
+                  <span className="text-sm font-bold text-slate-400">
+                    {d.low != null ? `${d.low}°` : "—"}
+                  </span>
                 </div>
                 <p
                   className={`text-[10px] font-bold uppercase tracking-mono-tight ${d.color === "error"

@@ -7,13 +7,14 @@ export interface MeteoOrgao {
   atualizado: string;
   previsao: string;
   icone: string;
-  chanceChuva: number;
-  precipitacao: number;
-  vento: number;
-  ventoDir: string;
-  umidade: number;
-  tempMin: number;
-  tempMax: number;
+  chanceChuva: number | null;
+  precipitacao: number | null;
+  vento: number | null;
+  ventoDir: string | null;
+  umidade: number | null;
+  tempMin: number | null;
+  tempMax: number | null;
+  temMedicao?: boolean;
 }
 
 export interface Pluviometro {
@@ -40,8 +41,8 @@ export interface TelemetriaItem {
 export interface PrevisaoDia {
   day: string;
   icon: string;
-  high: number;
-  low: number;
+  high: number | null;
+  low: number | null;
   label: string;
   color: "error" | "warning" | "secondary";
 }
@@ -58,17 +59,18 @@ export interface WeatherPainel {
   satellite: string;
   orgaos: MeteoOrgao[];
   chuvaReal: {
-    media: number;
-    max: number;
-    min: number;
+    media: number | null;
+    max: number | null;
+    min: number | null;
     totalSensores: number;
+    temMedicao?: boolean;
     desvios: { nome: string; desvio: number }[];
   };
   condicoesAtuais: {
     location: string;
     condition: string;
-    temp: number;
-    feels: number;
+    temp: number | null;
+    feels: number | null;
     critical: boolean;
     updatedAt: string;
   };
