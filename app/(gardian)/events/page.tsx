@@ -359,13 +359,18 @@ export default function EventsPage() {
     try {
       const eventResponse = await api.get<EventoListResponse>("/eventos/");
       const eventList = eventResponse.data.eventos ?? [];
+      const vinculadoId = eventResponse.data.evento_vinculado_id ?? null;
       setEventos(eventList);
-      setEventoVinculadoId(eventResponse.data.evento_vinculado_id ?? null);
-      setSelectedId((current) =>
-        current != null && eventList.some((event) => event.id === current)
-          ? current
-          : eventList[0]?.id ?? null,
-      );
+      setEventoVinculadoId(vinculadoId);
+      setSelectedId((current) => {
+        if (current != null && eventList.some((event) => event.id === current)) {
+          return current;
+        }
+        if (vinculadoId != null && eventList.some((event) => event.id === vinculadoId)) {
+          return vinculadoId;
+        }
+        return eventList[0]?.id ?? null;
+      });
 
       const [occurrenceResult, zoneResult] = await Promise.allSettled([
         api.get<OcorrenciaListResponse>("/ocorrencias/"),
@@ -518,7 +523,7 @@ export default function EventsPage() {
 
   const filteredEvents = useMemo(() => {
     const term = normalize(search);
-    return eventos.filter((event) => {
+    const filtered = eventos.filter((event) => {
       const matchesType = typeFilter === "todos" || event.tipo === typeFilter;
       const matchesStatus = statusFilter === "todos" || normalize(event.status) === statusFilter;
       const matchesSearch =
@@ -534,7 +539,13 @@ export default function EventsPage() {
         ].some((value) => normalize(value).includes(term));
       return matchesType && matchesStatus && matchesSearch;
     });
-  }, [eventos, search, statusFilter, typeFilter]);
+
+    return [...filtered].sort((a, b) => {
+      if (a.id === eventoVinculadoId) return -1;
+      if (b.id === eventoVinculadoId) return 1;
+      return 0;
+    });
+  }, [eventos, search, statusFilter, typeFilter, eventoVinculadoId]);
 
   const statusOptions = useMemo(
     () => [...new Set(eventos.map((event) => normalize(event.status)).filter(Boolean))],
