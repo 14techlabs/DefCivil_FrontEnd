@@ -1,6 +1,6 @@
 "use client";
 
-import { Suspense, useCallback, useEffect, useRef, useState } from "react";
+import { Suspense, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import axios from "axios";
 import dynamic from "next/dynamic";
 import Image from "next/image";
@@ -40,8 +40,39 @@ interface EventoPublico {
 interface EntidadePublica {
   id: number;
   nome: string;
+  uf?: string;
   mensagem_publica?: string;
 }
+
+const ESTADOS_BRASIL: { uf: string; nome: string }[] = [
+  { uf: "AC", nome: "Acre" },
+  { uf: "AL", nome: "Alagoas" },
+  { uf: "AP", nome: "Amapá" },
+  { uf: "AM", nome: "Amazonas" },
+  { uf: "BA", nome: "Bahia" },
+  { uf: "CE", nome: "Ceará" },
+  { uf: "DF", nome: "Distrito Federal" },
+  { uf: "ES", nome: "Espírito Santo" },
+  { uf: "GO", nome: "Goiás" },
+  { uf: "MA", nome: "Maranhão" },
+  { uf: "MT", nome: "Mato Grosso" },
+  { uf: "MS", nome: "Mato Grosso do Sul" },
+  { uf: "MG", nome: "Minas Gerais" },
+  { uf: "PA", nome: "Pará" },
+  { uf: "PB", nome: "Paraíba" },
+  { uf: "PR", nome: "Paraná" },
+  { uf: "PE", nome: "Pernambuco" },
+  { uf: "PI", nome: "Piauí" },
+  { uf: "RJ", nome: "Rio de Janeiro" },
+  { uf: "RN", nome: "Rio Grande do Norte" },
+  { uf: "RS", nome: "Rio Grande do Sul" },
+  { uf: "RO", nome: "Rondônia" },
+  { uf: "RR", nome: "Roraima" },
+  { uf: "SC", nome: "Santa Catarina" },
+  { uf: "SP", nome: "São Paulo" },
+  { uf: "SE", nome: "Sergipe" },
+  { uf: "TO", nome: "Tocantins" },
+];
 
 interface CategoriaPublica {
   id: number;
@@ -190,6 +221,7 @@ function PublicReportContent() {
   const entidadeId = entidadeParam && /^[1-9]\d*$/.test(entidadeParam)
     ? Number(entidadeParam)
     : null;
+  const modoParam = searchParams.get("modo");
 
   const [config, setConfig] = useState<ConfigFormularioPublico | null>(null);
   const categorias = config?.categorias.filter((item) => item.ativo) ?? [];
@@ -197,18 +229,24 @@ function PublicReportContent() {
   const [carregandoEntidades, setCarregandoEntidades] = useState(true);
   const [erroEntidades, setErroEntidades] = useState("");
   const [tentativaEntidades, setTentativaEntidades] = useState(0);
-  const [fluxoInicial, setFluxoInicial] = useState<"atual" | "outro" | null>(null);
-  const [resolvendoEntidade, setResolvendoEntidade] = useState(false);
-  const [erroResolverEntidade, setErroResolverEntidade] = useState("");
+
+  // Seleção de localização e detecção GPS
+  const [faseSelecao, setFaseSelecao] = useState<"detectando_gps" | "fora_cobertura" | "manual">(() => {
+    return modoParam === "manual" ? "manual" : "detectando_gps";
+  });
+  const [ufSelecionada, setUfSelecionada] = useState("");
+  const [cidadeSelecionadaId, setCidadeSelecionadaId] = useState<number | null>(null);
+  const [avisoGps, setAvisoGps] = useState("");
+
   const [entidadeSelecionada, setEntidadeSelecionada] = useState<EntidadePublica | null>(null);
   const [checklist, setChecklist] = useState<ChecklistPublico[]>([]);
   const [eventoAtivo, setEventoAtivo] = useState<EventoPublico | null>(null);
   const [erroReport, setErroReport] = useState<{ entidadeId: number; mensagem: string } | null>(null);
   const [tentativaReport, setTentativaReport] = useState(0);
 
-  // Lista pública exibida antes do formulário.
+  // Lista pública de entidades para o seletor Estado -> Cidade.
   useEffect(() => {
-    if (entidadeId !== null || fluxoInicial !== "outro") return;
+    if (entidadeId !== null) return;
     let cancelled = false;
     api
       .get<{ entidades: EntidadePublica[] }>("/entidades/listar-publicas/")
@@ -229,7 +267,7 @@ function PublicReportContent() {
     return () => {
       cancelled = true;
     };
-  }, [entidadeId, fluxoInicial, tentativaEntidades]);
+  }, [entidadeId, tentativaEntidades]);
 
   // Checklist e evento pertencem à entidade indicada na URL.
   useEffect(() => {
@@ -514,7 +552,6 @@ function PublicReportContent() {
   };
 
   const trocarEntidade = () => {
-    setFluxoInicial(null);
     setEntidadeSelecionada(null);
     setConfig(null);
     setChecklist([]);
@@ -535,17 +572,22 @@ function PublicReportContent() {
     setGeoAviso("");
     setEnderecoAviso("");
     setErro("");
-    router.push("/report");
+    setFaseSelecao("manual");
+    setUfSelecionada("");
+    setCidadeSelecionadaId(null);
+    setAvisoGps("");
+    router.push("/report?modo=manual");
   };
 
-  const resolverEntidadeAtual = () => {
+  const tentarGpsAutomatico = useCallback(() => {
     if (typeof navigator === "undefined" || !navigator.geolocation) {
-      setErroResolverEntidade("Seu navegador não permite consultar a localização. Escolha uma opção da lista.");
+      setFaseSelecao("manual");
+      setAvisoGps("Seu dispositivo não suporta geolocalização. Selecione seu estado e cidade abaixo:");
       return;
     }
 
-    setResolvendoEntidade(true);
-    setErroResolverEntidade("");
+    setFaseSelecao("detectando_gps");
+    setAvisoGps("");
     navigator.geolocation.getCurrentPosition(
       async (posicao) => {
         try {
@@ -569,20 +611,53 @@ function PublicReportContent() {
           setGeoStatus("ok");
           router.push(`/report?entidade=${resposta.data.entidade_id}&destino=atual`);
         } catch (error) {
-          setErroResolverEntidade(
-            mensagemApi(error, "Não foi possível identificar uma Defesa Civil para sua localização."),
+          setFaseSelecao("fora_cobertura");
+          setAvisoGps(
+            mensagemApi(
+              error,
+              "Não identificamos uma Defesa Civil cadastrada na sua coordenada atual. Selecione seu estado e cidade abaixo:",
+            ),
           );
-        } finally {
-          setResolvendoEntidade(false);
         }
       },
-      () => {
-        setErroResolverEntidade("Não foi possível acessar sua localização. Escolha uma opção da lista.");
-        setResolvendoEntidade(false);
+      (err) => {
+        setFaseSelecao("manual");
+        const msgs: Record<number, string> = {
+          1: "Acesso à localização não concedido. Selecione seu estado e cidade abaixo:",
+          2: "Localização GPS indisponível no momento. Selecione seu estado e cidade abaixo:",
+          3: "Tempo esgotado ao buscar o GPS. Selecione seu estado e cidade abaixo:",
+        };
+        setAvisoGps(msgs[err.code] ?? "Não foi possível acessar sua localização. Selecione seu estado e cidade abaixo:");
       },
-      { enableHighAccuracy: true, timeout: 10000, maximumAge: 60000 },
+      { enableHighAccuracy: true, timeout: 8000, maximumAge: 60000 },
     );
-  };
+  }, [router]);
+
+  useEffect(() => {
+    if (entidadeId !== null || modoParam === "manual") return;
+    tentarGpsAutomatico();
+  }, [entidadeId, modoParam, tentarGpsAutomatico]);
+
+  const estadosDisponiveis = useMemo(() => {
+    const ufsComEntidade = new Set(
+      entidades.map((e) => (e.uf || "").toUpperCase()).filter(Boolean),
+    );
+    const lista = ESTADOS_BRASIL.filter((estado) => ufsComEntidade.has(estado.uf.toUpperCase()));
+    const ufsConhecidas = new Set(lista.map((e) => e.uf.toUpperCase()));
+    ufsComEntidade.forEach((uf) => {
+      if (!ufsConhecidas.has(uf)) {
+        lista.push({ uf, nome: uf });
+      }
+    });
+    return lista.sort((a, b) => a.nome.localeCompare(b.nome));
+  }, [entidades]);
+
+  const cidadesDoEstado = useMemo(() => {
+    if (!ufSelecionada) return [];
+    return entidades.filter(
+      (ent) => (ent.uf || "").toUpperCase() === ufSelecionada.toUpperCase(),
+    );
+  }, [entidades, ufSelecionada]);
 
   /* ───────── confirmação ───────── */
   /* ───────── canal desativado pela entidade ───────── */
@@ -611,7 +686,7 @@ function PublicReportContent() {
               Registrar uma ocorrência
             </h1>
             <p className="mt-3 max-w-xl text-sm leading-relaxed text-white/75">
-              Primeiro, informe para quem e onde você deseja fazer o registro.
+              Identifique sua localização para ser direcionado à Defesa Civil responsável pelo seu município.
             </p>
           </div>
         </header>
@@ -619,80 +694,32 @@ function PublicReportContent() {
         <div className="mx-auto max-w-3xl px-6 py-8">
           {parametroInvalido && (
             <div role="alert" className="mb-5 rounded-xl bg-error-container p-4 text-sm font-semibold text-on-error-container">
-              O endereço informado contém uma entidade inválida. Escolha uma opção abaixo.
+              O endereço informado contém uma entidade inválida. Escolha seu município abaixo.
             </div>
           )}
 
-          {fluxoInicial === null && (
-            <section className="card-tonal p-6 shadow-ambient-sm">
-              <h2 className="mb-4 text-sm font-bold text-primary">A ocorrência é para quem?</h2>
-              <div className="grid gap-3 sm:grid-cols-2">
-                <button
-                  type="button"
-                  onClick={() => {
-                    setFluxoInicial("atual");
-                    resolverEntidadeAtual();
-                  }}
-                  className="rounded-xl bg-surface-container-low p-5 text-left text-primary transition-all hover:bg-surface-container hover:shadow-ambient-sm"
+          {faseSelecao === "detectando_gps" && (
+            <section className="card-tonal p-8 text-center shadow-ambient-sm">
+              <div className="mx-auto mb-4 flex h-16 w-16 items-center justify-center rounded-2xl bg-secondary/15">
+                <Icon name="near_me" className="animate-pulse text-[32px] text-secondary" />
+              </div>
+              <h2 className="text-base font-bold text-primary">Identificando sua localização…</h2>
+              <p className="mx-auto mt-2 max-w-md text-xs sm:text-sm leading-relaxed text-on-surface-variant">
+                Buscando a Defesa Civil mais próxima através do GPS do seu dispositivo para direcionar seu atendimento.
+              </p>
+              <div className="mt-6 flex justify-center">
+                <Btn
+                  variant="ghost"
+                  icon="edit_location_alt"
+                  onClick={() => setFaseSelecao("manual")}
                 >
-                  <Icon name="person_pin_circle" className="mb-3 text-[26px] text-secondary" />
-                  <span className="block text-sm font-bold">Para mim, neste local</span>
-                  <span className="mt-1 block text-xs leading-relaxed text-on-surface-variant">
-                    Usar minha localização para encontrar automaticamente a Defesa Civil responsável.
-                  </span>
-                </button>
-                <button
-                  type="button"
-                  onClick={() => setFluxoInicial("outro")}
-                  className="rounded-xl bg-surface-container-low p-5 text-left text-primary transition-all hover:bg-surface-container hover:shadow-ambient-sm"
-                >
-                  <Icon name="group" className="mb-3 text-[26px] text-secondary" />
-                  <span className="block text-sm font-bold">Para outra pessoa ou local</span>
-                  <span className="mt-1 block text-xs leading-relaxed text-on-surface-variant">
-                    Escolher a Defesa Civil e informar o endereço onde a ocorrência aconteceu.
-                  </span>
-                </button>
+                  Escolher estado e cidade manualmente
+                </Btn>
               </div>
             </section>
           )}
 
-          {fluxoInicial === "atual" && (
-            <section className="card-tonal p-8 text-center shadow-ambient-sm">
-              {resolvendoEntidade ? (
-                <>
-                  <Icon name="progress_activity" className="mb-3 animate-spin text-[30px] text-secondary" />
-                  <p className="text-sm font-semibold text-on-surface-variant">
-                    Identificando a Defesa Civil da sua localização…
-                  </p>
-                </>
-              ) : (
-                <>
-                  <Icon name="location_off" filled className="mb-3 text-[32px] text-error" />
-                  <p role="alert" className="text-sm font-semibold text-on-surface">
-                    {erroResolverEntidade || "Não foi possível identificar a área de atendimento."}
-                  </p>
-                  <p className="mt-2 text-xs leading-relaxed text-on-surface-variant">
-                    Você ainda pode registrar uma ocorrência para outra pessoa ou para outro local.
-                  </p>
-                  <div className="mt-5 flex flex-wrap justify-center gap-3">
-                    <Btn
-                      variant="secondary"
-                      icon="refresh"
-                      onClick={resolverEntidadeAtual}
-                      disabled={resolvendoEntidade}
-                    >
-                      Tentar novamente
-                    </Btn>
-                    <Btn variant="ghost" icon="group" onClick={() => setFluxoInicial("outro")}>
-                      Informar outro local
-                    </Btn>
-                  </div>
-                </>
-              )}
-            </section>
-          )}
-
-          {fluxoInicial === "outro" && (
+          {faseSelecao !== "detectando_gps" && (
             carregandoEntidades ? (
               <div className="card-tonal p-8 text-center shadow-ambient-sm">
                 <Icon name="progress_activity" className="mb-3 animate-spin text-[28px] text-secondary" />
@@ -714,40 +741,134 @@ function PublicReportContent() {
                   >
                     Tentar novamente
                   </Btn>
-                  <Btn variant="ghost" icon="arrow_back" onClick={() => setFluxoInicial(null)}>
-                    Voltar
+                  <Btn variant="ghost" icon="near_me" onClick={tentarGpsAutomatico}>
+                    Tentar usar GPS
                   </Btn>
                 </div>
               </div>
             ) : (
-              <section className="card-tonal p-6 shadow-ambient-sm">
-                <div className="mb-4 flex items-center justify-between gap-3">
-                  <h2 className="text-sm font-bold text-primary">Onde aconteceu a ocorrência?</h2>
-                  <Btn variant="ghost" icon="arrow_back" onClick={() => setFluxoInicial(null)}>
-                    Voltar
-                  </Btn>
+              <section className="card-tonal p-6 sm:p-8 shadow-ambient-sm">
+                <div className="mb-6 flex items-start gap-3">
+                  <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-secondary/10 text-secondary">
+                    <Icon name="location_on" filled className="text-[22px]" />
+                  </span>
+                  <div>
+                    <h2 className="text-base font-bold text-primary">Onde aconteceu a ocorrência?</h2>
+                    <p className="mt-1 text-xs sm:text-sm text-on-surface-variant">
+                      Selecione o Estado e depois a Cidade para encontrar a Defesa Civil do local.
+                    </p>
+                  </div>
                 </div>
-                <p className="mb-4 text-xs text-on-surface-variant">
-                  Escolha a Defesa Civil responsável pelo local da ocorrência.
-                </p>
-                <div className="grid gap-3 sm:grid-cols-2">
-                  {entidades.map((entidade) => (
-                    <button
-                      key={entidade.id}
-                      type="button"
-                      onClick={() => {
-                        setDestino("outro");
-                        router.push(`/report?entidade=${entidade.id}&destino=outro`);
+
+                {avisoGps && (
+                  <div
+                    role="alert"
+                    className={`mb-6 rounded-xl p-4 text-xs sm:text-sm ${
+                      faseSelecao === "fora_cobertura"
+                        ? "border border-secondary/30 bg-secondary/10 text-secondary"
+                        : "border border-on-surface/10 bg-surface-container-low text-on-surface-variant"
+                    }`}
+                  >
+                    <div className="flex items-center gap-2 font-bold">
+                      <Icon name={faseSelecao === "fora_cobertura" ? "location_off" : "info"} filled className="text-[18px]" />
+                      <span>{faseSelecao === "fora_cobertura" ? "Área sem cobertura no momento" : "Localização"}</span>
+                    </div>
+                    <p className="mt-1 leading-relaxed">{avisoGps}</p>
+                  </div>
+                )}
+
+                <div className="space-y-4">
+                  <div>
+                    <label htmlFor="select-uf" className="mb-1.5 block text-xs font-bold uppercase tracking-mono text-on-surface-variant">
+                      1. Estado (UF)
+                    </label>
+                    <select
+                      id="select-uf"
+                      value={ufSelecionada}
+                      onChange={(e) => {
+                        setUfSelecionada(e.target.value);
+                        setCidadeSelecionadaId(null);
                       }}
-                      className="flex items-center gap-3 rounded-xl bg-surface-container-low p-4 text-left text-primary transition-all hover:bg-surface-container hover:shadow-ambient-sm"
+                      className="w-full rounded-xl border border-outline/30 bg-surface-container-lowest px-4 py-3 text-sm font-medium text-on-surface outline-none transition-all focus:border-secondary focus:ring-2 focus:ring-secondary/20"
                     >
-                      <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-secondary/10">
-                        <Icon name="account_balance" className="text-[22px] text-secondary" />
-                      </span>
-                      <span className="flex-1 text-sm font-bold">{entidade.nome}</span>
-                      <Icon name="arrow_forward" className="text-[20px] text-on-surface-variant" />
-                    </button>
-                  ))}
+                      <option value="">
+                        {estadosDisponiveis.length === 0
+                          ? "Nenhum estado com Defesa Civil disponível"
+                          : "Selecione o Estado…"}
+                      </option>
+                      {estadosDisponiveis.map((estado) => (
+                        <option key={estado.uf} value={estado.uf}>
+                          {estado.nome} ({estado.uf})
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+
+                  <div>
+                    <label htmlFor="select-cidade" className="mb-1.5 block text-xs font-bold uppercase tracking-mono text-on-surface-variant">
+                      2. Cidade (Município / Defesa Civil)
+                    </label>
+                    <select
+                      id="select-cidade"
+                      value={cidadeSelecionadaId ?? ""}
+                      disabled={!ufSelecionada}
+                      onChange={(e) => {
+                        const val = e.target.value;
+                        setCidadeSelecionadaId(val ? Number(val) : null);
+                      }}
+                      className="w-full rounded-xl border border-outline/30 bg-surface-container-lowest px-4 py-3 text-sm font-medium text-on-surface outline-none transition-all disabled:opacity-50 focus:border-secondary focus:ring-2 focus:ring-secondary/20"
+                    >
+                      <option value="">
+                        {!ufSelecionada
+                          ? "Selecione primeiro o Estado acima…"
+                          : cidadesDoEstado.length === 0
+                          ? "Nenhuma Defesa Civil cadastrada nesta UF"
+                          : "Selecione a Cidade / Defesa Civil…"}
+                      </option>
+                      {cidadesDoEstado.map((entidade) => (
+                        <option key={entidade.id} value={entidade.id}>
+                          {entidade.nome}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+
+                  {ufSelecionada && cidadesDoEstado.length === 0 && (
+                    <div className="rounded-xl border-l-4 border-error bg-error-container p-4 text-on-error-container">
+                      <div className="flex items-center gap-2">
+                        <Icon name="info" filled className="text-[18px]" />
+                        <p className="text-xs sm:text-sm font-bold">
+                          O Gardian ainda não possui Defesa Civil cadastrada neste estado.
+                        </p>
+                      </div>
+                      <p className="mt-1 text-xs leading-relaxed">
+                        Em caso de emergência ou risco à vida, ligue <strong>199</strong> (Defesa Civil) ou <strong>193</strong> (Corpo de Bombeiros).
+                      </p>
+                    </div>
+                  )}
+
+                  <div className="pt-3 flex flex-wrap items-center justify-between gap-3">
+                    <Btn
+                      variant="primary"
+                      icon="arrow_forward"
+                      disabled={!cidadeSelecionadaId}
+                      onClick={() => {
+                        if (!cidadeSelecionadaId) return;
+                        setDestino("outro");
+                        router.push(`/report?entidade=${cidadeSelecionadaId}&destino=outro`);
+                      }}
+                    >
+                      Avançar para o formulário
+                    </Btn>
+
+                    <Btn
+                      variant="ghost"
+                      icon="near_me"
+                      onClick={tentarGpsAutomatico}
+                    >
+                      Tentar usar GPS novamente
+                    </Btn>
+                  </div>
                 </div>
               </section>
             )
