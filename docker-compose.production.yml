@@ -1,0 +1,40 @@
+networks:
+  traefik_proxy:
+    external: true
+  default:
+    name: "${DEPLOY_PREFIX}_internal"
+
+services:
+  app:
+    build:
+      context: .
+      dockerfile: compose/production/app/Dockerfile
+    container_name: "${DEPLOY_PREFIX}_production_app"
+    restart: unless-stopped
+    networks:
+      default:
+        aliases:
+          - "${DEPLOY_PREFIX}-app"
+
+  nginx:
+    environment:
+    - DEPLOY_PREFIX=${DEPLOY_PREFIX}
+    build:
+      context: .
+      dockerfile: ./compose/production/nginx/Dockerfile
+    image: "${DEPLOY_PREFIX}_production_nginx"
+    restart: always
+    depends_on:
+      - app
+    expose:
+      - "80"
+    networks:
+      - traefik_proxy
+      - default
+    labels:
+      - "traefik.enable=true"
+      - "traefik.http.routers.${DEPLOY_PREFIX}.rule=Host(`${DEPLOY_DOMAIN}`)"
+      - "traefik.http.routers.${DEPLOY_PREFIX}.entrypoints=websecure"
+      - "traefik.http.routers.${DEPLOY_PREFIX}.tls.certresolver=myresolver"
+      - "traefik.http.services.${DEPLOY_PREFIX}.loadbalancer.server.port=80"
+      - "traefik.docker.network=traefik_proxy"
