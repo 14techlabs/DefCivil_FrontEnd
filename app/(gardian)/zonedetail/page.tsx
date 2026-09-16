@@ -10,6 +10,7 @@ import { EditZoneModal } from "@/app/components/EditZoneModal";
 import { DeleteZoneModal } from "@/app/components/DeleteZoneModal";
 import { DataLoading } from "@/app/components/DataLoading";
 import type { MapPoint } from "@/app/components/PointsMap";
+import type { ZoneData } from "@/app/components/ZoneMap";
 import { getOccurrenceStatusMeta } from "@/app/lib/occurrenceStatus";
 
 function occurrencePointKind(status: string): MapPoint["kind"] {
@@ -48,7 +49,7 @@ interface Evento {
 }
 
 interface ZoneDetailResponse {
-  zonas: Zona;
+  zonas: ZoneData;
   eventos: Evento[];
 }
 
@@ -296,6 +297,7 @@ function ZoneDetailContent() {
 
   // lista lateral: ocorrências e pontos de apoio dentro da zona
   const [ocorrencias, setOcorrencias] = useState<Ocorrencia[]>([]);
+  const [ocorrenciasLoading, setOcorrenciasLoading] = useState(true);
   const [apoios, setApoios] = useState<PontoApoio[]>([]);
   const [aba, setAba] = useState<"ocorrencias" | "apoios">("ocorrencias");
   const [selecionadoId, setSelecionadoId] = useState<string | null>(null);
@@ -338,6 +340,7 @@ function ZoneDetailContent() {
     if (!zoneId) return;
     let cancelled = false;
 
+    setOcorrenciasLoading(true);
     api
       .get<{ ocorrencias: Ocorrencia[] }>(
         `/ocorrencias/ocorrencias_por_zona/?zona_id=${zoneId}`,
@@ -347,6 +350,9 @@ function ZoneDetailContent() {
       })
       .catch(() => {
         if (!cancelled) setOcorrencias([]);
+      })
+      .finally(() => {
+        if (!cancelled) setOcorrenciasLoading(false);
       });
 
     api
@@ -559,6 +565,7 @@ function ZoneDetailContent() {
             pontos={pontos}
             pontoSelecionadoId={selecionadoId}
             onSelecionarPonto={selecionarPonto}
+            initialZoneData={z}
           />
         </section>
 
@@ -619,7 +626,11 @@ function ZoneDetailContent() {
                   }}
                 />
               ) : aba === "ocorrencias" ? (
-                ocorrencias.length === 0 ? (
+                ocorrenciasLoading ? (
+                  <div className="flex flex-col items-center justify-center gap-3 py-14 text-center">
+                    <p className="text-[12px] text-on-surface-variant">Carregando ocorrências…</p>
+                  </div>
+                ) : ocorrencias.length === 0 ? (
                   <SemItens texto="Nenhuma ocorrência registrada nesta zona." />
                 ) : (
                   <div className="space-y-2">

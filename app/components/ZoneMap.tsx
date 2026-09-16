@@ -61,6 +61,8 @@ interface ZoneMapProps {
   pontoSelecionadoId?: string | number | null;
   // clique num pin do mapa → abre o detalhe na lista lateral
   onSelecionarPonto?: (ponto: MapPoint | null) => void;
+  // dados da zona ja carregados pela pagina pai (evita fetch duplicado)
+  initialZoneData?: ZoneData | null;
 }
 
 interface PinEntry {
@@ -95,6 +97,7 @@ export function ZoneMap({
   pontos = [],
   pontoSelecionadoId = null,
   onSelecionarPonto,
+  initialZoneData = null,
 }: ZoneMapProps) {
   /* ── refs ── */
   const mapContainerRef = useRef<HTMLDivElement>(null);
@@ -179,12 +182,16 @@ export function ZoneMap({
     if (!user?.entidade) return;
     let cancelled = false;
 
+    const zonePromise = initialZoneData
+      ? Promise.resolve({ data: { zonas: initialZoneData, eventos: [] } })
+      : api.get<ZoneDetailResponse>(`/zonas/${zoneId}/`);
+
     Promise.all([
       api.get<{
         area: { id: number; area: GeoJSON.MultiPolygon };
         zonas: { id: number; nome: string; area: GeoJSON.Polygon | null }[];
       }>("/entidades/areas/"),
-      api.get<ZoneDetailResponse>(`/zonas/${zoneId}/`),
+      zonePromise,
     ])
       .then(([areaRes, zoneRes]) => {
         if (cancelled) return;

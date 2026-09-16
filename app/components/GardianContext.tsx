@@ -56,6 +56,33 @@ type GardianContextValue = {
 
 const GardianContext = createContext<GardianContextValue | null>(null);
 
+const CACHED_USER_KEY = "gardian:cached_user";
+
+let mePromise: Promise<UserData | null> | null = null;
+
+function getCachedUser(): UserData | null {
+  if (typeof window === "undefined") return null;
+  try {
+    const raw = sessionStorage.getItem(CACHED_USER_KEY);
+    return raw ? JSON.parse(raw) : null;
+  } catch {
+    return null;
+  }
+}
+
+function setCachedUser(u: UserData | null) {
+  if (typeof window === "undefined") return;
+  try {
+    if (u) {
+      sessionStorage.setItem(CACHED_USER_KEY, JSON.stringify(u));
+    } else {
+      sessionStorage.removeItem(CACHED_USER_KEY);
+    }
+  } catch {
+    // ignora erro caso sessionstorage esteja indisponivel
+  }
+}
+
 export function GardianProvider({ children }: { children: ReactNode }) {
   const router = useRouter();
 
@@ -65,21 +92,33 @@ export function GardianProvider({ children }: { children: ReactNode }) {
   const [sidebarStyle, setSidebarStyle] = useState("light");
   const [showAlertModal, setShowAlertModal] = useState(false);
   const [toast, setToast] = useState<ToastState>(null);
-  const [user, setUser] = useState<UserData | null>(null);
+  const [user, setUser] = useState<UserData | null>(() => getCachedUser());
 
-  // Fetch user data on mount
+  // busca dados do usuario autenticado no mount com deduplicacao de promessa
   useEffect(() => {
     if (!authService.getAccessToken()) return;
 
+    if (!mePromise) {
+      mePromise = api
+        .get<{ usuario: UserData }>("/acess/me/")
+        .then((res) => {
+          const u = res.data.usuario;
+          setCachedUser(u);
+          return u;
+        })
+        .catch(() => null)
+        .finally(() => {
+          mePromise = null;
+        });
+    }
+
     let cancelled = false;
-    api
-      .get<{ usuario: UserData }>("/acess/me/")
-      .then((res) => {
-        if (!cancelled) setUser(res.data.usuario);
-      })
-      .catch(() => {
-        // Silently fail — the auth gate will redirect if needed
-      });
+    mePromise.then((userData) => {
+      if (!cancelled && userData) {
+        setUser(userData);
+      }
+    });
+
     return () => {
       cancelled = true;
     };
@@ -101,12 +140,13 @@ export function GardianProvider({ children }: { children: ReactNode }) {
   }, []);
 
   const logout = useCallback(() => {
-    // Clear client-side auth state
+    // limpa estado de autenticacao no cliente
     authService.logout();
     clearSession();
     broadcastLogout();
+    setCachedUser(null);
     setUser(null);
-    // Redirect to login
+    // redireciona para o login
     router.replace("/login");
   }, [router]);
 
