@@ -66,12 +66,6 @@ interface TimelineResponse {
   entradas: TimelineItem[];
 }
 
-interface Ocorrencia {
-  id: number;
-  titulo: string;
-  evento: number | null;
-}
-
 // ocorrência completa vinculada ao evento
 interface OcorrenciaDetalhada {
   id: number;
@@ -97,13 +91,27 @@ interface EventoListResponse {
   evento_vinculado_id: number | null;
 }
 
-interface EventoDetailResponse {
-  eventos: Evento;
-  evento_vinculado_id: number | null;
-}
+// cache em memoria das zonas para lookup imediato entre navegacoes
+let cachedZonaLookup: Map<number, string> | null = null;
+let zonaLookupPromise: Promise<Map<number, string>> | null = null;
 
-interface OcorrenciaListResponse {
-  ocorrencias: Ocorrencia[];
+function getZonaLookup(): Promise<Map<number, string>> {
+  if (cachedZonaLookup) return Promise.resolve(cachedZonaLookup);
+  if (zonaLookupPromise) return zonaLookupPromise;
+
+  zonaLookupPromise = api
+    .get<{ zonas: { id: number; nome: string }[] }>("/zonas/", { params: { lookup: "1" } })
+    .then((res) => {
+      const map = new Map((res.data.zonas ?? []).map((z) => [z.id, z.nome]));
+      cachedZonaLookup = map;
+      return map;
+    })
+    .catch(() => new Map<number, string>())
+    .finally(() => {
+      zonaLookupPromise = null;
+    });
+
+  return zonaLookupPromise;
 }
 
 const EMPTY_ROUTE: RotaEvento = {
@@ -318,12 +326,10 @@ export default function EventsPage() {
   const [showReport, setShowReport] = useState(false);
   const [eventos, setEventos] = useState<Evento[]>([]);
   const [eventoVinculadoId, setEventoVinculadoId] = useState<number | null>(null);
-  const [ocorrencias, setOcorrencias] = useState<Ocorrencia[]>([]);
-  const [zonaLookup, setZonaLookup] = useState<Map<number, string>>(new Map());
+  const [zonaLookup, setZonaLookup] = useState<Map<number, string>>(() => cachedZonaLookup ?? new Map());
   const [selectedId, setSelectedId] = useState<number | null>(null);
   const [loading, setLoading] = useState(true);
   const [loadError, setLoadError] = useState("");
-  const [detailError, setDetailError] = useState("");
   const [search, setSearch] = useState("");
   const [statusFilter, setStatusFilter] = useState("todos");
   const [typeFilter, setTypeFilter] = useState("todos");
@@ -352,7 +358,10 @@ export default function EventsPage() {
   const [ocorrenciasReloadKey, setOcorrenciasReloadKey] = useState(0);
   const ocorrenciasCacheRef = useRef<Map<number, OcorrenciaDetalhada[]>>(new Map());
   const ocorrenciasAlvoRef = useRef<number | null>(null);
+  const timelineCacheRef = useRef<Map<number, TimelineItem[]>>(new Map());
+  const timelineAlvoRef = useRef<number | null>(null);
 
+  // carrega eventos da entidade (rapido e sem chamadas redundantes)
   const fetchData = useCallback(async () => {
     setLoading(true);
     setLoadError("");
@@ -371,29 +380,9 @@ export default function EventsPage() {
         }
         return eventList[0]?.id ?? null;
       });
-
-      const [occurrenceResult, zoneResult] = await Promise.allSettled([
-        api.get<OcorrenciaListResponse>("/ocorrencias/"),
-        api.get<{ zonas: { id: number; nome: string }[] }>("/zonas/", { params: { lookup: "1" } }),
-      ]);
-
-      setOcorrencias(
-        occurrenceResult.status === "fulfilled"
-          ? occurrenceResult.value.data.ocorrencias ?? []
-          : [],
-      );
-      setZonaLookup(
-        new Map(
-          zoneResult.status === "fulfilled"
-            ? (zoneResult.value.data.zonas ?? []).map((zone) => [zone.id, zone.nome])
-            : [],
-        ),
-      );
     } catch {
       setEventos([]);
       setEventoVinculadoId(null);
-      setOcorrencias([]);
-      setZonaLookup(new Map());
       setSelectedId(null);
       setLoadError("Não foi possível carregar os eventos.");
     } finally {
@@ -406,42 +395,43 @@ export default function EventsPage() {
     return () => window.clearTimeout(timer);
   }, [fetchData]);
 
+  // carrega lookup de zonas em segundo plano sem bloquear o carregamento principal
   useEffect(() => {
-    if (selectedId == null) return;
+    if (cachedZonaLookup) return;
     let cancelled = false;
-    const timer = window.setTimeout(() => {
-      setDetailError("");
-      api
-        .get<EventoDetailResponse>(`/eventos/${selectedId}/`)
-        .then((response) => {
-          if (cancelled) return;
-          const detail = response.data.eventos;
-          setEventoVinculadoId(response.data.evento_vinculado_id);
-          setEventos((current) =>
-            current.map((event) => (event.id === detail.id ? detail : event)),
-          );
-        })
-        .catch(() => {
-          if (!cancelled) setDetailError("Não foi possível atualizar os detalhes do evento.");
-        });
-    }, 0);
+    getZonaLookup().then((map) => {
+      if (!cancelled) setZonaLookup(map);
+    });
     return () => {
       cancelled = true;
-      window.clearTimeout(timer);
     };
-  }, [selectedId]);
+  }, []);
 
   const fetchTimeline = useCallback(async (eventId: number) => {
+    const cached = timelineCacheRef.current.get(eventId);
+    if (cached) {
+      setTimelineEntries(cached);
+      setLoadingTimeline(false);
+      return;
+    }
+
+    timelineAlvoRef.current = eventId;
     setLoadingTimeline(true);
     setTimelineError("");
     try {
       const response = await api.get<TimelineResponse>(`/eventos/${eventId}/timeline/`);
-      setTimelineEntries(response.data.entradas ?? []);
+      if (timelineAlvoRef.current !== eventId) return;
+      const entries = response.data.entradas ?? [];
+      timelineCacheRef.current.set(eventId, entries);
+      setTimelineEntries(entries);
     } catch (error) {
+      if (timelineAlvoRef.current !== eventId) return;
       setTimelineEntries([]);
       setTimelineError(timelineErrorMessage(error, "carregar"));
     } finally {
-      setLoadingTimeline(false);
+      if (timelineAlvoRef.current === eventId) {
+        setLoadingTimeline(false);
+      }
     }
   }, []);
 
@@ -459,7 +449,7 @@ export default function EventsPage() {
   // carrega as ocorrências do evento selecionado (cache por evento para não dar refetch)
   useEffect(() => {
     const timer = window.setTimeout(() => {
-      if (tab !== "ocorrencias" || selectedId == null) return;
+      if ((tab !== "ocorrencias" && tab !== "tempo_real") || selectedId == null) return;
       const alvo = selectedId;
       ocorrenciasAlvoRef.current = alvo;
 
@@ -557,10 +547,7 @@ export default function EventsPage() {
     [eventos, selectedId],
   );
 
-  const ocorrenciasVinculadas = useMemo(
-    () => ocorrencias.filter((occurrence) => occurrence.evento === evento?.id),
-    [evento?.id, ocorrencias],
-  );
+  const ocorrenciasVinculadas = ocorrenciasEvento;
 
   const toggleVinculacao = async () => {
     if (!evento) return;
@@ -634,6 +621,7 @@ export default function EventsPage() {
       setNotaNivel("info");
       setNotaDataHora("");
       setAdicionandoNota(false);
+      timelineCacheRef.current.delete(evento.id);
       await fetchTimeline(evento.id);
       showToast("Nota adicionada à timeline.");
     } catch (error) {
@@ -650,6 +638,7 @@ export default function EventsPage() {
     setTimelineError("");
     try {
       await api.delete(`/eventos/${evento.id}/timeline/${entrada.id}/`);
+      timelineCacheRef.current.delete(evento.id);
       setTimelineEntries((current) => current.filter((item) => item.id !== entrada.id));
       showToast("Nota removida da timeline.");
     } catch (error) {
@@ -748,7 +737,45 @@ export default function EventsPage() {
             {filteredEvents.map((item) => {
               const active = item.id === evento?.id;
               return (
-                <button key={item.id} type="button" onClick={() => { if (selectedId !== item.id) { setOcorrenciaSelecionadaId(null); setOcorrenciasEventoId(null); setOcorrenciasEvento([]); setOcorrenciasEventoError(""); } setSelectedId(item.id); setTimelineEntries([]); setLoadingTimeline(true); setAdicionandoNota(false); setTimelineError(""); }} className={`card-tonal relative w-full overflow-hidden p-5 text-left shadow-ambient-sm transition-all hover:shadow-ambient ${active ? "ring-2 ring-secondary" : ""}`}>
+                <button
+                  key={item.id}
+                  type="button"
+                  onClick={() => {
+                    if (selectedId === item.id) return;
+                    setSelectedId(item.id);
+                    setAdicionandoNota(false);
+                    setTimelineError("");
+
+                    // Hidrata timeline imediatamente do cache se disponível
+                    const cachedTimeline = timelineCacheRef.current.get(item.id);
+                    if (cachedTimeline) {
+                      timelineAlvoRef.current = item.id;
+                      setTimelineEntries(cachedTimeline);
+                      setLoadingTimeline(false);
+                    } else {
+                      setTimelineEntries([]);
+                      setLoadingTimeline(true);
+                    }
+
+                    // Hidrata ocorrências imediatamente do cache se disponível
+                    const cachedOcorrencias = ocorrenciasCacheRef.current.get(item.id);
+                    if (cachedOcorrencias) {
+                      ocorrenciasAlvoRef.current = item.id;
+                      setOcorrenciaSelecionadaId(null);
+                      setOcorrenciasEvento(cachedOcorrencias);
+                      setOcorrenciasEventoId(item.id);
+                      setLoadingOcorrenciasEvento(false);
+                      setOcorrenciasEventoError("");
+                    } else {
+                      setOcorrenciaSelecionadaId(null);
+                      setOcorrenciasEventoId(null);
+                      setOcorrenciasEvento([]);
+                      setOcorrenciasEventoError("");
+                      setLoadingOcorrenciasEvento(true);
+                    }
+                  }}
+                  className={`card-tonal relative w-full overflow-hidden p-5 text-left shadow-ambient-sm transition-all hover:shadow-ambient ${active ? "ring-2 ring-secondary" : ""}`}
+                >
                   <span className={`absolute bottom-0 left-0 top-0 w-1 ${normalize(item.status) === "ativo" ? "bg-error" : normalize(item.status) === "monitorando" ? "bg-orange-500" : "bg-slate-300"}`} />
                   <div className="pl-3">
                     <div className="mb-2 flex items-center justify-between gap-2">
@@ -769,7 +796,6 @@ export default function EventsPage() {
 
           {evento && (
             <div className="col-span-12 space-y-5 lg:col-span-8">
-              {detailError && <p className="rounded-xl bg-error-container p-4 text-sm font-medium text-on-error-container">{detailError}</p>}
               <div className="card-tonal p-7 shadow-ambient-sm">
                 <div className="grid items-start gap-6 md:grid-cols-[minmax(0,1fr)_280px]">
                   <div className="min-w-0">
@@ -822,7 +848,15 @@ export default function EventsPage() {
                 <div className="card-tonal p-7 shadow-ambient-sm">
                   <SectionHeader overline="RELATÓRIO EM TEMPO REAL" title="Dados que chegam do campo" />
                   {loadingTimeline ? (
-                    <p className="text-[12px] text-on-surface-variant">Carregando atualização mais recente...</p>
+                    <div className="flex items-center gap-3.5 rounded-lg bg-surface-container-low p-4">
+                      <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-md bg-secondary/10 text-secondary">
+                        <Icon name="progress_activity" className="animate-spin text-[20px]" />
+                      </div>
+                      <div className="min-w-0 flex-1 space-y-2">
+                        <span className="text-[12px] font-bold text-primary">Carregando atualização mais recente…</span>
+                        <div className="h-2.5 w-44 rounded bg-outline-variant/20 animate-pulse" />
+                      </div>
+                    </div>
                   ) : timelineError ? (
                     <p className="rounded-lg bg-error-container p-3 text-[12px] font-semibold text-error">{timelineError}</p>
                   ) : !realTime ? (
@@ -849,8 +883,29 @@ export default function EventsPage() {
                     </div>
                   )}
                   <div className="mt-6 border-t border-outline-variant/20 pt-5">
-                    <MetaTag className="mb-3 block">OCORRÊNCIAS VINCULADAS ({ocorrenciasVinculadas.length})</MetaTag>
-                    {ocorrenciasVinculadas.length === 0 ? <p className="text-[12px] italic text-on-surface-variant">Nenhuma ocorrência vinculada.</p> : <div className="grid grid-cols-1 gap-2 md:grid-cols-2">{ocorrenciasVinculadas.map((occurrence) => <div key={occurrence.id} className="flex items-center gap-2 rounded-lg bg-surface-container-low p-2.5 text-[12px]"><Icon name="emergency" className="shrink-0 text-[16px] text-error" /><span className="font-bold text-primary">{occurrence.id}</span><span className="truncate">{formatOccurrenceTitle(occurrence.titulo)}</span></div>)}</div>}
+                    <MetaTag className="mb-3 block">OCORRÊNCIAS VINCULADAS ({evento?.ocorrencias_count ?? 0})</MetaTag>
+                    {loadingOcorrenciasEvento ? (
+                      <div className="flex items-center gap-2.5 py-3 text-on-surface-variant">
+                        <Icon name="progress_activity" className="animate-spin text-[16px] text-secondary" />
+                        <span className="text-[12px] font-medium">Carregando ocorrências vinculadas…</span>
+                      </div>
+                    ) : ocorrenciasVinculadas.length === 0 ? (
+                      <p className="text-[12px] italic text-on-surface-variant">
+                        {evento?.ocorrencias_count && evento.ocorrencias_count > 0
+                          ? "Abra a aba Ocorrências para ver a lista completa."
+                          : "Nenhuma ocorrência vinculada."}
+                      </p>
+                    ) : (
+                      <div className="grid grid-cols-1 gap-2 md:grid-cols-2">
+                        {ocorrenciasVinculadas.map((occurrence) => (
+                          <div key={occurrence.id} className="flex items-center gap-2 rounded-lg bg-surface-container-low p-2.5 text-[12px]">
+                            <Icon name="emergency" className="shrink-0 text-[16px] text-error" />
+                            <span className="font-bold text-primary">{occurrence.id}</span>
+                            <span className="truncate">{formatOccurrenceTitle(occurrence.titulo ?? "")}</span>
+                          </div>
+                        ))}
+                      </div>
+                    )}
                   </div>
                 </div>
               )}
@@ -904,7 +959,10 @@ export default function EventsPage() {
                   )}
                   {timelineError && <p role="alert" className="mb-4 rounded-lg bg-error-container p-3 text-sm font-semibold text-error">{timelineError}</p>}
                   {loadingTimeline ? (
-                    <p className="text-[12px] text-on-surface-variant">Carregando timeline...</p>
+                    <div className="flex flex-col items-center justify-center gap-3 py-12 text-center">
+                      <Icon name="progress_activity" className="animate-spin text-[26px] text-secondary" />
+                      <p className="text-[12px] font-semibold text-on-surface-variant">Carregando timeline…</p>
+                    </div>
                   ) : timelineEntries.length === 0 ? (
                     <p className="text-[12px] italic text-on-surface-variant">Nenhum registro na timeline.</p>
                   ) : (
@@ -987,14 +1045,15 @@ export default function EventsPage() {
                       </div>
                     }
                   />
-                  {loadingOcorrenciasEvento ? (
-                    <p className="text-[12px] text-on-surface-variant" role="status">Carregando ocorrências...</p>
+                  {loadingOcorrenciasEvento || !ocorrenciasCarregadas ? (
+                    <div className="flex flex-col items-center justify-center gap-3 py-12 text-center" role="status">
+                      <Icon name="progress_activity" className="animate-spin text-[26px] text-secondary" />
+                      <p className="text-[12px] font-semibold text-on-surface-variant">Carregando ocorrências…</p>
+                    </div>
                   ) : ocorrenciasEventoError ? (
                     <p role="alert" className="rounded-lg bg-error-container p-3 text-[12px] font-semibold text-error">
                       {ocorrenciasEventoError}
                     </p>
-                  ) : !ocorrenciasCarregadas ? (
-                    <p className="text-[12px] text-on-surface-variant">Carregando ocorrências...</p>
                   ) : ocorrenciasEvento.length > 0 ? (
                     <div className={ocorrenciaSelecionada ? "grid gap-5 lg:grid-cols-2" : ""}>
                       <div className="space-y-2">
