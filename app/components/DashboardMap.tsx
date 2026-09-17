@@ -10,6 +10,7 @@ import {
   addBoundaryLayer,
   getPolygonBounds,
   getMultiPolygonCenter,
+  addZoneCentroidPills,
 } from "@/app/lib/mapShared";
 
 import "maplibre-gl/dist/maplibre-gl.css";
@@ -81,7 +82,6 @@ function buildZoneLayers(map: maplibregl.Map, zones: DashboardZone[]) {
   removeLayers(map);
 
   const features: GeoJSON.Feature<GeoJSON.Polygon>[] = [];
-  const centroids: GeoJSON.Feature<GeoJSON.Point>[] = [];
 
   for (const z of zones) {
     if (!z.area) continue;
@@ -90,13 +90,6 @@ function buildZoneLayers(map: maplibregl.Map, zones: DashboardZone[]) {
 
     const props = { id: z.id, nome: z.nome, status: z.status, tipo: z.tipo, descricao: z.descricao };
     features.push({ type: "Feature", properties: props, geometry: z.area });
-
-    const [cx, cy] = polygonCentroid(ring);
-    centroids.push({
-      type: "Feature",
-      properties: { nome: z.nome, status: z.status },
-      geometry: { type: "Point", coordinates: [cx, cy] },
-    });
   }
 
   if (features.length === 0) return;
@@ -123,15 +116,11 @@ function buildZoneLayers(map: maplibregl.Map, zones: DashboardZone[]) {
   map.addLayer({ id: HIGHLIGHT_FILL, type: "fill", source: HIGHLIGHT_SOURCE, paint: { "fill-color": "#006A60", "fill-opacity": 0.18 } });
   map.addLayer({ id: HIGHLIGHT_LINE, type: "line", source: HIGHLIGHT_SOURCE, paint: { "line-color": "#006A60", "line-width": 4 } });
 
-  // centroids
-  map.addSource(CENTROIDS_SOURCE, { type: "geojson", data: { type: "FeatureCollection", features: centroids } });
-  map.addLayer({
-    id: CENTROIDS_LABEL, type: "symbol", source: CENTROIDS_SOURCE,
-    layout: {
-      "text-field": ["get", "nome"], "text-size": 11, "text-offset": [0, -0.5], "text-anchor": "bottom",
-      "text-font": ["Open Sans Bold", "Arial Unicode MS Bold"],
-    },
-    paint: { "text-color": "#051125", "text-halo-color": "#ffffff", "text-halo-width": 1.5 },
+  // pills de rotulo das zonas
+  addZoneCentroidPills(map, zones, {
+    sourceId: CENTROIDS_SOURCE,
+    layerId: CENTROIDS_LABEL,
+    greyedOut: false,
   });
 }
 

@@ -17,6 +17,7 @@ import {
   getMultiPolygonCenter,
   ZONE_STATUS_COLORS,
   DEFAULT_ZONE_COLOR,
+  addZoneCentroidPills,
 } from "@/app/lib/mapShared";
 import { MAPLIBRE_DRAW_STYLES } from "@/app/lib/maplibreDrawStyles";
 
@@ -309,7 +310,6 @@ export function ZoneMap({
       if (neighborZones.length === 0) return;
 
       const features: GeoJSON.Feature<GeoJSON.Polygon>[] = [];
-      const centroids: GeoJSON.Feature<GeoJSON.Point>[] = [];
 
       for (const z of neighborZones) {
         const ring = z.area.coordinates[0];
@@ -319,14 +319,6 @@ export function ZoneMap({
           type: "Feature",
           properties: { nome: z.nome },
           geometry: z.area,
-        });
-
-        const cx = ring.reduce((s, c) => s + c[0], 0) / ring.length;
-        const cy = ring.reduce((s, c) => s + c[1], 0) / ring.length;
-        centroids.push({
-          type: "Feature",
-          properties: { nome: z.nome },
-          geometry: { type: "Point", coordinates: [cx, cy] },
         });
       }
 
@@ -362,30 +354,14 @@ export function ZoneMap({
         },
         beforeId,
       );
-      map.addSource(NEIGHBOR_CENTROIDS_SOURCE, {
-        type: "geojson",
-        data: { type: "FeatureCollection", features: centroids },
-      });
-      map.addLayer(
-        {
-          id: NEIGHBOR_LABEL,
-          type: "symbol",
-          source: NEIGHBOR_CENTROIDS_SOURCE,
-          layout: {
-            "text-field": ["get", "nome"],
-            "text-size": 10,
-            "text-offset": [0, -0.5],
-            "text-anchor": "bottom",
-            "text-font": ["Open Sans Bold", "Arial Unicode MS Bold"],
-          },
-          paint: {
-            "text-color": "#666",
-            "text-halo-color": "#fff",
-            "text-halo-width": 1.5,
-          },
-        },
+
+      // rotulos em pill para zonas vizinhas
+      addZoneCentroidPills(map, neighborZones, {
+        sourceId: NEIGHBOR_CENTROIDS_SOURCE,
+        layerId: NEIGHBOR_LABEL,
+        greyedOut: true,
         beforeId,
-      );
+      });
     };
 
     if (map.isStyleLoaded()) apply();

@@ -9,6 +9,7 @@ import {
   addPolygonLayer,
   getMultiPolygonCenter,
   removePolygonLayer,
+  declutterBasemap,
 } from "@/app/lib/mapShared";
 import { api } from "@/app/services/Api";
 
@@ -196,6 +197,7 @@ export function PublicMapPicker({
 
     map.on("load", () => {
       resize();
+      declutterBasemap(map);
 
       // destaque das zonas afetadas pelo evento vinculado
       desenharZonasDestaque(map);
