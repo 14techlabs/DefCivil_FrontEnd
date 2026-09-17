@@ -13,6 +13,7 @@ import {
 } from "@/app/components/Primitives";
 import { useGardian } from "@/app/components/GardianContext";
 import { DataLoading } from "@/app/components/DataLoading";
+import { MyPendingOccurrences } from "@/app/components/MyPendingOccurrences";
 import { useAppNavigation } from "@/app/lib/useAppNavigation";
 import { api } from "@/app/services/Api";
 import {
@@ -101,7 +102,7 @@ const TIPO_LABEL: Record<string, string> = {
 // --- página ---
 
 export default function DashboardPage() {
-  const { alertMode } = useGardian();
+  const { alertMode, user } = useGardian();
   const { go, openZone } = useAppNavigation();
 
   // estado dos dados
@@ -246,6 +247,8 @@ export default function DashboardPage() {
           </div>
         </div>
       </header>
+
+      {user?.tipo === 2 && <MyPendingOccurrences key={user.id} userId={user.id} />}
 
       {/* Dados da API */}
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-5">

@@ -2,6 +2,8 @@
 
 import { Suspense, useCallback, useEffect, useMemo, useState } from "react";
 import { useSearchParams } from "next/navigation";
+import Link from "next/link";
+import { pendingForUser } from "@/app/lib/pendingOccurrences";
 import { Btn, Chip, Icon, KPI, MetaTag } from "@/app/components/Primitives";
 import { api } from "@/app/services/Api";
 import { CreateOccurrenceModal } from "@/app/components/CreateOccurrenceModal";
@@ -271,6 +273,8 @@ function OccurrencesContent() {
   const { showToast, user } = useGardian();
   const [showReport, setShowReport] = useState(false);
   const searchParams = useSearchParams();
+  const minhasPendencias = searchParams.get("minhas") === "1";
+  const pendenciaId = minhasPendencias ? searchParams.get("id") : null;
 
   /**
    * Filtro por família, vindo da tela de Famílias
@@ -393,6 +397,7 @@ function OccurrencesContent() {
   }, []);
 
   const fetchData = useCallback(async () => {
+    if (minhasPendencias && !user) return;
     setLoading(true);
     setLoadError("");
     try {
@@ -404,7 +409,30 @@ function OccurrencesContent() {
       if (filter !== "todas") params.categoria = filter;
       if (debouncedBusca) params.busca = debouncedBusca;
       if (familiaFiltroId != null && familiaFiltroAtivo) params.familia_id = familiaFiltroId;
-      const occRes = await api.get<OcorrenciaListResponse>("/ocorrencias/", { params });
+      let occRes: { data: OcorrenciaListResponse };
+      if (minhasPendencias) {
+        const { data } = await api.get<{ ocorrencias: Ocorrencia[] }>("/ocorrencias/minhas/");
+        const busca = debouncedBusca.trim().toLocaleLowerCase("pt-BR");
+        const pendencias = pendingForUser(data.ocorrencias, user!.id).filter((item) => {
+          if (pendenciaId && item.id !== Number(pendenciaId)) return false;
+          if (statusFilter !== "todos" && getOccurrenceStatusMeta(item.status).key !== statusFilter) return false;
+          if (filter !== "todas" && item.categoria !== filter) return false;
+          return !busca || [String(item.id), item.titulo, item.descricao, item.endereco, item.categoria, item.zona == null ? "" : zonaLookup.get(item.zona)].some((value) => value?.toLocaleLowerCase("pt-BR").includes(busca));
+        });
+        const totalPaginas = Math.max(1, Math.ceil(pendencias.length / quantidadePorPagina));
+        if (pagina > totalPaginas) {
+          setPagina(totalPaginas);
+          return;
+        }
+        occRes = {
+          data: {
+            ocorrencias: pendencias.slice((pagina - 1) * quantidadePorPagina, pagina * quantidadePorPagina),
+            paginacao: { pagina, total_paginas: totalPaginas, quantidade_por_pagina: quantidadePorPagina, total_objetos: pendencias.length },
+          }
+        };
+      } else {
+        occRes = await api.get<OcorrenciaListResponse>("/ocorrencias/", { params });
+      }
       const lista = occRes.data.ocorrencias ?? [];
 
       setOcorrencias(lista);
@@ -431,7 +459,7 @@ function OccurrencesContent() {
     } finally {
       setLoading(false);
     }
-  }, [debouncedBusca, familiaFiltroAtivo, familiaFiltroId, filter, pagina, quantidadePorPagina, statusFilter]);
+  }, [debouncedBusca, familiaFiltroAtivo, familiaFiltroId, filter, pagina, quantidadePorPagina, statusFilter, minhasPendencias, pendenciaId, user, zonaLookup]);
 
   const fetchResumo = useCallback(async () => {
     setCarregandoIndicadores(true);
@@ -517,7 +545,7 @@ function OccurrencesContent() {
       }
     }
     return map;
-  }, [resumo?.por_categoria]);
+  }, [resumo]);
 
   // categorias disponíveis unindo catálogo padrão e ocorrências reais da entidade
   const categoriasDisponiveis = useMemo(() => {
@@ -537,7 +565,7 @@ function OccurrencesContent() {
       return categoriaLabel(a).localeCompare(categoriaLabel(b), "pt-BR");
     });
     return ["todas", ...ordenadas];
-  }, [resumo?.por_categoria, contagem]);
+  }, [resumo, contagem]);
 
   // status disponíveis para filtro com contagem global
   const statusDisponiveis = useMemo(() => {
@@ -555,17 +583,18 @@ function OccurrencesContent() {
       }
     }
     return base;
-  }, [resumo?.por_status]);
+  }, [resumo]);
 
   // lista da página já filtrada pelo servidor, preservando ordenação por prioridade
   const ocorrenciasFiltradas = useMemo(() => {
+    if (minhasPendencias) return ocorrencias;
     return [...ocorrencias].sort((a, b) => {
       const prioridadeA = a.status === "alta_prioridade" ? 0 : 1;
       const prioridadeB = b.status === "alta_prioridade" ? 0 : 1;
       if (prioridadeA !== prioridadeB) return prioridadeA - prioridadeB;
       return new Date(b.created_at).getTime() - new Date(a.created_at).getTime();
     });
-  }, [ocorrencias]);
+  }, [ocorrencias, minhasPendencias]);
 
   // --- indicadores ---
 
@@ -743,8 +772,6 @@ function OccurrencesContent() {
     return formatHistoryValue(value);
   };
 
-
-
   // --- renderização ---
 
   if (loading) {
@@ -765,7 +792,7 @@ function OccurrencesContent() {
         <div className="flex items-end justify-between gap-6 flex-wrap">
           <div>
             <h1 className="font-headline font-black text-5xl tracking-tighter text-primary">
-              Ocorrências em Aberto
+              {minhasPendencias ? "Minhas pendências" : "Ocorrências em Aberto"}
             </h1>
             { /*
             <p className="text-sm text-on-surface-variant mt-2">
@@ -785,6 +812,13 @@ function OccurrencesContent() {
         </div>
       </header>
 
+      {minhasPendencias && (
+        <div className="mb-6 flex flex-wrap items-center justify-between gap-3 rounded-xl bg-secondary/10 p-4">
+          <p className="text-sm text-primary">Exibindo somente ocorrências vinculadas a você que ainda não foram concluídas.</p>
+          <Link href={pendenciaId ? "/occurrences?minhas=1" : "/occurrences"} className="rounded text-sm font-bold text-secondary hover:underline focus-visible:ring-2 focus-visible:ring-secondary">{pendenciaId ? "Ver todas as minhas pendências" : "Ver todas as ocorrências"}</Link>
+        </div>
+      )}
+
       {loadError && (
         <div className="mb-6 rounded-xl border border-error/20 bg-error-container p-5">
           <div className="flex items-center gap-3">
@@ -797,6 +831,7 @@ function OccurrencesContent() {
       )}
 
       {/* indicadores */}
+      {minhasPendencias && <p className="mb-3 text-xs font-bold uppercase text-on-surface-variant">Indicadores gerais da entidade</p>}
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-5 mb-6">
         <KPI
           label="Em Aberto"
@@ -1250,8 +1285,8 @@ function OccurrencesContent() {
                           type="button"
                           onClick={() => setDetailTab("detalhes")}
                           className={`flex flex-1 items-center justify-center gap-2 border-b-2 px-3 py-3 text-[11px] font-black uppercase tracking-mono-tight transition-colors ${detailTab === "detalhes"
-                              ? "border-secondary text-secondary"
-                              : "border-transparent text-on-surface-variant hover:text-primary"
+                            ? "border-secondary text-secondary"
+                            : "border-transparent text-on-surface-variant hover:text-primary"
                             }`}
                         >
                           <Icon name="description" className="text-[17px]" />
@@ -1261,8 +1296,8 @@ function OccurrencesContent() {
                           type="button"
                           onClick={() => setDetailTab("historico")}
                           className={`flex flex-1 items-center justify-center gap-2 border-b-2 px-3 py-3 text-[11px] font-black uppercase tracking-mono-tight transition-colors ${detailTab === "historico"
-                              ? "border-secondary text-secondary"
-                              : "border-transparent text-on-surface-variant hover:text-primary"
+                            ? "border-secondary text-secondary"
+                            : "border-transparent text-on-surface-variant hover:text-primary"
                             }`}
                         >
                           <Icon name="history" className="text-[17px]" />
