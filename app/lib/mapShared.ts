@@ -1,34 +1,17 @@
 "use client";
 
 import maplibregl from "maplibre-gl";
-import type { StyleSpecification } from "maplibre-gl";
 
-/* ─────────── estilo do map (raster CARTO tiles) ─────────── */
+/* ─────────── estilo do mapa (openfreemap vector tiles) ─────────── */
 
-export const MAP_STYLE: StyleSpecification = {
-  version: 8,
-  sources: {
-    carto: {
-      type: "raster",
-      tiles: [
-        "https://a.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}@2x.png",
-        "https://b.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}@2x.png",
-        "https://c.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}@2x.png",
-      ],
-      tileSize: 256,
-      maxzoom: 19,
-      attribution:
-        '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> &copy; <a href="https://carto.com/attributions">CARTO</a>',
-    },
-  },
-  layers: [
-    {
-      id: "carto",
-      type: "raster",
-      source: "carto",
-    },
-  ],
-};
+export const OPENFREEMAP_STYLES = {
+  liberty: "https://tiles.openfreemap.org/styles/liberty",
+  positron: "https://tiles.openfreemap.org/styles/positron",
+  bright: "https://tiles.openfreemap.org/styles/bright",
+} as const;
+
+export const MAP_STYLE: string =
+  process.env.NEXT_PUBLIC_MAP_STYLE || OPENFREEMAP_STYLES.bright;
 
 /* ─────────── polygon helpers ─────────── */
 
@@ -56,8 +39,10 @@ export function getPolygonBounds(
 export function getMultiPolygonCenter(
   mp: GeoJSON.MultiPolygon,
 ): [number, number] {
-  let minLon = Infinity, maxLon = -Infinity;
-  let minLat = Infinity, maxLat = -Infinity;
+  let minLon = Infinity,
+    maxLon = -Infinity;
+  let minLat = Infinity,
+    maxLat = -Infinity;
   for (const polygon of mp.coordinates) {
     for (const ring of polygon) {
       for (const [lon, lat] of ring) {
