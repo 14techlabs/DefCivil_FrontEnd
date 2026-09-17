@@ -1,15 +1,11 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
-import { Btn, Chip, Icon, KPI, MetaTag, SectionHeader, StatusDot } from "@/app/components/Primitives";
+import Link from "next/link";
+import { Btn, Chip, Icon, KPI, MetaTag, SectionHeader } from "@/app/components/Primitives";
 import { useGardian } from "@/app/components/GardianContext";
 import { DataLoading } from "@/app/components/DataLoading";
 import { api } from "@/app/services/Api";
-import {
-  MOCK_OCORRENCIAS,
-  MOCK_ZONAS,
-  zonaNome,
-} from "@/app/data/mock";
 import { getOccurrenceStatusMeta } from "@/app/lib/occurrenceStatus";
 
 const CATEGORIA_LABEL: Record<string, string> = {
@@ -85,6 +81,22 @@ interface EquipeZona {
   nome: string;
 }
 
+async function carregarOcorrenciasEquipe(): Promise<EquipeOcorrencia[]> {
+  const ocorrencias: EquipeOcorrencia[] = [];
+  let pagina = 1;
+  let totalPaginas = 1;
+  do {
+    const { data } = await api.get<EquipeOcorrencia[] | {
+      ocorrencias: EquipeOcorrencia[];
+      paginacao?: { total_paginas: number };
+    }>("/ocorrencias/", { params: { pagina, quantidade_por_pagina: 50 } });
+    ocorrencias.push(...(Array.isArray(data) ? data : data.ocorrencias));
+    totalPaginas = Array.isArray(data) ? 1 : data.paginacao?.total_paginas ?? 1;
+    pagina += 1;
+  } while (pagina <= totalPaginas);
+  return ocorrencias;
+}
+
 function hierarquiaCargo(cargo: number | null): Hierarquia {
   if (cargo === 1) return "coordenador";
   if (cargo === 2) return "supervisor";
@@ -125,12 +137,9 @@ export default function TeamPage() {
     atendimentos_30d: 0,
     zonas_cobertas: 0,
   });
-  const [ocorrencias, setOcorrencias] = useState<EquipeOcorrencia[]>(
-    MOCK_OCORRENCIAS as EquipeOcorrencia[],
-  );
-  const [zonas, setZonas] = useState<EquipeZona[]>(
-    MOCK_ZONAS.map(({ id, nome }) => ({ id, nome })),
-  );
+  const [ocorrencias, setOcorrencias] = useState<EquipeOcorrencia[]>([]);
+  const [erroOcorrencias, setErroOcorrencias] = useState(false);
+  const [zonas, setZonas] = useState<EquipeZona[]>([]);
   const [carregandoDados, setCarregandoDados] = useState(true);
   const hierarquiaSessao = user ? hierarquiaCargo(user.cargo) : HIERARQUIA_SESSAO_MOCK;
   const temAcesso = HIERARQUIA_META[hierarquiaSessao].nivel >= 2;
@@ -143,14 +152,15 @@ export default function TeamPage() {
       try {
         const [panoramaResult, ocorrenciasResult, zonasResult] = await Promise.allSettled([
           api.get<EquipePanoramaApi>("/equipe/panorama/"),
-          api.get<EquipeOcorrencia[] | { ocorrencias: EquipeOcorrencia[] }>("/ocorrencias/"),
+          carregarOcorrenciasEquipe(),
           api.get<EquipeZona[] | { zonas: EquipeZona[] }>("/zonas/", { params: { lookup: "1" } }),
         ]);
         if (cancelado) return;
 
         const ocorrenciasReais = ocorrenciasResult.status === "fulfilled"
-          ? unwrapList(ocorrenciasResult.value.data, "ocorrencias")
+          ? ocorrenciasResult.value
           : null;
+        setErroOcorrencias(ocorrenciasResult.status === "rejected");
         if (ocorrenciasReais) setOcorrencias(ocorrenciasReais);
 
         if (zonasResult.status === "fulfilled") {
@@ -201,7 +211,7 @@ export default function TeamPage() {
   const zonaLookup = useMemo(() => new Map(zonas.map((zona) => [zona.id, zona.nome])), [zonas]);
   const tecnicoLookup = useMemo(() => new Map(tecnicos.map((tecnico) => [tecnico.id, tecnico])), [tecnicos]);
   const nomeZona = (zonaId: number | null) =>
-    zonaId == null ? "Sem zona de referência" : zonaLookup.get(zonaId) ?? zonaNome(zonaId);
+    zonaId == null ? "Sem zona de referência" : zonaLookup.get(zonaId) ?? `Zona ${zonaId}`;
 
   const emitirRelatorio = async () => {
     const secoes = Object.entries(relCampos)
@@ -300,7 +310,7 @@ export default function TeamPage() {
               <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-3">
                 {porHierarquia[h].map((t) => {
                   const atuando = ocorrencias.filter(
-                    (o) => o.tecnico_responsavel === t.id && (o.status === "em_andamento" || o.status === "alta_prioridade"),
+                    (o) => o.tecnico_responsavel === t.id && ["em_andamento", "alta_prioridade"].includes(getOccurrenceStatusMeta(o.status).key),
                   );
                   return (
                     <div key={t.id} className="card-recessed p-4">
@@ -315,11 +325,24 @@ export default function TeamPage() {
                           <p className="text-[10px] text-on-surface-variant uppercase font-bold tracking-mono-tight">{t.cargo}</p>
                         </div>
                       </div>
-                      {atuando.length > 0 && (
-                        <p className="text-[11px] text-error font-bold mt-2 flex items-center gap-1.5">
-                          <StatusDot tone="error" /> Atuando em {atuando.map((o) => o.id).join(", ")}
-                        </p>
-                      )}
+                      <div className="mt-4 border-t border-outline-variant/30 pt-3 space-y-2">
+                        <MetaTag>ATUAÇÃO ATUAL {atuando.length > 0 && `· ${atuando.length}`}</MetaTag>
+                        {erroOcorrencias ? (
+                          <p className="text-xs text-error" role="alert">Não foi possível consultar as ocorrências.</p>
+                        ) : atuando.length === 0 ? (
+                          <p className="text-xs text-on-surface-variant">Sem ocorrência em andamento vinculada.</p>
+                        ) : atuando.map((o) => (
+                          <Link key={o.id} href={`/occurrences?id=${o.id}`} className="block rounded-lg border border-outline-variant/30 bg-surface-container-low p-3 transition-colors hover:bg-surface-container-high focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-secondary">
+                            <div className="flex flex-wrap items-center justify-between gap-2">
+                              <span className="text-xs font-bold text-secondary">Ocorrência #{o.id}</span>
+                              <Chip tone={getOccurrenceStatusMeta(o.status).tone}>{getOccurrenceStatusMeta(o.status).label}</Chip>
+                            </div>
+                            <p className="mt-2 break-words text-sm font-bold text-primary">{o.titulo}</p>
+                            <p className="mt-1 text-xs text-on-surface-variant">{nomeZona(o.zona)}</p>
+                            <span className="mt-3 flex items-center gap-1 text-xs font-bold text-secondary">Ver ocorrência <Icon name="arrow_forward" className="text-[16px]" /></span>
+                          </Link>
+                        ))}
+                      </div>
                     </div>
                   );
                 })}
@@ -368,7 +391,9 @@ export default function TeamPage() {
           </div>
         </div>
 
-        {atendimentos.length === 0 ? (
+        {erroOcorrencias ? (
+          <p className="text-sm text-error" role="alert">Não foi possível carregar os atendimentos. Atualize a página para tentar novamente.</p>
+        ) : atendimentos.length === 0 ? (
           <p className="text-[12px] text-on-surface-variant italic">Nenhum atendimento com os filtros atuais.</p>
         ) : (
           <div className="overflow-x-auto">
@@ -388,7 +413,7 @@ export default function TeamPage() {
                   return (
                     <tr key={o.id} className="border-b border-outline-variant/15 hover:bg-surface-container-low transition-colors">
                       <td className="py-3.5 pr-4">
-                        <p className="text-[13px] font-bold text-primary">{o.id} · {o.titulo}</p>
+                        <Link href={`/occurrences?id=${o.id}`} className="text-[13px] font-bold text-primary hover:text-secondary hover:underline focus-visible:ring-2 focus-visible:ring-secondary">#{o.id} · {o.titulo}</Link>
                       </td>
                       <td className="py-3.5 pr-4 text-[12px] text-on-surface">{tec?.nome ?? "—"}</td>
                       <td className="py-3.5 pr-4 text-[12px] text-on-surface-variant">{nomeZona(o.zona)}</td>
