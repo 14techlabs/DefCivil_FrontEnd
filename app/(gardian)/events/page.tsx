@@ -6,12 +6,14 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Btn, Chip, Icon, MetaTag, SectionHeader, StatusDot, Tab } from "@/app/components/Primitives";
 import { useGardian } from "@/app/components/GardianContext";
 import { api } from "@/app/services/Api";
+import { fetchAllPages } from "@/app/lib/pagination";
 import { EventFormModal } from "@/app/components/EventFormModal";
 import { EventReportModal } from "@/app/components/EventReportModal";
 import { DeleteEventModal } from "@/app/components/DeleteEventModal";
 import { DataLoading } from "@/app/components/DataLoading";
 import { PRIORIDADE_META, type RouteStop } from "@/app/components/RouteMap";
 import { getOccurrenceStatusMeta } from "@/app/lib/occurrenceStatus";
+import { reportLabel } from "@/app/lib/reportLabels";
 
 const RouteMap = dynamic(
   () => import("@/app/components/RouteMap").then((module) => module.RouteMap),
@@ -193,6 +195,12 @@ const OCCURRENCE_CATEGORY_LABEL: Record<string, string> = {
   produtos_perigosos: "Produtos Perigosos",
 };
 
+function formatOccurrenceCategory(category?: string | null): string {
+  const normalized = (category ?? "").trim().toLocaleLowerCase("pt-BR").replace(/[_\s]+/g, "_").replace(/^_+|_+$/g, "");
+  if (!normalized) return "Sem categoria";
+  return reportLabel(normalized).replace(/(^|\s)(\p{L})/gu, (_, space: string, letter: string) => space + letter.toLocaleUpperCase("pt-BR"));
+}
+
 const formatOccurrenceTitle = (title: string) =>
   Object.entries(OCCURRENCE_CATEGORY_LABEL).reduce(
     (formatted, [category, label]) => formatted.replaceAll(category, label),
@@ -231,9 +239,6 @@ const statusTone = (status: string | null) => {
 const isClosed = (status: string | null) =>
   ["encerrado", "concluido", "concluído"].includes(normalize(status));
 
-// limite por página usado na lista de ocorrências da aba Ocorrências
-const OCORRENCIAS_POR_PAGINA = 50;
-
 // formata valor monetário em reais (null quando zero ou ausente)
 const formatarReais = (valor?: string | null) => {
   const numero = Number(valor ?? 0);
@@ -252,9 +257,7 @@ const formatarCoordenadas = (coordenadas?: OcorrenciaDetalhada["coordenadas"]) =
 // painel de detalhes da ocorrência selecionada na aba Ocorrências
 function OcorrenciaDetalhePanel({ ocorrencia }: { ocorrencia: OcorrenciaDetalhada }) {
   const meta = getOccurrenceStatusMeta(ocorrencia.status);
-  const categoriaLabel = ocorrencia.categoria
-    ? OCCURRENCE_CATEGORY_LABEL[ocorrencia.categoria] ?? ocorrencia.categoria
-    : "Sem categoria";
+  const categoriaLabel = formatOccurrenceCategory(ocorrencia.categoria);
   const custo = formatarReais(ocorrencia.custo_danos);
   const coordenadas = formatarCoordenadas(ocorrencia.coordenadas);
   const titulo =
@@ -467,13 +470,9 @@ export default function EventsPage() {
         return;
       }
 
-      api
-        .get<{ ocorrencias: OcorrenciaDetalhada[] }>(
-          `/ocorrencias/?evento_id=${alvo}&quantidade_por_pagina=${OCORRENCIAS_POR_PAGINA}`,
-        )
-        .then((response) => {
+      fetchAllPages<OcorrenciaDetalhada>("/ocorrencias/", "ocorrencias", { evento_id: alvo })
+        .then((lista) => {
           if (ocorrenciasAlvoRef.current !== alvo) return;
-          const lista = response.data.ocorrencias ?? [];
           ocorrenciasCacheRef.current.set(alvo, lista);
           setOcorrenciaSelecionadaId(null);
           setOcorrenciasEvento(lista);
@@ -1074,7 +1073,7 @@ export default function EventsPage() {
                                   {formatOccurrenceTitle(item.titulo ?? "") || `Ocorrência ${item.id}`}
                                 </span>
                                 <span className="mt-0.5 block truncate text-[11px] text-on-surface-variant">
-                                  {item.id} · {item.categoria ? OCCURRENCE_CATEGORY_LABEL[item.categoria] ?? item.categoria : "Sem categoria"} · {meta.label}
+                                  {item.id} · {formatOccurrenceCategory(item.categoria)} · {meta.label}
                                 </span>
                                 <span className="mt-1 block font-mono text-[10px] text-slate-400">
                                   {formatTimelineDate(item.created_at ?? "")}
@@ -1089,11 +1088,6 @@ export default function EventsPage() {
                     </div>
                   ) : (
                     <p className="text-[12px] italic text-on-surface-variant">Nenhuma ocorrência vinculada a este evento.</p>
-                  )}
-                  {ocorrenciasCarregadas && ocorrenciasEvento.length >= OCORRENCIAS_POR_PAGINA && (
-                    <p className="mt-4 text-[11px] italic text-on-surface-variant">
-                      Lista limitada a {OCORRENCIAS_POR_PAGINA} ocorrências deste evento. Use a página de ocorrências para ver todas.
-                    </p>
                   )}
                 </div>
               )}

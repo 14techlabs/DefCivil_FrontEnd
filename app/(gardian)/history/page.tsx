@@ -5,6 +5,7 @@ import { Bar, Chip, Icon, MetaTag, SectionHeader, Tab } from "@/app/components/P
 import { useGardian } from "@/app/components/GardianContext";
 import { DataLoading } from "@/app/components/DataLoading";
 import { api } from "@/app/services/Api";
+import { fetchAllPages } from "@/app/lib/pagination";
 import {
   MOCK_OCORRENCIAS,
   MOCK_HIST_PREVISOES_IA,
@@ -267,7 +268,7 @@ export default function HistoryPage() {
     const carregar = async () => {
       try {
         const [ocorrenciasResult, zonasResult, usuariosResult, alertasResult, eventosResult] = await Promise.allSettled([
-          api.get<HistoryOccurrence[] | { ocorrencias: HistoryOccurrence[] }>("/ocorrencias/"),
+          fetchAllPages<HistoryOccurrence>("/ocorrencias/", "ocorrencias").then((ocorrencias) => ({ data: { ocorrencias } })),
           api.get<Array<{ id: number; nome: string }> | { zonas: Array<{ id: number; nome: string }> }>("/zonas/", { params: { lookup: "1" } }),
           api.get<HistoryUser[] | { usuarios: HistoryUser[] }>("/usuarios/"),
           api.get<AlertApi[] | { alertas: AlertApi[] }>("/alertas/"),

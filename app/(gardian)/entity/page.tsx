@@ -6,6 +6,7 @@ import dynamic from "next/dynamic";
 import { Btn, Chip, Icon, KPI, MetaTag, SectionHeader, StatusDot, Tab } from "@/app/components/Primitives";
 import { ModalShell } from "@/app/components/Modals";
 import { api } from "@/app/services/Api";
+import { fetchAllPages } from "@/app/lib/pagination";
 import {
   APOIO_TIPOS,
   PontoApoioFormModal,
@@ -413,7 +414,7 @@ function EntityPageContent() {
     setContasLoading(true);
     Promise.allSettled([
       api.get<{ eventos: EventoFinanceiro[] }>("/eventos/"),
-      api.get<{ ocorrencias: OcorrenciaFinanceira[] }>("/ocorrencias/"),
+      fetchAllPages<OcorrenciaFinanceira>("/ocorrencias/", "ocorrencias").then((ocorrencias) => ({ data: { ocorrencias } })),
       api.get<{ prestacoes: PrestacaoApi[] }>("/eventos/prestacoes/"),
     ]).then(([eventoResult, ocorrenciaResult, prestacaoResult]) => {
       if (cancelled) return;

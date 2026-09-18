@@ -1,11 +1,12 @@
 "use client";
 
-import { Suspense, useCallback, useEffect, useMemo, useState } from "react";
+import { Suspense, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useSearchParams } from "next/navigation";
 import Link from "next/link";
 import { pendingForUser } from "@/app/lib/pendingOccurrences";
 import { Btn, Chip, Icon, KPI, MetaTag } from "@/app/components/Primitives";
 import { api } from "@/app/services/Api";
+import { fetchAllPages } from "@/app/lib/pagination";
 import { CreateOccurrenceModal } from "@/app/components/CreateOccurrenceModal";
 import { EditOccurrenceModal } from "@/app/components/EditOccurrenceModal";
 import { OccurrenceDamagesModal } from "@/app/components/OccurrenceDamagesModal";
@@ -125,10 +126,6 @@ interface ResumoOcorrencias {
 interface FamiliaBasic {
   id: number;
   nome: string;
-}
-
-interface FamiliaListResponse {
-  familias: FamiliaBasic[];
 }
 
 interface ChecklistBasic {
@@ -273,6 +270,10 @@ function OccurrencesContent() {
   const { showToast, user } = useGardian();
   const [showReport, setShowReport] = useState(false);
   const searchParams = useSearchParams();
+  const linkedId = searchParams.get("id");
+  const positionedId = useRef<string | null>(null);
+  const listRequest = useRef(0);
+  const completeList = useRef<{ key: string; items: Ocorrencia[] } | null>(null);
   const minhasPendencias = searchParams.get("minhas") === "1";
   const pendenciaId = minhasPendencias ? searchParams.get("id") : null;
 
@@ -349,7 +350,7 @@ function OccurrencesContent() {
         api.get<ZonaListResponse>("/zonas/", { params: { lookup: "1" } }),
         api.get<UsuarioInfo[]>("/usuarios/"),
         api.get<EventoListResponse>("/eventos/"),
-        api.get<FamiliaListResponse>("/familias/", { params: { quantidade_por_pagina: 50 } }),
+        fetchAllPages<FamiliaBasic>("/familias/", "familias").then((familias) => ({ data: { familias } })),
         api.get<ChecklistBasic[]>("/entidades/checklist/"),
       ]);
 
@@ -396,15 +397,13 @@ function OccurrencesContent() {
     }
   }, []);
 
-  const fetchData = useCallback(async () => {
+  const fetchData = useCallback(async (refresh = true) => {
     if (minhasPendencias && !user) return;
+    const requestId = ++listRequest.current;
     setLoading(true);
     setLoadError("");
     try {
-      const params: Record<string, string | number> = {
-        pagina,
-        quantidade_por_pagina: quantidadePorPagina,
-      };
+      const params: Record<string, string | number> = {};
       if (statusFilter !== "todos") params.status = statusFilter;
       if (filter !== "todas") params.categoria = filter;
       if (debouncedBusca) params.busca = debouncedBusca;
@@ -431,8 +430,39 @@ function OccurrencesContent() {
           }
         };
       } else {
-        occRes = await api.get<OcorrenciaListResponse>("/ocorrencias/", { params });
+        const cacheKey = JSON.stringify([user?.id, params]);
+        if (refresh) completeList.current = null;
+        const all = completeList.current?.key === cacheKey
+          ? completeList.current.items
+          : await fetchAllPages<Ocorrencia>("/ocorrencias/", "ocorrencias", params);
+        if (requestId !== listRequest.current) return;
+        all.sort((a, b) => {
+          const priority = Number(b.status === "alta_prioridade") - Number(a.status === "alta_prioridade");
+          return priority || Date.parse(b.created_at) - Date.parse(a.created_at) || b.id - a.id;
+        });
+        completeList.current = { key: cacheKey, items: all };
+        const totalPaginas = Math.max(1, Math.ceil(all.length / quantidadePorPagina));
+        if (linkedId && positionedId.current !== linkedId) {
+          const index = all.findIndex((item) => item.id === Number(linkedId));
+          if (index >= 0) {
+            const targetPage = Math.floor(index / quantidadePorPagina) + 1;
+            if (pagina !== targetPage) {
+              setPagina(targetPage);
+              return;
+            }
+            positionedId.current = linkedId;
+          }
+        }
+        if (pagina > totalPaginas) {
+          setPagina(totalPaginas);
+          return;
+        }
+        occRes = { data: {
+          ocorrencias: all.slice((pagina - 1) * quantidadePorPagina, pagina * quantidadePorPagina),
+          paginacao: { pagina, total_paginas: totalPaginas, quantidade_por_pagina: quantidadePorPagina, total_objetos: all.length },
+        } };
       }
+      if (requestId !== listRequest.current) return;
       const lista = occRes.data.ocorrencias ?? [];
 
       setOcorrencias(lista);
@@ -448,6 +478,7 @@ function OccurrencesContent() {
           : lista[0]?.id ?? null,
       );
     } catch (error) {
+      if (requestId !== listRequest.current) return;
       const status = (error as { response?: { status?: number } })?.response?.status;
       if (status === 404 && pagina > 1) {
         setPagina((current) => Math.max(1, current - 1));
@@ -457,9 +488,9 @@ function OccurrencesContent() {
       setSelected(null);
       setLoadError("Não foi possível carregar as ocorrências.");
     } finally {
-      setLoading(false);
+      if (requestId === listRequest.current) setLoading(false);
     }
-  }, [debouncedBusca, familiaFiltroAtivo, familiaFiltroId, filter, pagina, quantidadePorPagina, statusFilter, minhasPendencias, pendenciaId, user, zonaLookup]);
+  }, [debouncedBusca, familiaFiltroAtivo, familiaFiltroId, filter, pagina, quantidadePorPagina, statusFilter, minhasPendencias, pendenciaId, user, zonaLookup, linkedId]);
 
   const fetchResumo = useCallback(async () => {
     setCarregandoIndicadores(true);
@@ -479,7 +510,7 @@ function OccurrencesContent() {
   }, [fetchLookups]);
 
   useEffect(() => {
-    const timer = window.setTimeout(() => void fetchData(), 0);
+    const timer = window.setTimeout(() => void fetchData(false), 0);
     return () => window.clearTimeout(timer);
   }, [fetchData]);
 
@@ -802,7 +833,7 @@ function OccurrencesContent() {
              */ }
           </div>
           <div className="flex flex-wrap gap-3">
-            <Btn variant="secondary" icon="description" disabled={Boolean(loadError) || ocorrencias.length === 0} onClick={() => setShowReport(true)}>
+            <Btn variant="secondary" icon="description" onClick={() => setShowReport(true)}>
               Emitir relatório
             </Btn>
             <Btn variant="primary" icon="add" onClick={() => setShowCreateModal(true)}>
@@ -1815,7 +1846,7 @@ function OccurrencesContent() {
       />
 
       {showReport && <OccurrenceReportModal
-        items={ocorrencias}
+        onlyMine={minhasPendencias}
         events={eventos}
         zones={zonaLookup}
         users={usuarioLookup}

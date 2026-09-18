@@ -1,6 +1,8 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
+import { fetchAllPages } from "@/app/lib/pagination";
+import { api } from "@/app/services/Api";
 import { reportLabel, reportTitle, reportText } from "@/app/lib/reportLabels";
 import { ModalShell } from "./Modals";
 import { Btn } from "./Primitives";
@@ -34,8 +36,8 @@ const localDay = (value: string) => {
   return Number.isNaN(d.getTime()) ? "" : `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
 };
 
-export function OccurrenceReportModal({ items, zones, users, events, categories, issuedBy, onClose }: {
-  items: ReportOccurrence[];
+export function OccurrenceReportModal({ onlyMine = false, zones, users, events, categories, issuedBy, onClose }: {
+  onlyMine?: boolean;
   zones: Map<number, string>;
   users: Map<number, string>;
   events: { id: number; nome: string }[];
@@ -45,6 +47,20 @@ export function OccurrenceReportModal({ items, zones, users, events, categories,
 }) {
   const [filters, setFilters] = useState({ status: "", category: "", zone: "", user: "", event: "", origin: "", start: "", end: "" });
   const [error, setError] = useState("");
+  const [items, setItems] = useState<ReportOccurrence[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [attempt, setAttempt] = useState(0);
+  const [loadError, setLoadError] = useState(false);
+  useEffect(() => {
+    let cancelled = false;
+    const request = onlyMine
+      ? api.get<{ ocorrencias: ReportOccurrence[] }>("/ocorrencias/minhas/").then(({ data }) => data.ocorrencias)
+      : fetchAllPages<ReportOccurrence>("/ocorrencias/", "ocorrencias");
+    request.then((data) => { if (!cancelled) setItems(data); })
+      .catch(() => { if (!cancelled) setLoadError(true); })
+      .finally(() => { if (!cancelled) setLoading(false); });
+    return () => { cancelled = true; };
+  }, [onlyMine, attempt]);
   const invalidPeriod = Boolean(filters.start && filters.end && filters.start > filters.end);
   const filtered = items.filter((o) => {
     const day = localDay(o.created_at);
@@ -67,7 +83,7 @@ export function OccurrenceReportModal({ items, zones, users, events, categories,
     { key: "user" as const, label: "Responsável", options: [...new Set(items.map((o) => o.tecnico_responsavel))].map((id) => [String(id ?? "none"), id === null ? "Não atribuído" : users.get(id) ?? `Usuário ${id}`]) },
   ];
   const generate = () => {
-    if (invalidPeriod || !filtered.length) return;
+    if (loading || loadError || invalidPeriod || !filtered.length) return;
     const popup = window.open("", "_blank");
     if (!popup) { setError("Permita pop-ups para abrir o relatório."); return; }
     popup.opener = null;
@@ -88,7 +104,9 @@ export function OccurrenceReportModal({ items, zones, users, events, categories,
   };
   const fieldClass = "w-full min-w-0 h-12 rounded-lg border border-outline-variant/20 bg-surface-container-low px-4 text-sm text-primary transition-colors hover:border-secondary/40 focus:outline-none focus:ring-2 focus:ring-secondary";
   return <ModalShell open onClose={onClose} maxWidth="max-w-2xl">
-    <div className="shrink-0 px-6 py-5 border-b border-outline-variant/20"><h2 className="text-xl font-bold text-primary">Relatório de ocorrências</h2><p className="mt-2 text-sm text-on-surface-variant">Escolha quais ocorrências da página carregada incluir.</p></div>
+    <div className="shrink-0 px-6 py-5 border-b border-outline-variant/20"><h2 className="text-xl font-bold text-primary">Relatório de ocorrências</h2><p className="mt-2 text-sm text-on-surface-variant">{onlyMine ? "Escolha quais das suas pendências incluir, considerando todas as páginas." : "Escolha quais ocorrências da entidade incluir, considerando todas as páginas."}</p></div>
+    {loading && <p role="status" className="px-6 py-3 text-sm">Carregando todas as ocorrências…</p>}
+    {loadError && <div className="px-6 py-3"><p role="alert" className="mb-2 text-sm text-error">Não foi possível carregar a lista completa.</p><Btn variant="secondary" onClick={() => { setLoading(true); setLoadError(false); setAttempt((value) => value + 1); }}>Tentar novamente</Btn></div>}
     <div className="min-h-0 flex-1 overflow-y-auto p-6 sm:px-8">
       <div className="grid grid-cols-1 sm:grid-cols-2 gap-x-6 gap-y-5">
         {selects.map((s) => (
@@ -114,6 +132,6 @@ export function OccurrenceReportModal({ items, zones, users, events, categories,
       <p className={`mt-5 text-right text-sm ${invalidPeriod ? "text-error" : "text-on-surface-variant"}`} role="status">{invalidPeriod ? "A data final deve ser igual ou posterior à inicial." : `${filtered.length} ${filtered.length === 1 ? "ocorrência encontrada" : "ocorrências encontradas"}`}</p>
       {error && <p role="alert" className="mt-3 text-sm text-error">{error}</p>}
     </div>
-    <div className="shrink-0 flex flex-wrap justify-end gap-3 border-t border-outline-variant/20 p-5"><Btn variant="secondary" onClick={onClose}>Cancelar</Btn><Btn variant="primary" icon="description" disabled={invalidPeriod || !filtered.length} onClick={generate}>Gerar relatório</Btn></div>
+    <div className="shrink-0 flex flex-wrap justify-end gap-3 border-t border-outline-variant/20 p-5"><Btn variant="secondary" onClick={onClose}>Cancelar</Btn><Btn variant="primary" icon="description" disabled={loading || loadError || invalidPeriod || !filtered.length} onClick={generate}>Gerar relatório</Btn></div>
   </ModalShell>;
 }

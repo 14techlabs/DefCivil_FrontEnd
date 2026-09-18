@@ -6,6 +6,7 @@ import { Chip, Icon, KPI, MetaTag, SectionHeader } from "@/app/components/Primit
 import { useGardian } from "@/app/components/GardianContext";
 import { DataLoading } from "@/app/components/DataLoading";
 import { api } from "@/app/services/Api";
+import { fetchAllPages } from "@/app/lib/pagination";
 import { getOccurrenceStatusMeta, type OccurrenceStatusKey } from "@/app/lib/occurrenceStatus";
 
 interface ProfileOccurrenceHistory {
@@ -25,10 +26,6 @@ interface ProfileOccurrence {
   tecnico_responsavel: number | null;
   created_at: string;
   historico?: ProfileOccurrenceHistory[];
-}
-
-interface ProfileOccurrencesResponse {
-  ocorrencias: ProfileOccurrence[];
 }
 
 const CARGO_LABEL: Record<number, string> = {
@@ -86,7 +83,7 @@ export default function ProfilePage() {
     if (!user) return;
     let cancelled = false;
     Promise.allSettled([
-      api.get<ProfileOccurrencesResponse>("/ocorrencias/", { params: { pagina: 1 } }),
+      fetchAllPages<ProfileOccurrence>("/ocorrencias/", "ocorrencias").then((ocorrencias) => ({ data: { ocorrencias } })),
       api.get<{ zonas: { id: number; nome: string }[] }>("/zonas/", { params: { lookup: "1" } }),
     ]).then(([occResult, zoneResult]) => {
       if (cancelled) return;

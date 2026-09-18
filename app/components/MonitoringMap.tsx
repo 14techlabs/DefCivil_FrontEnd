@@ -6,6 +6,7 @@ import maplibregl from "maplibre-gl";
 import { getOccurrenceStatusMeta } from "@/app/lib/occurrenceStatus";
 import { createMap, addBoundaryLayer, getMultiPolygonCenter } from "@/app/lib/mapShared";
 import { api } from "@/app/services/Api";
+import { fetchAllPages } from "@/app/lib/pagination";
 import { useGardian } from "@/app/components/GardianContext";
 import "maplibre-gl/dist/maplibre-gl.css";
 
@@ -124,8 +125,8 @@ export function MonitoringMap({ height = 520 }: MonitoringMapProps) {
         zonas: { id: number; nome: string; area: GeoJSON.Polygon | null }[];
       }>("/entidades/areas/"),
       // ocorrências não bloqueiam o mapa (fallback vazio em erro)
-      api
-        .get<{ ocorrencias: MonitoringOcorrencia[] }>("/ocorrencias/")
+      fetchAllPages<MonitoringOcorrencia>("/ocorrencias/", "ocorrencias")
+        .then((ocorrencias) => ({ data: { ocorrencias } }))
         .catch(() => ({ data: { ocorrencias: [] } })),
     ])
       .then(([areaRes, occRes]) => {
