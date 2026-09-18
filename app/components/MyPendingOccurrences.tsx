@@ -42,38 +42,40 @@ export function MyPendingOccurrences({ userId }: { userId: number }) {
 
   return (
     <section aria-labelledby="my-pending-title" aria-busy={loading} className="card-tonal overflow-hidden border border-secondary/20 shadow-ambient-sm">
-      <div className="flex flex-wrap items-center justify-between gap-4 p-5 sm:p-6">
+      <div className="flex flex-wrap items-center justify-between gap-2 px-4 py-5">
         <div>
-          <h2 id="my-pending-title" className="flex items-center gap-2 font-headline text-xl font-bold text-primary">
-            <Icon name="assignment_ind" className="text-secondary" /> Minhas pendências
+          <h2 id="my-pending-title" className="flex items-center gap-2 font-headline text-lg font-bold text-primary">
+            <Icon name="assignment_ind" className="text-[20px] text-secondary" /> Minhas pendências
           </h2>
-          {!loading && !error && <p className="mt-2 text-sm text-on-surface-variant">{items.length === 0 ? "Você não possui ocorrências pendentes." : `Você tem ${items.length} ocorrência${items.length === 1 ? " pendente" : "s pendentes"}.`}</p>}
+          {!loading && !error && items.length === 0 && <p className="mt-1 text-xs text-on-surface-variant">Você não possui ocorrências pendentes.</p>}
         </div>
         {!loading && !error && urgent > 0 && <Chip tone="error">{urgent} em alta prioridade</Chip>}
       </div>
       {loading ? (
-        <p role="status" className="flex items-center gap-2 px-6 pb-6 text-sm text-on-surface-variant"><Icon name="progress_activity" className="animate-spin" /> Carregando suas pendências…</p>
+        <p role="status" className="flex items-center gap-2 px-4 pb-3 text-xs text-on-surface-variant"><Icon name="progress_activity" className="animate-spin text-[18px]" /> Carregando suas pendências…</p>
       ) : error ? (
-        <div className="px-6 pb-6">
+        <div className="px-4 pb-3">
           <p role="alert" className="mb-3 text-sm text-error">Não foi possível carregar suas pendências.</p>
           <Btn variant="secondary" icon="refresh" onClick={() => { setLoading(true); setAttempt((value) => value + 1); }}>Tentar novamente</Btn>
         </div>
       ) : items.length > 0 && (
         <>
-          <ul className="divide-y divide-outline-variant/20 border-t border-outline-variant/20">
+          <ul className="grid grid-cols-1 gap-3 px-4 md:grid-cols-3">
             {items.slice(0, 3).map((item) => (
-              <li key={item.id} className="flex flex-wrap items-center justify-between gap-4 px-5 py-4 sm:px-6">
-                <div className="min-w-0 flex-1">
-                  <div className="flex flex-wrap items-center gap-2"><span className="text-xs font-bold text-secondary">#{item.id}</span><Chip tone={getOccurrenceStatusMeta(item.status).tone}>{getOccurrenceStatusMeta(item.status).label}</Chip></div>
-                  <p className="mt-2 break-words text-sm font-bold text-primary">{item.titulo}</p>
-                  <p className="mt-1 text-xs text-on-surface-variant">{item.zona == null ? "Sem zona vinculada" : zones[item.zona] ?? `Zona ${item.zona}`}</p>
+              <li key={item.id} className="flex min-w-0 flex-col rounded-lg border border-outline-variant/20 bg-surface-container-low/60 p-3">
+                <div className="flex flex-wrap items-center justify-between gap-2">
+                  <p className="min-w-0 break-words text-[13px] font-bold leading-snug text-primary">{item.id} · {item.titulo}</p>
+                  <span className="ml-auto shrink-0"><Chip tone={getOccurrenceStatusMeta(item.status).tone}>{getOccurrenceStatusMeta(item.status).label}</Chip></span>
                 </div>
-                <Link href={`/occurrences?minhas=1&id=${item.id}`} aria-label={`Ver ocorrência #${item.id}: ${item.titulo}`} className="rounded-lg bg-secondary/10 px-4 py-3 text-xs font-bold text-secondary hover:bg-secondary/20 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-secondary">Ver ocorrência</Link>
+                <p className="mb-3 mt-1 flex items-center gap-1 text-xs text-on-surface-variant"><Icon name="location_on" className="shrink-0 text-[14px]" /><span className="min-w-0 break-words">{item.zona == null ? "Sem zona vinculada" : zones[item.zona] ?? `Zona ${item.zona}`}</span></p>
+                <div className="mt-auto border-t border-outline-variant/20 pt-2">
+                  <Link href={`/occurrences?minhas=1&id=${item.id}`} aria-label={`Ver ocorrência ${item.id}: ${item.titulo}`} className="flex items-center justify-between gap-2 rounded py-1 text-xs font-bold text-secondary hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-secondary">Ver ocorrência <Icon name="arrow_forward" className="text-[16px]" /></Link>
+                </div>
               </li>
             ))}
           </ul>
-          <div className="border-t border-outline-variant/20 px-6 py-4">
-            <Link href="/occurrences?minhas=1" className="rounded text-sm font-bold text-secondary hover:underline focus-visible:ring-2 focus-visible:ring-secondary">Ver todas as minhas pendências ({items.length})</Link>
+          <div className="px-4 py-4">
+            <Link href="/occurrences?minhas=1" className="rounded text-[13px] font-bold text-secondary hover:underline focus-visible:ring-2 focus-visible:ring-secondary">Ver todas as minhas pendências ({items.length})</Link>
           </div>
         </>
       )}
