@@ -2,7 +2,7 @@
 
 import { useEffect, useMemo, useRef, useState } from "react";
 import maplibregl from "maplibre-gl";
-import { createMap, addBoundaryLayer } from "@/app/lib/mapShared";
+import { createMap, addBoundaryLayer, addZoneCentroidPills } from "@/app/lib/mapShared";
 import { api } from "@/app/services/Api";
 import { useGardian } from "@/app/components/GardianContext";
 import { getOccurrenceStatusMeta } from "@/app/lib/occurrenceStatus";
@@ -58,24 +58,12 @@ export const KIND_META: Record<
 
 /* ────────────── helpers de zona ────────────── */
 
-function centroidDoPoligono(polygon: GeoJSON.Polygon): [number, number] {
-  const ring = polygon.coordinates[0];
-  let cx = 0;
-  let cy = 0;
-  for (const [lon, lat] of ring) {
-    cx += lon;
-    cy += lat;
-  }
-  return [cx / ring.length, cy / ring.length];
-}
-
 // desenha todas as zonas acinzentadas com o nome, como nos outros mapas
 function desenharZonasAcinzentadas(
   map: maplibregl.Map,
   zonas: { id: number; nome: string; area: GeoJSON.Polygon | null }[],
 ) {
   const features: GeoJSON.Feature<GeoJSON.Polygon>[] = [];
-  const centroides: GeoJSON.Feature<GeoJSON.Point>[] = [];
 
   for (const z of zonas) {
     if (!z.area || !z.area.coordinates?.length) continue;
@@ -88,12 +76,6 @@ function desenharZonasAcinzentadas(
       type: "Feature",
       properties: { nome: z.nome },
       geometry: z.area,
-    });
-    const [cx, cy] = centroidDoPoligono(z.area);
-    centroides.push({
-      type: "Feature",
-      properties: { nome: z.nome },
-      geometry: { type: "Point", coordinates: [cx, cy] },
     });
   }
 
@@ -115,26 +97,12 @@ function desenharZonasAcinzentadas(
     source: "pontos-zonas",
     paint: { "line-color": "#888", "line-width": 1.2, "line-dasharray": [3, 2] },
   });
-  map.addSource("pontos-zonas-centroides", {
-    type: "geojson",
-    data: { type: "FeatureCollection", features: centroides },
-  });
-  map.addLayer({
-    id: "pontos-zonas-label",
-    type: "symbol",
-    source: "pontos-zonas-centroides",
-    layout: {
-      "text-field": ["get", "nome"],
-      "text-size": 9,
-      "text-offset": [0, -0.5],
-      "text-anchor": "bottom",
-      "text-font": ["Open Sans Bold", "Arial Unicode MS Bold"],
-    },
-    paint: {
-      "text-color": "#666",
-      "text-halo-color": "#fff",
-      "text-halo-width": 1.5,
-    },
+
+  // pills de rotulo das zonas (muted)
+  addZoneCentroidPills(map, zonas, {
+    sourceId: "pontos-zonas-centroides",
+    layerId: "pontos-zonas-label",
+    greyedOut: true,
   });
 }
 

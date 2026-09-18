@@ -12,6 +12,8 @@ import {
   addBoundaryLayer,
   getMultiPolygonCenter,
   MAP_STYLE,
+  declutterBasemap,
+  addZoneCentroidPills,
 } from "@/app/lib/mapShared";
 import { MAPLIBRE_DRAW_STYLES } from "@/app/lib/maplibreDrawStyles";
 
@@ -370,6 +372,7 @@ export function DrawOnlyMap({ height = 420, onPolygonChange, neighborZones }: Dr
 
     const onMapLoad = () => {
       resizeMap();
+      declutterBasemap(map);
 
       // Add municipal boundary (no flyTo — let neighborZones handle Show All)
       if (entityArea) addBoundaryLayer(map, entityArea);
@@ -449,7 +452,6 @@ export function DrawOnlyMap({ height = 420, onPolygonChange, neighborZones }: Dr
       try { if (map.getSource(NEIGHBOR_SOURCE)) map.removeSource(NEIGHBOR_SOURCE); } catch { /* ok */ }
 
       const features: GeoJSON.Feature<GeoJSON.Polygon>[] = [];
-      const centroids: GeoJSON.Feature<GeoJSON.Point>[] = [];
 
       for (const z of neighborZones) {
         const ring = z.area.coordinates[0];
@@ -460,14 +462,6 @@ export function DrawOnlyMap({ height = 420, onPolygonChange, neighborZones }: Dr
           type: "Feature",
           properties: { nome: z.nome },
           geometry: z.area,
-        });
-
-        const cx = ring.reduce((s, c) => s + c[0], 0) / ring.length;
-        const cy = ring.reduce((s, c) => s + c[1], 0) / ring.length;
-        centroids.push({
-          type: "Feature",
-          properties: { nome: z.nome },
-          geometry: { type: "Point", coordinates: [cx, cy] },
         });
       }
 
@@ -492,32 +486,12 @@ export function DrawOnlyMap({ height = 420, onPolygonChange, neighborZones }: Dr
         paint: { "line-color": "#888", "line-width": 1.5, "line-dasharray": [3, 2] },
       });
 
-      if (centroids.length > 0) {
-        try { if (map.getSource("neighbor-centroids")) map.removeSource("neighbor-centroids"); } catch { /* ok */ }
-
-        map.addSource("neighbor-centroids", {
-          type: "geojson",
-          data: { type: "FeatureCollection", features: centroids },
-        });
-
-        map.addLayer({
-          id: NEIGHBOR_LABEL,
-          type: "symbol",
-          source: "neighbor-centroids",
-          layout: {
-            "text-field": ["get", "nome"],
-            "text-size": 10,
-            "text-offset": [0, -0.5],
-            "text-anchor": "bottom",
-            "text-font": ["Open Sans Bold", "Arial Unicode MS Bold"],
-          },
-          paint: {
-            "text-color": "#666",
-            "text-halo-color": "#fff",
-            "text-halo-width": 1.5,
-          },
-        });
-      }
+      // rotulos em pill para zonas vizinhas
+      addZoneCentroidPills(map, neighborZones, {
+        sourceId: "neighbor-centroids",
+        layerId: NEIGHBOR_LABEL,
+        greyedOut: true,
+      });
 
       // dar zoom para caber todas as zonas (só na primeira vez)
       if (!autoFitDone.current) {

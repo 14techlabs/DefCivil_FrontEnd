@@ -4,7 +4,7 @@ import { useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import maplibregl from "maplibre-gl";
 import { getOccurrenceStatusMeta } from "@/app/lib/occurrenceStatus";
-import { createMap, addBoundaryLayer, getMultiPolygonCenter } from "@/app/lib/mapShared";
+import { createMap, addBoundaryLayer, getMultiPolygonCenter, addZoneCentroidPills } from "@/app/lib/mapShared";
 import { api } from "@/app/services/Api";
 import { fetchAllPages } from "@/app/lib/pagination";
 import { useGardian } from "@/app/components/GardianContext";
@@ -160,7 +160,6 @@ export function MonitoringMap({ height = 520 }: MonitoringMapProps) {
     if (zonas.length === 0) return;
 
     const features: GeoJSON.Feature<GeoJSON.Polygon>[] = [];
-    const centroids: GeoJSON.Feature<GeoJSON.Point>[] = [];
 
     for (const z of zonas) {
       if (!z.area) continue;
@@ -171,15 +170,6 @@ export function MonitoringMap({ height = 520 }: MonitoringMapProps) {
         type: "Feature",
         properties: { nome: z.nome },
         geometry: z.area,
-      });
-
-      // centroide = média dos vértices do anel externo
-      const cx = ring.reduce((s, c) => s + c[0], 0) / ring.length;
-      const cy = ring.reduce((s, c) => s + c[1], 0) / ring.length;
-      centroids.push({
-        type: "Feature",
-        properties: { nome: z.nome },
-        geometry: { type: "Point", coordinates: [cx, cy] },
       });
     }
 
@@ -212,30 +202,14 @@ export function MonitoringMap({ height = 520 }: MonitoringMapProps) {
       },
       beforeId,
     );
-    map.addSource(CENTROID_SOURCE, {
-      type: "geojson",
-      data: { type: "FeatureCollection", features: centroids },
-    });
-    map.addLayer(
-      {
-        id: CENTROID_LABEL,
-        type: "symbol",
-        source: CENTROID_SOURCE,
-        layout: {
-          "text-field": ["get", "nome"],
-          "text-size": 10,
-          "text-offset": [0, -0.5],
-          "text-anchor": "bottom",
-          "text-font": ["Open Sans Bold", "Arial Unicode MS Bold"],
-        },
-        paint: {
-          "text-color": "#666",
-          "text-halo-color": "#fff",
-          "text-halo-width": 1.5,
-        },
-      },
+
+    // pills de rotulo das zonas (muted)
+    addZoneCentroidPills(map, zonas, {
+      sourceId: CENTROID_SOURCE,
+      layerId: CENTROID_LABEL,
+      greyedOut: true,
       beforeId,
-    );
+    });
   };
 
   /* ── pins das ocorrências ── */

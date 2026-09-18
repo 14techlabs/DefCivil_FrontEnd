@@ -6,6 +6,8 @@ import {
   MAP_STYLE,
   addBoundaryLayer,
   getMultiPolygonCenter,
+  declutterBasemap,
+  addZoneCentroidPills,
 } from "@/app/lib/mapShared";
 import { api } from "@/app/services/Api";
 import { useGardian } from "@/app/components/GardianContext";
@@ -72,13 +74,6 @@ function polygonBounds(polygon: GeoJSON.Polygon): maplibregl.LngLatBounds {
     if (lat > maxLat) maxLat = lat;
   }
   return new maplibregl.LngLatBounds([minLon, minLat], [maxLon, maxLat]);
-}
-
-function polygonCentroid(polygon: GeoJSON.Polygon): [number, number] {
-  const ring = polygon.coordinates[0];
-  let cx = 0, cy = 0;
-  for (const [lon, lat] of ring) { cx += lon; cy += lat; }
-  return [cx / ring.length, cy / ring.length];
 }
 
 /* ───────────── componente ───────────── */
@@ -184,6 +179,7 @@ export function CoordsPickerMap({
 
     map.on("load", () => {
       resize();
+      declutterBasemap(map);
 
       // Add municipal boundary
       if (entityArea) addBoundaryLayer(map, entityArea);
@@ -195,21 +191,16 @@ export function CoordsPickerMap({
       const NEIGHBOR_LABEL = "picker-zone-label";
 
       const features: GeoJSON.Feature<GeoJSON.Polygon>[] = [];
-      const centroids: GeoJSON.Feature<GeoJSON.Point>[] = [];
+      const neighborZoneItems: { id: number; nome: string; area: GeoJSON.Polygon }[] = [];
 
       zonePolygonsRef.current.forEach((poly, id) => {
         const nome = zonasNamesRef.current?.find((z) => z.id === id)?.nome ?? `Zona ${id}`;
-        const [cx, cy] = polygonCentroid(poly);
         features.push({
           type: "Feature",
           properties: { nome },
           geometry: poly,
         });
-        centroids.push({
-          type: "Feature",
-          properties: { nome },
-          geometry: { type: "Point", coordinates: [cx, cy] },
-        });
+        neighborZoneItems.push({ id, nome, area: poly });
       });
 
       if (features.length > 0) {
@@ -232,27 +223,11 @@ export function CoordsPickerMap({
           paint: { "line-color": "#888", "line-width": 1.2, "line-dasharray": [3, 2] },
         });
 
-        map.addSource("picker-centroids", {
-          type: "geojson",
-          data: { type: "FeatureCollection", features: centroids },
-        });
-
-        map.addLayer({
-          id: NEIGHBOR_LABEL,
-          type: "symbol",
-          source: "picker-centroids",
-          layout: {
-            "text-field": ["get", "nome"],
-            "text-size": 9,
-            "text-offset": [0, -0.5],
-            "text-anchor": "bottom",
-            "text-font": ["Open Sans Bold", "Arial Unicode MS Bold"],
-          },
-          paint: {
-            "text-color": "#666",
-            "text-halo-color": "#fff",
-            "text-halo-width": 1.5,
-          },
+        // pills de rotulo das zonas (muted)
+        addZoneCentroidPills(map, neighborZoneItems, {
+          sourceId: "picker-centroids",
+          layerId: NEIGHBOR_LABEL,
+          greyedOut: true,
         });
       }
 
