@@ -6,6 +6,7 @@ import dynamic from "next/dynamic";
 import Image from "next/image";
 import { useRouter, useSearchParams } from "next/navigation";
 import { Btn, Chip, Icon, MetaTag } from "@/app/components/Primitives";
+import { AudioRecorder } from "@/app/components/AudioRecorder";
 import { api } from "@/app/services/Api";
 
 const MAXIMO_ANEXOS = 10;
@@ -333,6 +334,18 @@ function PublicReportContent() {
   const [cidadeAtendida, setCidadeAtendida] = useState<boolean | null>(null);
   const [ajusteManualDoMapa, setAjusteManualDoMapa] = useState(false);
   const [pontoManualMarcado, setPontoManualMarcado] = useState(false);
+
+  // anexa o relato transcrito por voz ao campo descricao
+  const handleVoiceTranscription = useCallback((transcribedText: string) => {
+    const cleanNew = transcribedText.trim();
+    if (!cleanNew) return;
+    setDescricao((prev) => {
+      const cleanPrev = prev.trim();
+      if (!cleanPrev) return cleanNew;
+      const separator = /[.!?]$/.test(cleanPrev) ? " " : ". ";
+      return `${cleanPrev}${separator}${cleanNew}`;
+    });
+  }, []);
 
   const pegarLocalizacao = useCallback(() => {
     if (typeof navigator === "undefined" || !navigator.geolocation) {
@@ -1231,7 +1244,13 @@ function PublicReportContent() {
 
           {/* descrição */}
           <section className="card-tonal p-6 shadow-ambient-sm">
-            <h2 className="mb-4 text-sm font-bold text-primary">2. Descreva a situação</h2>
+            <div className="flex flex-wrap items-center justify-between gap-3 mb-4">
+              <h2 className="text-sm font-bold text-primary">2. Descreva a situação</h2>
+              <AudioRecorder
+                onTranscription={handleVoiceTranscription}
+                disabled={enviando}
+              />
+            </div>
             <textarea
               value={descricao}
               onChange={(e) => setDescricao(e.target.value)}
