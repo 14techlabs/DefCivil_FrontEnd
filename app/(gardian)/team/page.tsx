@@ -25,6 +25,7 @@ const CATEGORIA_LABEL: Record<string, string> = {
 
 type Hierarquia = "coordenador" | "supervisor" | "tecnico";
 type StatusCampo = "em_campo" | "disponivel" | "offline";
+const OCORRENCIAS_POR_MEMBRO = 3;
 
 interface EquipeTecnico {
   id: number;
@@ -138,6 +139,7 @@ export default function TeamPage() {
     zonas_cobertas: 0,
   });
   const [ocorrencias, setOcorrencias] = useState<EquipeOcorrencia[]>([]);
+  const [paginasPorMembro, setPaginasPorMembro] = useState<Record<number, number>>({});
   const [erroOcorrencias, setErroOcorrencias] = useState(false);
   const [zonas, setZonas] = useState<EquipeZona[]>([]);
   const [carregandoDados, setCarregandoDados] = useState(true);
@@ -312,6 +314,9 @@ export default function TeamPage() {
                   const atuando = ocorrencias.filter(
                     (o) => o.tecnico_responsavel === t.id && ["em_andamento", "alta_prioridade"].includes(getOccurrenceStatusMeta(o.status).key),
                   );
+                  const ultimaPagina = Math.max(0, Math.ceil(atuando.length / OCORRENCIAS_POR_MEMBRO) - 1);
+                  const pagina = Math.min(paginasPorMembro[t.id] ?? 0, ultimaPagina);
+                  const inicio = pagina * OCORRENCIAS_POR_MEMBRO;
                   return (
                     <div key={t.id} className="card-recessed p-4">
                       <div className="flex items-center gap-3">
@@ -325,23 +330,78 @@ export default function TeamPage() {
                           <p className="text-[10px] text-on-surface-variant uppercase font-bold tracking-mono-tight">{t.cargo}</p>
                         </div>
                       </div>
-                      <div className="mt-4 border-t border-outline-variant/30 pt-3 space-y-2">
+                      <div className="mt-3 border-t border-outline-variant/30 pt-2 space-y-1.5">
                         <MetaTag>ATUAÇÃO ATUAL {atuando.length > 0 && `· ${atuando.length}`}</MetaTag>
                         {erroOcorrencias ? (
                           <p className="text-xs text-error" role="alert">Não foi possível consultar as ocorrências.</p>
                         ) : atuando.length === 0 ? (
                           <p className="text-xs text-on-surface-variant">Sem ocorrência em andamento vinculada.</p>
-                        ) : atuando.map((o) => (
-                          <Link key={o.id} href={`/occurrences?id=${o.id}`} className="block rounded-lg border border-outline-variant/30 bg-surface-container-low p-3 transition-colors hover:bg-surface-container-high focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-secondary">
-                            <div className="flex flex-wrap items-center justify-between gap-2">
-                              <span className="text-xs font-bold text-secondary">Ocorrência #{o.id}</span>
-                              <Chip tone={getOccurrenceStatusMeta(o.status).tone}>{getOccurrenceStatusMeta(o.status).label}</Chip>
+                        ) : atuando.slice(inicio, inicio + OCORRENCIAS_POR_MEMBRO).map((o) => (
+                          <Link key={o.id} href={`/occurrences?id=${o.id}`} aria-label={`Ver ocorrência ${o.id}: ${o.titulo}`} className="flex items-center gap-2 rounded-md bg-surface-container-low px-2.5 py-2 motion-safe:animate-[fadeIn_220ms_ease-out] transition-colors hover:bg-surface-container-high focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-secondary">
+                            <div className="min-w-0 flex-1">
+                              <p className="break-words text-xs font-bold leading-snug text-primary"><span className="text-secondary">{o.id}</span> · {o.titulo}</p>
+                              <div className="mt-1 flex flex-wrap items-center gap-x-2 gap-y-0.5 text-[11px] leading-snug">
+                                <span className="break-words text-on-surface-variant">{nomeZona(o.zona)}</span>
+                                <span className={getOccurrenceStatusMeta(o.status).key === "alta_prioridade" ? "font-semibold text-error" : "font-medium text-on-surface-variant"}>· {getOccurrenceStatusMeta(o.status).label}</span>
+                              </div>
                             </div>
-                            <p className="mt-2 break-words text-sm font-bold text-primary">{o.titulo}</p>
-                            <p className="mt-1 text-xs text-on-surface-variant">{nomeZona(o.zona)}</p>
-                            <span className="mt-3 flex items-center gap-1 text-xs font-bold text-secondary">Ver ocorrência <Icon name="arrow_forward" className="text-[16px]" /></span>
+                            <Icon name="chevron_right" className="shrink-0 text-[18px] text-secondary" />
                           </Link>
                         ))}
+                        {!erroOcorrencias && atuando.length > OCORRENCIAS_POR_MEMBRO && (
+                          <nav aria-label={`Ocorrências de ${t.nome}`} className="flex flex-wrap items-center justify-between gap-2 pt-1">
+                            <span className="text-[11px] text-on-surface-variant" aria-live="polite" aria-atomic="true">
+                              {inicio + 1}–{Math.min(inicio + OCORRENCIAS_POR_MEMBRO, atuando.length)} de {atuando.length}
+                            </span>
+                            <label className="flex items-center gap-1.5 text-[11px] text-on-surface-variant">
+                              Página
+                              <input
+                                key={pagina}
+                                type="number"
+                                min={1}
+                                max={ultimaPagina + 1}
+                                step={1}
+                                required
+                                defaultValue={pagina + 1}
+                                aria-label={`Página de ocorrências de ${t.nome}`}
+                                title="Digite a página e pressione Enter"
+                                onKeyDown={(event) => {
+                                  if (event.key !== "Enter") return;
+                                  event.preventDefault();
+                                  const campo = event.currentTarget;
+                                  if (!campo.reportValidity()) return;
+                                  const destino = campo.valueAsNumber;
+                                  if (!Number.isInteger(destino) || destino < 1 || destino > ultimaPagina + 1) return;
+                                  setPaginasPorMembro((atual) => ({ ...atual, [t.id]: destino - 1 }));
+                                  campo.value = String(destino);
+                                }}
+                                onBlur={(event) => { event.currentTarget.value = String(pagina + 1); }}
+                                className="w-12 rounded-md border border-outline-variant/40 bg-surface-container-low px-1 py-1 text-center text-xs text-primary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-secondary"
+                              />
+                              de {ultimaPagina + 1}
+                            </label>
+                            <div className="flex gap-1">
+                              <button
+                                type="button"
+                                disabled={pagina === 0}
+                                aria-label={`Ocorrências anteriores de ${t.nome}`}
+                                onClick={() => setPaginasPorMembro((atual) => ({ ...atual, [t.id]: pagina - 1 }))}
+                                className="rounded-md px-2 py-1.5 text-xs font-semibold text-secondary hover:bg-secondary/10 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-secondary disabled:opacity-40 disabled:cursor-not-allowed"
+                              >
+                                Anterior
+                              </button>
+                              <button
+                                type="button"
+                                disabled={pagina === ultimaPagina}
+                                aria-label={`Próximas ocorrências de ${t.nome}`}
+                                onClick={() => setPaginasPorMembro((atual) => ({ ...atual, [t.id]: pagina + 1 }))}
+                                className="rounded-md px-2 py-1.5 text-xs font-semibold text-secondary hover:bg-secondary/10 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-secondary disabled:opacity-40 disabled:cursor-not-allowed"
+                              >
+                                Próxima
+                              </button>
+                            </div>
+                          </nav>
+                        )}
                       </div>
                     </div>
                   );
