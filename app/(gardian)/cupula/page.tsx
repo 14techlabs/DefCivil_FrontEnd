@@ -5,7 +5,7 @@ import { Bar, Btn, Chip, Icon, MetaTag, SectionHeader, StatusDot } from "@/app/c
 import { CupulaIcon } from "@/app/components/CupulaIcon";
 import { useGardian } from "@/app/components/GardianContext";
 import { useAppNavigation } from "@/app/lib/useAppNavigation";
-import { responderCupula, SUGESTOES_CUPULA, type RespostaCupula } from "@/app/lib/cupula";
+import { SUGESTOES_CUPULA } from "@/app/lib/cupula";
 import { api } from "@/app/services/Api";
 import { authService } from "@/app/services/Authservice";
 import {
@@ -21,7 +21,7 @@ interface Mensagem {
   autor: "cupula" | "usuario";
   texto: string;
   fontes?: string[];
-  relatorio?: RespostaCupula["relatorio"];
+  relatorio?: { titulo: string; periodo: string };
   hora: string;
 }
 
@@ -31,9 +31,7 @@ const agora = () =>
 const SAUDACAO: Mensagem = {
   id: 0,
   autor: "cupula",
-  texto:
-    "Cúpula ativa. Estou cruzando pluviometria, geologia, histórico e relatos da população em tempo real.\n\nNo momento tenho 3 previsões ativas e 1 evento em andamento. Pergunte o que quiser, peça um resumo ou solicite um relatório.",
-  fontes: [],
+  texto: "Olá! Sou a Cúpula, assistente de inteligência da Defesa Civil. Como posso ajudar você hoje?",
   hora: agora(),
 };
 
@@ -103,26 +101,48 @@ export default function CupulaPage() {
       const res = await api.post<{
         autor?: string;
         texto?: string;
+        output?: string;
         fontes?: string[];
-        relatorio?: RespostaCupula["relatorio"];
+        relatorio?: { titulo: string; periodo: string };
       }>("/cupula/chat/", {
         prompt: pergunta,
         user_chat_id: chatId,
       });
 
-      // combina resposta do backend com fallback visual
-      const localFallback = responderCupula(pergunta);
-      setMensagens((prev) => [
-        ...prev,
-        {
-          id: proximoId.current++,
-          autor: "cupula",
-          texto: res.data.texto || localFallback.texto,
-          fontes: res.data.fontes || localFallback.fontes,
-          relatorio: res.data.relatorio || localFallback.relatorio,
-          hora: agora(),
-        },
-      ]);
+      // extrai texto da resposta estruturada do backend ou do formato nativo do n8n
+      let textoResposta = "";
+      const data: any = res.data;
+      if (typeof data === "string") {
+        textoResposta = data;
+      } else if (Array.isArray(data) && data.length > 0) {
+        textoResposta = data[0]?.output || data[0]?.texto || data[0]?.message || "";
+      } else if (data && typeof data === "object") {
+        textoResposta = data.texto || data.output || data.message || "";
+      }
+
+      if (textoResposta) {
+        setMensagens((prev) => [
+          ...prev,
+          {
+            id: proximoId.current++,
+            autor: "cupula",
+            texto: textoResposta,
+            fontes: data?.fontes,
+            relatorio: data?.relatorio,
+            hora: agora(),
+          },
+        ]);
+      } else {
+        setMensagens((prev) => [
+          ...prev,
+          {
+            id: proximoId.current++,
+            autor: "cupula",
+            texto: "Não foi possível obter uma resposta do assistente.",
+            hora: agora(),
+          },
+        ]);
+      }
     } catch (err: any) {
       const status = err?.response?.status;
       const erroCodigo = err?.response?.data?.error;
@@ -142,16 +162,14 @@ export default function CupulaPage() {
           },
         ]);
       } else {
-        // fallback caso haja instabilidade no backend
-        const r = responderCupula(pergunta);
         setMensagens((prev) => [
           ...prev,
           {
             id: proximoId.current++,
             autor: "cupula",
-            texto: r.texto,
-            fontes: r.fontes,
-            relatorio: r.relatorio,
+            texto:
+              detalhe ||
+              "Não foi possível obter resposta da Cúpula no momento. Tente novamente em instantes.",
             hora: agora(),
           },
         ]);
