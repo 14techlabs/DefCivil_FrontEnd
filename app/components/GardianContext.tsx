@@ -37,6 +37,7 @@ export interface UserData {
   zona_base?: number | null;
   status_campo?: string | null;
   status_campo_label?: string | null;
+  user_chat_id?: string | null;
 }
 
 type GardianContextValue = {
@@ -104,6 +105,9 @@ export function GardianProvider({ children }: { children: ReactNode }) {
         .then((res) => {
           const u = res.data.usuario;
           setCachedUser(u);
+          if (u.user_chat_id) {
+            authService.setUserChatId(u.user_chat_id);
+          }
           return u;
         })
         .catch(() => null)

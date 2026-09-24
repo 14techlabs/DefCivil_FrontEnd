@@ -6,6 +6,8 @@ import { CupulaIcon } from "@/app/components/CupulaIcon";
 import { useGardian } from "@/app/components/GardianContext";
 import { useAppNavigation } from "@/app/lib/useAppNavigation";
 import { responderCupula, SUGESTOES_CUPULA, type RespostaCupula } from "@/app/lib/cupula";
+import { api } from "@/app/services/Api";
+import { authService } from "@/app/services/Authservice";
 import {
   MOCK_AI_REPORT,
   MOCK_POSSIVEIS_EVENTOS,
@@ -36,12 +38,13 @@ const SAUDACAO: Mensagem = {
 };
 
 export default function CupulaPage() {
-  const { showToast } = useGardian();
+  const { user, logout, showToast } = useGardian();
   const { go } = useAppNavigation();
 
   const [mensagens, setMensagens] = useState<Mensagem[]>([SAUDACAO]);
   const [entrada, setEntrada] = useState("");
   const [pensando, setPensando] = useState(false);
+  const [sessaoInvalida, setSessaoInvalida] = useState(false);
   const [previsoes, setPrevisoes] = useState<PossivelEvento[]>(MOCK_POSSIVEIS_EVENTOS);
 
   const feedRef = useRef<HTMLDivElement>(null);
@@ -52,7 +55,22 @@ export default function CupulaPage() {
     feedRef.current?.scrollTo({ top: feedRef.current.scrollHeight, behavior: "smooth" });
   }, [mensagens, pensando]);
 
-  const perguntar = (texto: string) => {
+  // verifica se a sessao da cupula e valida ao carregar
+  useEffect(() => {
+    const chatId = authService.getUserChatId() || user?.user_chat_id;
+    if (chatId) {
+      api
+        .post<{ valido: boolean }>("/cupula/validar-sessao/", { user_chat_id: chatId })
+        .then(() => setSessaoInvalida(false))
+        .catch((err: any) => {
+          if (err?.response?.status === 403) {
+            setSessaoInvalida(true);
+          }
+        });
+    }
+  }, [user?.user_chat_id]);
+
+  const perguntar = async (texto: string) => {
     const pergunta = texto.trim();
     if (!pergunta || pensando) return;
 
@@ -63,22 +81,84 @@ export default function CupulaPage() {
     setEntrada("");
     setPensando(true);
 
-    // resposta simulada — trocar por chamada ao backend quando integrado
-    window.setTimeout(() => {
-      const r = responderCupula(pergunta);
+    const chatId = authService.getUserChatId() || user?.user_chat_id;
+
+    if (!chatId) {
+      setPensando(false);
+      setSessaoInvalida(true);
       setMensagens((prev) => [
         ...prev,
         {
           id: proximoId.current++,
           autor: "cupula",
-          texto: r.texto,
-          fontes: r.fontes,
-          relatorio: r.relatorio,
+          texto:
+            "Sua credencial da Cúpula não foi identificada nesta sessão. Para utilizar a Cúpula AI, faça login novamente.",
           hora: agora(),
         },
       ]);
+      return;
+    }
+
+    try {
+      const res = await api.post<{
+        autor?: string;
+        texto?: string;
+        fontes?: string[];
+        relatorio?: RespostaCupula["relatorio"];
+      }>("/cupula/chat/", {
+        prompt: pergunta,
+        user_chat_id: chatId,
+      });
+
+      // combina resposta do backend com fallback visual
+      const localFallback = responderCupula(pergunta);
+      setMensagens((prev) => [
+        ...prev,
+        {
+          id: proximoId.current++,
+          autor: "cupula",
+          texto: res.data.texto || localFallback.texto,
+          fontes: res.data.fontes || localFallback.fontes,
+          relatorio: res.data.relatorio || localFallback.relatorio,
+          hora: agora(),
+        },
+      ]);
+    } catch (err: any) {
+      const status = err?.response?.status;
+      const erroCodigo = err?.response?.data?.error;
+      const detalhe = err?.response?.data?.detail;
+
+      if (status === 403 || erroCodigo === "invalid_chat_session") {
+        setSessaoInvalida(true);
+        setMensagens((prev) => [
+          ...prev,
+          {
+            id: proximoId.current++,
+            autor: "cupula",
+            texto:
+              detalhe ||
+              "Sua sessão da Cúpula expirou ou foi invalidada por outro login. Faça login novamente se deseja utilizar a Cúpula AI.",
+            hora: agora(),
+          },
+        ]);
+      } else {
+        // fallback caso haja instabilidade no backend
+        const r = responderCupula(pergunta);
+        setMensagens((prev) => [
+          ...prev,
+          {
+            id: proximoId.current++,
+            autor: "cupula",
+            texto: r.texto,
+            fontes: r.fontes,
+            relatorio: r.relatorio,
+            hora: agora(),
+          },
+        ]);
+      }
+    } finally {
       setPensando(false);
-    }, 900);
+    }
   };
 
   const decidirPrevisao = (id: number, decisao: "aprovado" | "descartado") => {
@@ -262,6 +342,24 @@ export default function CupulaPage() {
             </div>
           </div>
 
+          {/* alerta de sessao da cupula invalida */}
+          {sessaoInvalida && (
+            <div className="mx-6 mb-2 p-3.5 rounded-xl bg-error-container/20 border border-error/30 flex items-center justify-between gap-4 animate-[fadeIn_150ms_ease]">
+              <div className="flex items-center gap-2.5">
+                <Icon name="lock_reset" className="text-error text-lg shrink-0" />
+                <div>
+                  <p className="text-xs font-bold text-error">Sessão da Cúpula expirada ou inválida</p>
+                  <p className="text-[11px] text-on-surface-variant">
+                    Faça login novamente se deseja utilizar o assistente Cúpula AI.
+                  </p>
+                </div>
+              </div>
+              <Btn variant="primary" icon="login" onClick={logout} className="shrink-0 text-xs py-1.5 px-3">
+                Fazer login novamente
+              </Btn>
+            </div>
+          )}
+
           {/* entrada */}
           <div className="p-6 pt-4">
             <div className="flex gap-2">
@@ -269,12 +367,17 @@ export default function CupulaPage() {
                 value={entrada}
                 onChange={(e) => setEntrada(e.target.value)}
                 onKeyDown={(e) => {
-                  if (e.key === "Enter") perguntar(entrada);
+                  if (e.key === "Enter" && !sessaoInvalida) perguntar(entrada);
                 }}
-                placeholder="Pergunte, peça um resumo, uma análise ou um relatório…"
-                className="flex-1 bg-surface-container-low rounded-lg px-4 py-3.5 text-sm font-medium focus:ring-2 focus:ring-secondary outline-none placeholder:text-on-surface-variant/50"
+                disabled={pensando || sessaoInvalida}
+                placeholder={
+                  sessaoInvalida
+                    ? "Faça login novamente para usar a Cúpula AI…"
+                    : "Pergunte, peça um resumo, uma análise ou um relatório…"
+                }
+                className="flex-1 bg-surface-container-low rounded-lg px-4 py-3.5 text-sm font-medium focus:ring-2 focus:ring-secondary outline-none placeholder:text-on-surface-variant/50 disabled:opacity-50"
               />
-              <Btn variant="primary" icon="send" onClick={() => perguntar(entrada)} disabled={pensando}>
+              <Btn variant="primary" icon="send" onClick={() => perguntar(entrada)} disabled={pensando || sessaoInvalida}>
                 Enviar
               </Btn>
             </div>
